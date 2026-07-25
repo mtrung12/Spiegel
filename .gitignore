@@ -1,0 +1,102 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment variables (protect secrets)
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+.eggs/
+*.egg-info/
+*.egg
+dist/
+build/
+pip-wheel-metadata/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.ipynb_checkpoints/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-store/
+.eslintcache
+*.tsbuildinfo
+
+# Frontend build output
+frontend/dist/
+dist-ssr/
+.vite/
+*.local
+
+# IDE
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*.sw?
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+.fleet/
+
+# Tests and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.nyc_output/
+
+# Cursor
+.cursor/
+.claude/
+
+# Docs and scratch test programs
+mydoc/
+mytest/
+
+# Log files
+backend/logs/
+logs/
+*.log
+
+# Uploaded files
+backend/uploads/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Runtime artifacts
+*.pid
+*.seed
+*.pid.lock
+
+# Docker data
+data/
