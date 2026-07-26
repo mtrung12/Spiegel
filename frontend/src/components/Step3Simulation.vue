@@ -91,7 +91,25 @@
       </div>
 
       <div class="action-controls">
-        <button 
+        <!-- View toggle: live action stream vs. the feed as posts -->
+        <div class="view-toggle">
+          <button
+            class="view-btn"
+            :class="{ active: activeView === 'stream' }"
+            @click="activeView = 'stream'"
+          >
+            {{ $t('step3.viewStream') }}
+          </button>
+          <button
+            class="view-btn"
+            :class="{ active: activeView === 'board' }"
+            @click="activeView = 'board'"
+          >
+            {{ $t('step3.viewBoard') }}
+          </button>
+        </div>
+
+        <button
           class="action-btn primary"
           :disabled="phase !== 2 || isGeneratingReport"
           @click="handleNextStep"
@@ -103,8 +121,15 @@
       </div>
     </div>
 
+    <!-- Feed Board: the posts as stored in the simulation database -->
+    <FeedBoard
+      v-if="activeView === 'board'"
+      :simulation-id="simulationId"
+      class="board-view"
+    />
+
     <!-- Main Content: Dual Timeline -->
-    <div class="main-content-area" ref="scrollContainer">
+    <div v-show="activeView === 'stream'" class="main-content-area" ref="scrollContainer">
       <!-- Timeline Header -->
       <div class="timeline-header" v-if="allActions.length > 0">
         <div class="timeline-stats">
@@ -296,6 +321,7 @@ import {
   getRunStatusDetail
 } from '../api/simulation'
 import { generateReport } from '../api/report'
+import FeedBoard from './FeedBoard.vue'
 
 const { t } = useI18n()
 
@@ -316,6 +342,9 @@ const emit = defineEmits(['go-back', 'next-step', 'add-log', 'update-status'])
 const router = useRouter()
 
 // State
+// Which view the main area shows: 'stream' is the live action timeline,
+// 'board' is the feed read back out of the simulation database.
+const activeView = ref('stream')
 const isGeneratingReport = ref(false)
 const phase = ref(0) // 0: not started, 1: running, 2: finished
 const isStarting = ref(false)
@@ -763,7 +792,7 @@ onUnmounted(() => {
   transform: translateX(-50%);
   margin-top: 8px;
   padding: 10px 14px;
-  background: #000;
+  background: #F97316;
   color: #FFF;
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -872,6 +901,47 @@ onUnmounted(() => {
   align-items: center;
 }
 
+/* View Toggle: action stream vs. feed board */
+.action-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.view-btn {
+  padding: 6px 14px;
+  border: 1px solid #EAEAEA;
+  border-radius: 4px;
+  background: #FFF;
+  color: #888;
+  font-size: 11px;
+  font-family: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.view-btn:hover { border-color: #CCC; color: #555; }
+
+.view-btn.active {
+  border-color: #333;
+  background: #333;
+  color: #FFF;
+}
+
+/* The board replaces the timeline, so it takes the same flex slot */
+.board-view {
+  flex: 1;
+  min-height: 0;
+}
+
 /* Action Button */
 .action-btn {
   display: inline-flex;
@@ -889,12 +959,12 @@ onUnmounted(() => {
 }
 
 .action-btn.primary {
-  background: #000;
+  background: #F97316;
   color: #FFF;
 }
 
 .action-btn.primary:hover:not(:disabled) {
-  background: #333;
+  background: #EA580C;
 }
 
 .action-btn:disabled {
@@ -1213,22 +1283,22 @@ onUnmounted(() => {
 
 /* Logs */
 .system-logs {
-  background: #000;
-  color: #DDD;
+  background: #FAFAFA;
+  color: #333333;
   padding: 16px;
   font-family: 'JetBrains Mono', monospace;
-  border-top: 1px solid #222;
+  border-top: 1px solid #E5E5E5;
   flex-shrink: 0;
 }
 
 .log-header {
   display: flex;
   justify-content: space-between;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid #E5E5E5;
   padding-bottom: 8px;
   margin-bottom: 8px;
   font-size: 10px;
-  color: #666;
+  color: #999999;
 }
 
 .log-content {
@@ -1241,7 +1311,7 @@ onUnmounted(() => {
 }
 
 .log-content::-webkit-scrollbar { width: 4px; }
-.log-content::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+.log-content::-webkit-scrollbar-thumb { background: #D4D4D4; border-radius: 2px; }
 
 .log-line {
   font-size: 11px;
@@ -1250,8 +1320,8 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 
-.log-time { color: #555; min-width: 75px; }
-.log-msg { color: #BBB; word-break: break-all; }
+.log-time { color: #999999; min-width: 75px; }
+.log-msg { color: #333333; word-break: break-all; }
 .mono { font-family: 'JetBrains Mono', monospace; }
 
 /* Loading spinner for button */

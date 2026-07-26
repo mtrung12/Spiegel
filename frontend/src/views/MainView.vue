@@ -431,12 +431,13 @@ onUnmounted(() => {
 /* Header */
 .app-header {
   height: 60px;
-  border-bottom: 1px solid #EAEAEA;
+  border-bottom: 1px solid #E5E5E5;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
   background: #FFF;
+  color: #111111;
   z-index: 100;
   position: relative;
 }
@@ -469,7 +470,7 @@ onUnmounted(() => {
   padding: 6px 16px;
   font-size: 12px;
   font-weight: 600;
-  color: #666;
+  color: #666666;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
@@ -477,8 +478,8 @@ onUnmounted(() => {
 
 .switch-btn.active {
   background: #FFF;
-  color: #000;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  color: #111111;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
 }
 
 .status-indicator {
@@ -486,7 +487,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #666;
+  color: #666666;
   font-weight: 500;
 }
 
@@ -506,18 +507,18 @@ onUnmounted(() => {
 .step-num {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
-  color: #999;
+  color: #A3A3A3;
 }
 
 .step-name {
   font-weight: 700;
-  color: #000;
+  color: #111111;
 }
 
 .step-divider {
   width: 1px;
   height: 14px;
-  background-color: #E0E0E0;
+  background-color: #E5E5E5;
 }
 
 .dot {
@@ -527,7 +528,7 @@ onUnmounted(() => {
   background: #CCC;
 }
 
-.status-indicator.processing .dot { background: #FF5722; animation: pulse 1s infinite; }
+.status-indicator.processing .dot { background: #F97316; animation: pulse 1s infinite; }
 .status-indicator.completed .dot { background: #4CAF50; }
 .status-indicator.error .dot { background: #F44336; }
 

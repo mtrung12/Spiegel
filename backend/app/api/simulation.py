@@ -27,6 +27,18 @@ from ..models.project import ProjectManager
 
 logger = get_logger('mirofish.api.simulation')
 
+# Sort keys the feed board may request, mapped to the SQL expression each one
+# resolves to. Whitelisted because the value is interpolated into the ORDER BY
+# clause, where a bind parameter cannot be used.
+POST_SORT_COLUMNS = {
+    'created_at': 'p.created_at',
+    'num_likes': 'p.num_likes',
+    'num_dislikes': 'p.num_dislikes',
+    'num_shares': 'p.num_shares',
+    'num_comments': 'num_comments',
+    'post_id': 'p.post_id',
+}
+
 
 def _get_default_platform(simulation_id: str) -> str:
     """
@@ -2151,6 +2163,60 @@ def get_campaign_metrics(simulation_id: str):
         }), 500
 
 
+@simulation_bp.route('/<simulation_id>/sentiment-digest', methods=['GET'])
+def get_sentiment_digest(simulation_id: str):
+    """
+    Return the sentiment digest for what the audience actually wrote.
+
+    The counted KPIs read sentiment off the action type - a like is approval, a
+    dislike is rejection. This endpoint classifies the text of every authored
+    post and comment instead, and returns:
+
+    - the positive / neutral / negative split, for posts and comments
+    - the most-liked post and comment on each side
+    - the objections that recur among the negatives
+    - the hooks that recur among the positives
+
+    The classification is an LLM pass, cached per simulation and reused until
+    the feed grows. Pass ?force=true to reclassify.
+
+    Query parameters:
+        force: true to reclassify even when a cached digest matches
+    """
+    try:
+        from ..services.content_sentiment import ContentSentimentService
+
+        force = request.args.get('force', 'false').lower() in ('true', '1', 'yes')
+
+        # The campaign brief keeps the model judging sentiment toward THIS
+        # campaign rather than in the abstract.
+        campaign_requirement = ""
+        state = SimulationManager().get_simulation(simulation_id)
+        if state:
+            project = ProjectManager.get_project(state.project_id)
+            if project:
+                campaign_requirement = project.simulation_requirement or ""
+
+        digest = ContentSentimentService().compute(
+            simulation_id=simulation_id,
+            campaign_requirement=campaign_requirement,
+            force=force
+        )
+
+        return jsonify({
+            "success": True,
+            "data": digest
+        })
+
+    except Exception as e:
+        logger.error(f"生成情感摘要失败: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
 @simulation_bp.route('/<simulation_id>/agent-stats', methods=['GET'])
 def get_agent_stats(simulation_id: str):
     """
@@ -2189,13 +2255,28 @@ def get_simulation_posts(simulation_id: str):
         platform: twitter or reddit
         limit: page size (default 50)
         offset: page offset
-    
-    Returns the posts, read from the SQLite database.
+        sort_by: created_at (default), num_likes, num_dislikes, num_shares,
+                 num_comments or post_id
+        order: desc (default) or asc
+
+    Returns the posts, read from the SQLite database. Each post carries its
+    author (joined from the user table) and its comment count (counted from the
+    comment table), so the feed board can sort on either without a second
+    request.
     """
     try:
         platform = request.args.get('platform') or _get_default_platform(simulation_id)
         limit = request.args.get('limit', 50, type=int)
         offset = request.args.get('offset', 0, type=int)
+
+        # Whitelist the sort column: it is interpolated into the SQL, so it can
+        # never come straight from the query string.
+        sort_by = request.args.get('sort_by', 'created_at')
+        if sort_by not in POST_SORT_COLUMNS:
+            sort_by = 'created_at'
+        sort_column = POST_SORT_COLUMNS[sort_by]
+
+        order = 'ASC' if request.args.get('order', 'desc').lower() == 'asc' else 'DESC'
 
         sim_dir = os.path.join(
             os.path.dirname(__file__),
@@ -2222,33 +2303,48 @@ def get_simulation_posts(simulation_id: str):
         cursor = conn.cursor()
         
         try:
-            cursor.execute("""
-                SELECT * FROM post 
-                ORDER BY created_at DESC 
+            # num_comments is aggregated here rather than in a second query so
+            # it can be sorted on. The author join lets the board show the
+            # persona name instead of a bare user_id.
+            cursor.execute(f"""
+                SELECT
+                    p.post_id, p.user_id, p.original_post_id, p.content,
+                    p.quote_content, p.created_at, p.num_likes, p.num_dislikes,
+                    p.num_shares, p.num_reports,
+                    u.user_name AS author_user_name,
+                    u.name AS author_name,
+                    COUNT(c.comment_id) AS num_comments
+                FROM post p
+                LEFT JOIN user u ON u.user_id = p.user_id
+                LEFT JOIN comment c ON c.post_id = p.post_id
+                GROUP BY p.post_id
+                ORDER BY {sort_column} {order}
                 LIMIT ? OFFSET ?
             """, (limit, offset))
-            
+
             posts = [dict(row) for row in cursor.fetchall()]
-            
+
             cursor.execute("SELECT COUNT(*) FROM post")
             total = cursor.fetchone()[0]
-            
+
         except sqlite3.OperationalError:
             posts = []
             total = 0
-        
+
         conn.close()
-        
+
         return jsonify({
             "success": True,
             "data": {
                 "platform": platform,
                 "total": total,
                 "count": len(posts),
+                "sort_by": sort_by,
+                "order": order.lower(),
                 "posts": posts
             }
         })
-        
+
     except Exception as e:
         logger.error(f"获取帖子失败: {str(e)}")
         return jsonify({
@@ -2297,22 +2393,32 @@ def get_simulation_comments(simulation_id: str):
         cursor = conn.cursor()
         
         try:
+            # The author join matches the posts endpoint, so a comment thread
+            # shows persona names rather than bare user_ids.
+            base_query = """
+                SELECT
+                    c.comment_id, c.post_id, c.user_id, c.content,
+                    c.created_at, c.num_likes, c.num_dislikes,
+                    u.user_name AS author_user_name,
+                    u.name AS author_name
+                FROM comment c
+                LEFT JOIN user u ON u.user_id = c.user_id
+            """
+
             if post_id:
-                cursor.execute("""
-                    SELECT * FROM comment 
-                    WHERE post_id = ?
-                    ORDER BY created_at DESC 
+                cursor.execute(base_query + """
+                    WHERE c.post_id = ?
+                    ORDER BY c.num_likes DESC, c.created_at ASC
                     LIMIT ? OFFSET ?
                 """, (post_id, limit, offset))
             else:
-                cursor.execute("""
-                    SELECT * FROM comment 
-                    ORDER BY created_at DESC 
+                cursor.execute(base_query + """
+                    ORDER BY c.created_at DESC
                     LIMIT ? OFFSET ?
                 """, (limit, offset))
-            
+
             comments = [dict(row) for row in cursor.fetchall()]
-            
+
         except sqlite3.OperationalError:
             comments = []
         

@@ -54,8 +54,8 @@
                 <div v-else-if="currentSectionIndex === idx + 1" class="loading-state">
                   <div class="loading-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <circle cx="12" cy="12" r="10" stroke-width="4" stroke="#E5E7EB"></circle>
-                      <path d="M12 2a10 10 0 0 1 10 10" stroke-width="4" stroke="#4B5563" stroke-linecap="round"></path>
+                      <circle cx="12" cy="12" r="10" stroke-width="4" stroke="#E5E5E5"></circle>
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke-width="4" stroke="#4D4D4D" stroke-linecap="round"></path>
                     </svg>
                   </div>
                   <span class="loading-text">{{ $t('step4.generatingSection', { title: section.title }) }}</span>
@@ -988,7 +988,7 @@ watch(() => props.simulationId, (newId) => {
   width: 45%;
   min-width: 450px;
   background: #FFFFFF;
-  border-right: 1px solid #E5E7EB;
+  border-right: 1px solid #E5E5E5;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -1047,7 +1047,7 @@ watch(() => props.simulationId, (newId) => {
 
 .report-id {
   font-size: 11px;
-  color: #9CA3AF;
+  color: #999999;
   font-weight: 500;
   letter-spacing: 0.02em;
 }
@@ -1056,7 +1056,7 @@ watch(() => props.simulationId, (newId) => {
   font-family: 'Times New Roman', Times, serif;
   font-size: 36px;
   font-weight: 700;
-  color: #111827;
+  color: #000000;
   line-height: 1.2;
   margin: 0 0 16px 0;
   letter-spacing: -0.02em;
@@ -1065,7 +1065,7 @@ watch(() => props.simulationId, (newId) => {
 .sub-title {
   font-family: 'Times New Roman', Times, serif;
   font-size: 16px;
-  color: #6B7280;
+  color: #666666;
   font-style: italic;
   line-height: 1.6;
   margin: 0 0 30px 0;
@@ -1074,7 +1074,7 @@ watch(() => props.simulationId, (newId) => {
 
 .header-divider {
   height: 1px;
-  background: #E5E7EB;
+  background: #E5E5E5;
   width: 100%;
 }
 
@@ -1106,12 +1106,12 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .section-header-row.clickable:hover {
-  background-color: #F9FAFB;
+  background-color: #FAFAFA;
 }
 
 .collapse-icon {
   margin-left: auto;
-  color: #9CA3AF;
+  color: #999999;
   transition: transform 0.3s ease;
   flex-shrink: 0;
   align-self: center;
@@ -1124,7 +1124,7 @@ watch(() => props.simulationId, (newId) => {
 .section-number {
   font-family: 'JetBrains Mono', monospace;
   font-size: 16px;
-  color: #E5E7EB;
+  color: #E5E5E5;
   font-weight: 500;
   transition: color 0.3s ease;
 }
@@ -1133,27 +1133,27 @@ watch(() => props.simulationId, (newId) => {
   font-family: 'Times New Roman', Times, serif;
   font-size: 24px;
   font-weight: 600;
-  color: #111827;
+  color: #000000;
   margin: 0;
   transition: color 0.3s ease;
 }
 
 /* States */
 .report-section-item.is-pending .section-number {
-  color: #E5E7EB;
+  color: #E5E5E5;
 }
 .report-section-item.is-pending .section-title {
-  color: #D1D5DB;
+  color: #D4D4D4;
 }
 
 .report-section-item.is-active .section-number,
 .report-section-item.is-completed .section-number {
-  color: #9CA3AF;
+  color: #999999;
 }
 
 .report-section-item.is-active .section-title,
 .report-section-item.is-completed .section-title {
-  color: #111827;
+  color: #000000;
 }
 
 .section-body {
@@ -1166,7 +1166,7 @@ watch(() => props.simulationId, (newId) => {
   font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.8;
-  color: #374151;
+  color: #333333;
 }
 
 .generated-content :deep(p) {
@@ -1177,13 +1177,13 @@ watch(() => props.simulationId, (newId) => {
 .generated-content :deep(.md-h3),
 .generated-content :deep(.md-h4) {
   font-family: 'Times New Roman', Times, serif;
-  color: #111827;
+  color: #000000;
   margin-top: 1.5em;
   margin-bottom: 0.8em;
   font-weight: 700;
 }
 
-.generated-content :deep(.md-h2) { font-size: 20px; border-bottom: 1px solid #F3F4F6; padding-bottom: 8px; }
+.generated-content :deep(.md-h2) { font-size: 20px; border-bottom: 1px solid #F5F5F5; padding-bottom: 8px; }
 .generated-content :deep(.md-h3) { font-size: 18px; }
 .generated-content :deep(.md-h4) { font-size: 16px; }
 
@@ -1198,28 +1198,28 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .generated-content :deep(.md-quote) {
-  border-left: 3px solid #E5E7EB;
+  border-left: 3px solid #E5E5E5;
   padding-left: 16px;
   margin: 1.5em 0;
-  color: #6B7280;
+  color: #666666;
   font-style: italic;
   font-family: 'Times New Roman', Times, serif;
 }
 
 .generated-content :deep(.code-block) {
-  background: #F9FAFB;
+  background: #FAFAFA;
   padding: 12px;
   border-radius: 6px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
   overflow-x: auto;
   margin: 1em 0;
-  border: 1px solid #E5E7EB;
+  border: 1px solid #E5E5E5;
 }
 
 .generated-content :deep(strong) {
   font-weight: 600;
-  color: #111827;
+  color: #000000;
 }
 
 /* Loading State */
@@ -1227,7 +1227,7 @@ watch(() => props.simulationId, (newId) => {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #6B7280;
+  color: #666666;
   font-size: 14px;
   margin-top: 4px;
 }
@@ -1244,7 +1244,7 @@ watch(() => props.simulationId, (newId) => {
 .loading-text {
   font-family: 'Times New Roman', Times, serif;
   font-size: 15px;
-  color: #4B5563;
+  color: #4D4D4D;
 }
 
 @keyframes spin {
@@ -1267,7 +1267,7 @@ watch(() => props.simulationId, (newId) => {
   justify-content: center;
   gap: 20px;
   padding: 40px;
-  color: #9CA3AF;
+  color: #999999;
 }
 
 .waiting-animation {
@@ -1280,7 +1280,7 @@ watch(() => props.simulationId, (newId) => {
   position: absolute;
   width: 100%;
   height: 100%;
-  border: 2px solid #E5E7EB;
+  border: 2px solid #E5E5E5;
   border-radius: 50%;
   animation: ripple 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
@@ -1317,7 +1317,7 @@ watch(() => props.simulationId, (newId) => {
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
-  border-bottom: 1px solid #E5E7EB;
+  border-bottom: 1px solid #E5E5E5;
   background: linear-gradient(180deg, #FFFFFF 0%, #FAFBFC 100%);
   gap: 16px;
 }
@@ -1330,7 +1330,7 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .action-bar-icon {
-  color: #1F2937;
+  color: #111111;
   flex-shrink: 0;
 }
 
@@ -1343,13 +1343,13 @@ watch(() => props.simulationId, (newId) => {
 .action-bar-title {
   font-size: 13px;
   font-weight: 600;
-  color: #1F2937;
+  color: #111111;
   letter-spacing: -0.01em;
 }
 
 .action-bar-subtitle {
   font-size: 11px;
-  color: #9CA3AF;
+  color: #999999;
 }
 
 .action-bar-subtitle.mono {
@@ -1371,8 +1371,8 @@ watch(() => props.simulationId, (newId) => {
   padding: 8px 14px;
   font-size: 12px;
   font-weight: 500;
-  color: #6B7280;
-  background: #F3F4F6;
+  color: #666666;
+  background: #F5F5F5;
   border: 1px solid transparent;
   border-radius: 20px;
   cursor: pointer;
@@ -1381,12 +1381,12 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .tab-pill:hover {
-  background: #E5E7EB;
-  color: #374151;
+  background: #E5E5E5;
+  color: #333333;
 }
 
 .tab-pill.active {
-  background: #1F2937;
+  background: #111111;
   color: #FFFFFF;
   box-shadow: 0 2px 8px rgba(31, 41, 55, 0.15);
 }
@@ -1403,7 +1403,7 @@ watch(() => props.simulationId, (newId) => {
 .tab-divider {
   width: 1px;
   height: 24px;
-  background: #E5E7EB;
+  background: #E5E5E5;
   margin: 0 6px;
 }
 
@@ -1439,7 +1439,7 @@ watch(() => props.simulationId, (newId) => {
 /* Interaction Header */
 .interaction-header {
   padding: 16px 24px;
-  border-bottom: 1px solid #E5E7EB;
+  border-bottom: 1px solid #E5E5E5;
   background: #FAFAFA;
 }
 
@@ -1455,23 +1455,23 @@ watch(() => props.simulationId, (newId) => {
   padding: 10px 20px;
   font-size: 13px;
   font-weight: 600;
-  color: #6B7280;
+  color: #666666;
   background: transparent;
-  border: 1px solid #E5E7EB;
+  border: 1px solid #E5E5E5;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .tab-btn:hover {
-  background: #F9FAFB;
-  border-color: #D1D5DB;
+  background: #FAFAFA;
+  border-color: #D4D4D4;
 }
 
 .tab-btn.active {
-  background: #1F2937;
+  background: #111111;
   color: #FFFFFF;
-  border-color: #1F2937;
+  border-color: #111111;
 }
 
 .tab-btn svg {
@@ -1488,8 +1488,8 @@ watch(() => props.simulationId, (newId) => {
 
 /* Report Agent Tools Card */
 .report-agent-tools-card {
-  border-bottom: 1px solid #E5E7EB;
-  background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+  border-bottom: 1px solid #E5E5E5;
+  background: linear-gradient(135deg, #FAFAFA 0%, #F5F5F5 100%);
 }
 
 .tools-card-header {
@@ -1504,7 +1504,7 @@ watch(() => props.simulationId, (newId) => {
   height: 44px;
   min-width: 44px;
   min-height: 44px;
-  background: linear-gradient(135deg, #1F2937 0%, #374151 100%);
+  background: linear-gradient(135deg, #111111 0%, #333333 100%);
   color: #FFFFFF;
   border-radius: 50%;
   display: flex;
@@ -1524,33 +1524,33 @@ watch(() => props.simulationId, (newId) => {
 .tools-card-name {
   font-size: 15px;
   font-weight: 600;
-  color: #1F2937;
+  color: #111111;
   margin-bottom: 2px;
 }
 
 .tools-card-subtitle {
   font-size: 12px;
-  color: #6B7280;
+  color: #666666;
 }
 
 .tools-card-toggle {
   width: 28px;
   height: 28px;
   background: #FFFFFF;
-  border: 1px solid #E5E7EB;
+  border: 1px solid #E5E5E5;
   border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6B7280;
+  color: #666666;
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
 .tools-card-toggle:hover {
-  background: #F9FAFB;
-  border-color: #D1D5DB;
+  background: #FAFAFA;
+  border-color: #D4D4D4;
 }
 
 .tools-card-toggle svg {
@@ -1577,7 +1577,7 @@ watch(() => props.simulationId, (newId) => {
   padding: 12px;
   background: #FFFFFF;
   border-radius: 10px;
-  border: 1px solid #E5E7EB;
+  border: 1px solid #E5E5E5;
   transition: all 0.2s ease;
 }
 
@@ -1602,8 +1602,8 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .tool-blue .tool-icon-wrapper {
-  background: rgba(59, 130, 246, 0.1);
-  color: #3B82F6;
+  background: rgba(31, 41, 55, 0.08);
+  color: #111111;
 }
 
 .tool-orange .tool-icon-wrapper {
@@ -1624,13 +1624,13 @@ watch(() => props.simulationId, (newId) => {
 .tool-name {
   font-size: 12px;
   font-weight: 600;
-  color: #1F2937;
+  color: #111111;
   margin-bottom: 4px;
 }
 
 .tool-desc {
   font-size: 11px;
-  color: #6B7280;
+  color: #666666;
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1640,8 +1640,8 @@ watch(() => props.simulationId, (newId) => {
 
 /* Agent Profile Card */
 .agent-profile-card {
-  border-bottom: 1px solid #E5E7EB;
-  background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+  border-bottom: 1px solid #E5E5E5;
+  background: linear-gradient(135deg, #FAFAFA 0%, #F5F5F5 100%);
 }
 
 .profile-card-header {
@@ -1656,7 +1656,7 @@ watch(() => props.simulationId, (newId) => {
   height: 44px;
   min-width: 44px;
   min-height: 44px;
-  background: linear-gradient(135deg, #1F2937 0%, #374151 100%);
+  background: linear-gradient(135deg, #111111 0%, #333333 100%);
   color: #FFFFFF;
   border-radius: 50%;
   display: flex;
@@ -1676,7 +1676,7 @@ watch(() => props.simulationId, (newId) => {
 .profile-card-name {
   font-size: 15px;
   font-weight: 600;
-  color: #1F2937;
+  color: #111111;
   margin-bottom: 2px;
 }
 
@@ -1685,16 +1685,16 @@ watch(() => props.simulationId, (newId) => {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #6B7280;
+  color: #666666;
 }
 
 .profile-card-handle {
-  color: #9CA3AF;
+  color: #999999;
 }
 
 .profile-card-profession {
   padding: 2px 8px;
-  background: #E5E7EB;
+  background: #E5E5E5;
   border-radius: 4px;
   font-size: 11px;
   font-weight: 500;
@@ -1704,20 +1704,20 @@ watch(() => props.simulationId, (newId) => {
   width: 28px;
   height: 28px;
   background: #FFFFFF;
-  border: 1px solid #E5E7EB;
+  border: 1px solid #E5E5E5;
   border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6B7280;
+  color: #666666;
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
 .profile-card-toggle:hover {
-  background: #F9FAFB;
-  border-color: #D1D5DB;
+  background: #FAFAFA;
+  border-color: #D4D4D4;
 }
 
 .profile-card-toggle svg {
@@ -1738,7 +1738,7 @@ watch(() => props.simulationId, (newId) => {
 .profile-card-label {
   font-size: 11px;
   font-weight: 600;
-  color: #9CA3AF;
+  color: #999999;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 6px;
@@ -1748,26 +1748,26 @@ watch(() => props.simulationId, (newId) => {
   background: #FFFFFF;
   padding: 12px 14px;
   border-radius: 8px;
-  border: 1px solid #E5E7EB;
+  border: 1px solid #E5E5E5;
 }
 
 .profile-card-bio p {
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
-  color: #4B5563;
+  color: #4D4D4D;
 }
 
 /* Target Selector */
 .target-selector {
   padding: 16px 24px;
-  border-bottom: 1px solid #E5E7EB;
+  border-bottom: 1px solid #E5E5E5;
 }
 
 .selector-label {
   font-size: 11px;
   font-weight: 600;
-  color: #9CA3AF;
+  color: #999999;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 10px;
@@ -1785,22 +1785,22 @@ watch(() => props.simulationId, (newId) => {
   padding: 10px 16px;
   font-size: 13px;
   font-weight: 500;
-  color: #374151;
-  background: #F9FAFB;
-  border: 1px solid #E5E7EB;
+  color: #333333;
+  background: #FAFAFA;
+  border: 1px solid #E5E5E5;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .target-option:hover {
-  border-color: #D1D5DB;
+  border-color: #D4D4D4;
 }
 
 .target-option.active {
-  background: #1F2937;
+  background: #111111;
   color: #FFFFFF;
-  border-color: #1F2937;
+  border-color: #111111;
 }
 
 /* Agent Dropdown */
@@ -1825,7 +1825,7 @@ watch(() => props.simulationId, (newId) => {
   transform: translateX(-50%);
   min-width: 240px;
   background: #FFFFFF;
-  border: 1px solid #E5E7EB;
+  border: 1px solid #E5E5E5;
   border-radius: 12px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
   max-height: 320px;
@@ -1837,10 +1837,10 @@ watch(() => props.simulationId, (newId) => {
   padding: 12px 16px 8px;
   font-size: 11px;
   font-weight: 600;
-  color: #9CA3AF;
+  color: #999999;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border-bottom: 1px solid #F3F4F6;
+  border-bottom: 1px solid #F5F5F5;
 }
 
 .dropdown-item {
@@ -1854,8 +1854,8 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .dropdown-item:hover {
-  background: #F9FAFB;
-  border-left-color: #1F2937;
+  background: #FAFAFA;
+  border-left-color: #111111;
 }
 
 .dropdown-item:first-of-type {
@@ -1871,7 +1871,7 @@ watch(() => props.simulationId, (newId) => {
   height: 32px;
   min-width: 32px;
   min-height: 32px;
-  background: linear-gradient(135deg, #1F2937 0%, #374151 100%);
+  background: linear-gradient(135deg, #111111 0%, #333333 100%);
   color: #FFFFFF;
   border-radius: 50%;
   display: flex;
@@ -1894,7 +1894,7 @@ watch(() => props.simulationId, (newId) => {
 .agent-name {
   font-size: 13px;
   font-weight: 600;
-  color: #1F2937;
+  color: #111111;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1902,7 +1902,7 @@ watch(() => props.simulationId, (newId) => {
 
 .agent-role {
   font-size: 11px;
-  color: #9CA3AF;
+  color: #999999;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1925,7 +1925,7 @@ watch(() => props.simulationId, (newId) => {
   align-items: center;
   justify-content: center;
   gap: 16px;
-  color: #9CA3AF;
+  color: #999999;
 }
 
 .empty-icon {
@@ -1963,13 +1963,13 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .chat-message.user .message-avatar {
-  background: #1F2937;
+  background: #111111;
   color: #FFFFFF;
 }
 
 .chat-message.assistant .message-avatar {
-  background: #F3F4F6;
-  color: #374151;
+  background: #F5F5F5;
+  color: #333333;
 }
 
 .message-content {
@@ -1996,12 +1996,12 @@ watch(() => props.simulationId, (newId) => {
 .sender-name {
   font-size: 12px;
   font-weight: 600;
-  color: #374151;
+  color: #333333;
 }
 
 .message-time {
   font-size: 11px;
-  color: #9CA3AF;
+  color: #999999;
 }
 
 .message-text {
@@ -2012,14 +2012,14 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .chat-message.user .message-text {
-  background: #1F2937;
+  background: #111111;
   color: #FFFFFF;
   border-bottom-right-radius: 4px;
 }
 
 .chat-message.assistant .message-text {
-  background: #F3F4F6;
-  color: #374151;
+  background: #F5F5F5;
+  color: #333333;
   border-bottom-left-radius: 4px;
 }
 
@@ -2052,7 +2052,7 @@ watch(() => props.simulationId, (newId) => {
 .message-text :deep(.md-oli)::before {
   content: counter(list-counter) ".";
   font-weight: 600;
-  color: #374151;
+  color: #333333;
   min-width: 20px;
   flex-shrink: 0;
 }
@@ -2072,7 +2072,7 @@ watch(() => props.simulationId, (newId) => {
   display: flex;
   gap: 4px;
   padding: 10px 14px;
-  background: #F3F4F6;
+  background: #F5F5F5;
   border-radius: 12px;
   border-bottom-left-radius: 4px;
 }
@@ -2080,7 +2080,7 @@ watch(() => props.simulationId, (newId) => {
 .typing-indicator span {
   width: 8px;
   height: 8px;
-  background: #9CA3AF;
+  background: #999999;
   border-radius: 50%;
   animation: typing 1.4s infinite ease-in-out;
 }
@@ -2097,7 +2097,7 @@ watch(() => props.simulationId, (newId) => {
 /* Chat Input */
 .chat-input-area {
   padding: 16px 24px;
-  border-top: 1px solid #E5E7EB;
+  border-top: 1px solid #E5E5E5;
   display: flex;
   gap: 12px;
   align-items: flex-end;
@@ -2107,7 +2107,7 @@ watch(() => props.simulationId, (newId) => {
   flex: 1;
   padding: 12px 16px;
   font-size: 14px;
-  border: 1px solid #E5E7EB;
+  border: 1px solid #E5E5E5;
   border-radius: 8px;
   resize: none;
   font-family: inherit;
@@ -2117,18 +2117,18 @@ watch(() => props.simulationId, (newId) => {
 
 .chat-input:focus {
   outline: none;
-  border-color: #1F2937;
+  border-color: #111111;
 }
 
 .chat-input:disabled {
-  background: #F9FAFB;
+  background: #FAFAFA;
   cursor: not-allowed;
 }
 
 .send-btn {
   width: 44px;
   height: 44px;
-  background: #1F2937;
+  background: #111111;
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
@@ -2140,12 +2140,12 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .send-btn:hover:not(:disabled) {
-  background: #374151;
+  background: #333333;
 }
 
 .send-btn:disabled {
-  background: #E5E7EB;
-  color: #9CA3AF;
+  background: #E5E5E5;
+  color: #999999;
   cursor: not-allowed;
 }
 
@@ -2162,7 +2162,7 @@ watch(() => props.simulationId, (newId) => {
   display: flex;
   flex-direction: column;
   padding: 24px;
-  border-bottom: 1px solid #E5E7EB;
+  border-bottom: 1px solid #E5E5E5;
   overflow: hidden;
 }
 
@@ -2192,12 +2192,12 @@ watch(() => props.simulationId, (newId) => {
 .setup-section .section-header .section-title {
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: #333333;
 }
 
 .selection-count {
   font-size: 12px;
-  color: #9CA3AF;
+  color: #999999;
 }
 
 /* Agents Grid */
@@ -2216,15 +2216,15 @@ watch(() => props.simulationId, (newId) => {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  background: #F9FAFB;
-  border: 1px solid #E5E7EB;
+  background: #FAFAFA;
+  border: 1px solid #E5E5E5;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .agent-checkbox:hover {
-  border-color: #D1D5DB;
+  border-color: #D4D4D4;
 }
 
 .agent-checkbox.checked {
@@ -2241,8 +2241,8 @@ watch(() => props.simulationId, (newId) => {
   height: 28px;
   min-width: 28px;
   min-height: 28px;
-  background: #E5E7EB;
-  color: #374151;
+  background: #E5E5E5;
+  color: #333333;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -2266,7 +2266,7 @@ watch(() => props.simulationId, (newId) => {
   display: block;
   font-size: 12px;
   font-weight: 600;
-  color: #1F2937;
+  color: #111111;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2275,7 +2275,7 @@ watch(() => props.simulationId, (newId) => {
 .checkbox-role {
   display: block;
   font-size: 10px;
-  color: #9CA3AF;
+  color: #999999;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2284,7 +2284,7 @@ watch(() => props.simulationId, (newId) => {
 .checkbox-indicator {
   width: 20px;
   height: 20px;
-  border: 2px solid #E5E7EB;
+  border: 2px solid #E5E5E5;
   border-radius: 4px;
   display: flex;
   align-items: center;
@@ -2318,7 +2318,7 @@ watch(() => props.simulationId, (newId) => {
 
 .action-link {
   font-size: 12px;
-  color: #6B7280;
+  color: #666666;
   background: none;
   border: none;
   cursor: pointer;
@@ -2326,12 +2326,12 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .action-link:hover {
-  color: #1F2937;
+  color: #111111;
   text-decoration: underline;
 }
 
 .action-divider {
-  color: #E5E7EB;
+  color: #E5E5E5;
 }
 
 /* Survey Input */
@@ -2339,7 +2339,7 @@ watch(() => props.simulationId, (newId) => {
   width: 100%;
   padding: 14px 16px;
   font-size: 14px;
-  border: 1px solid #E5E7EB;
+  border: 1px solid #E5E5E5;
   border-radius: 8px;
   resize: none;
   font-family: inherit;
@@ -2349,7 +2349,7 @@ watch(() => props.simulationId, (newId) => {
 
 .survey-input:focus {
   outline: none;
-  border-color: #1F2937;
+  border-color: #111111;
 }
 
 .survey-submit-btn {
@@ -2358,7 +2358,7 @@ watch(() => props.simulationId, (newId) => {
   font-size: 14px;
   font-weight: 600;
   color: #FFFFFF;
-  background: #1F2937;
+  background: #111111;
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -2371,12 +2371,12 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .survey-submit-btn:hover:not(:disabled) {
-  background: #374151;
+  background: #333333;
 }
 
 .survey-submit-btn:disabled {
-  background: #E5E7EB;
-  color: #9CA3AF;
+  background: #E5E5E5;
+  color: #999999;
   cursor: not-allowed;
 }
 
@@ -2410,12 +2410,12 @@ watch(() => props.simulationId, (newId) => {
 .results-title {
   font-size: 14px;
   font-weight: 600;
-  color: #1F2937;
+  color: #111111;
 }
 
 .results-count {
   font-size: 12px;
-  color: #9CA3AF;
+  color: #999999;
 }
 
 .results-list {
@@ -2425,8 +2425,8 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .result-card {
-  background: #F9FAFB;
-  border: 1px solid #E5E7EB;
+  background: #FAFAFA;
+  border: 1px solid #E5E5E5;
   border-radius: 12px;
   padding: 20px;
 }
@@ -2443,7 +2443,7 @@ watch(() => props.simulationId, (newId) => {
   height: 36px;
   min-width: 36px;
   min-height: 36px;
-  background: #1F2937;
+  background: #111111;
   color: #FFFFFF;
   border-radius: 50%;
   display: flex;
@@ -2463,12 +2463,12 @@ watch(() => props.simulationId, (newId) => {
 .result-name {
   font-size: 14px;
   font-weight: 600;
-  color: #1F2937;
+  color: #111111;
 }
 
 .result-role {
   font-size: 12px;
-  color: #9CA3AF;
+  color: #999999;
 }
 
 .result-question {
@@ -2480,7 +2480,7 @@ watch(() => props.simulationId, (newId) => {
   border-radius: 8px;
   margin-bottom: 12px;
   font-size: 13px;
-  color: #6B7280;
+  color: #666666;
 }
 
 .result-question svg {
@@ -2491,7 +2491,7 @@ watch(() => props.simulationId, (newId) => {
 .result-answer {
   font-size: 14px;
   line-height: 1.7;
-  color: #374151;
+  color: #333333;
 }
 
 /* Markdown Styles */
@@ -2502,28 +2502,28 @@ watch(() => props.simulationId, (newId) => {
 :deep(.md-h2) {
   font-size: 20px;
   font-weight: 700;
-  color: #1F2937;
+  color: #111111;
   margin: 24px 0 12px 0;
 }
 
 :deep(.md-h3) {
   font-size: 16px;
   font-weight: 600;
-  color: #374151;
+  color: #333333;
   margin: 20px 0 10px 0;
 }
 
 :deep(.md-h4) {
   font-size: 14px;
   font-weight: 600;
-  color: #4B5563;
+  color: #4D4D4D;
   margin: 16px 0 8px 0;
 }
 
 :deep(.md-h5) {
   font-size: 13px;
   font-weight: 600;
-  color: #6B7280;
+  color: #666666;
   margin: 12px 0 6px 0;
 }
 
@@ -2541,15 +2541,15 @@ watch(() => props.simulationId, (newId) => {
 .result-answer :deep(.md-quote) {
   margin: 12px 0;
   padding: 12px 16px;
-  background: #F9FAFB;
-  border-left: 3px solid #1F2937;
-  color: #4B5563;
+  background: #FAFAFA;
+  border-left: 3px solid #111111;
+  color: #4D4D4D;
 }
 
 :deep(.code-block) {
   margin: 12px 0;
   padding: 12px 16px;
-  background: #1F2937;
+  background: #111111;
   border-radius: 6px;
   overflow-x: auto;
 }
@@ -2557,21 +2557,21 @@ watch(() => props.simulationId, (newId) => {
 :deep(.code-block code) {
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
-  color: #E5E7EB;
+  color: #E5E5E5;
 }
 
 :deep(.inline-code) {
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
-  background: #F3F4F6;
+  background: #F5F5F5;
   padding: 2px 6px;
   border-radius: 4px;
-  color: #1F2937;
+  color: #111111;
 }
 
 :deep(.md-hr) {
   border: none;
-  border-top: 1px solid #E5E7EB;
+  border-top: 1px solid #E5E5E5;
   margin: 24px 0;
 }
 </style>

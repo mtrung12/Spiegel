@@ -1,6 +1,10 @@
 services:
   mirofish:
-    image: ghcr.io/666ghj/mirofish:latest
+    # Builds this repo's code. To run the upstream published image instead,
+    # comment out `build` and uncomment one of the image lines below.
+    build: .
+    image: mirofish:local
+    # image: ghcr.io/666ghj/mirofish:latest
     # Mirror image (swap the address above if pulls are slow)
     # image: ghcr.nju.edu.cn/666ghj/mirofish:latest
     container_name: mirofish

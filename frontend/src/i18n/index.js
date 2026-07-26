@@ -14,7 +14,9 @@ for (const path in localeFiles) {
   }
 }
 
-const savedLocale = localStorage.getItem('locale') || 'en'
+// A locale saved before the registry shrank (e.g. 'zh') must not stick around.
+const stored = localStorage.getItem('locale')
+const savedLocale = availableLocales.some(l => l.key === stored) ? stored : 'en'
 
 const i18n = createI18n({
   legacy: false,

@@ -100,3 +100,10 @@ backend/uploads/
 
 # Docker data
 data/
+
+# draw.io diagrams and their editor backups
+*.drawio
+*.drawio.bkp
+*.drawio.dtmp
+*.drawio.bak
+*.dtmp

@@ -1,6 +1,6 @@
 <template>
   <div class="home-container">
-    <!-- Hero: dark, centered, deliberately sparse -->
+    <!-- Hero: centered, deliberately sparse -->
     <section class="hero">
       <nav class="navbar">
         <div class="nav-brand">CAMPAIGN REACTION</div>
@@ -231,14 +231,15 @@ const startSimulation = () => {
 
 <style scoped>
 .home-container {
-  --black: #000000;
+  /* Palette: orange, white, black. Backgrounds stay white or near-white. */
   --white: #FFFFFF;
-  --accent: #FF4500;
+  --accent: #F97316;
+  --accent-strong: #EA580C;
   --ink: #111111;
-  --muted: #6B6B6B;
-  --muted-dark: rgba(255, 255, 255, 0.55);
+  --muted: #666666;
+  --muted-soft: #999999;
+  --surface: #FAFAFA;
   --border: #E5E5E5;
-  --border-dark: rgba(255, 255, 255, 0.14);
   --font-mono: 'JetBrains Mono', monospace;
   --font-sans: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
 
@@ -250,9 +251,10 @@ const startSimulation = () => {
 
 /* ---------- Hero ---------- */
 .hero {
-  background: var(--black);
-  color: var(--white);
-  padding-bottom: 96px;
+  background: var(--white);
+  color: var(--ink);
+  padding-bottom: 88px;
+  border-bottom: 1px solid var(--border);
 }
 
 .navbar {
@@ -278,18 +280,8 @@ const startSimulation = () => {
   gap: 16px;
 }
 
-/* The language switcher ships with light-surface styling; the hero is dark. */
-.navbar :deep(.switcher-trigger) {
-  color: var(--white);
-  border-color: var(--border-dark);
-}
-
-.navbar :deep(.switcher-trigger:hover) {
-  border-color: rgba(255, 255, 255, 0.4);
-}
-
 .hero-body {
-  max-width: 860px;
+  max-width: 940px;
   margin: 0 auto;
   padding: 88px 40px 0;
   text-align: center;
@@ -300,33 +292,36 @@ const startSimulation = () => {
   font-size: 0.82rem;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: var(--muted-dark);
+  color: var(--muted);
 }
 
 .hero-title {
-  font-size: clamp(2.75rem, 6vw, 4.5rem);
-  line-height: 1.05;
-  letter-spacing: -2.5px;
+  /* Sized so the longer of the two lines holds on one line down to ~900px */
+  font-size: clamp(2.1rem, 5vw, 3.9rem);
+  line-height: 1.08;
+  letter-spacing: -1.8px;
   font-weight: 500;
   margin: 24px 0 0;
+  color: var(--ink);
+  text-wrap: balance;
 }
 
 .hero-title-accent {
-  color: var(--muted-dark);
+  color: var(--accent);
 }
 
 .hero-sub {
   font-size: 1.25rem;
   line-height: 1.55;
-  color: var(--muted-dark);
+  color: var(--muted);
   max-width: 560px;
   margin: 26px auto 0;
 }
 
 .cta {
   margin-top: 42px;
-  background: var(--white);
-  color: var(--black);
+  background: var(--accent);
+  color: var(--white);
   border: none;
   padding: 17px 32px;
   font-family: var(--font-sans);
@@ -340,7 +335,7 @@ const startSimulation = () => {
 }
 
 .cta:hover {
-  background: var(--accent);
+  background: var(--accent-strong);
   color: var(--white);
   transform: translateY(-2px);
 }
@@ -355,7 +350,7 @@ const startSimulation = () => {
   gap: 56px;
   margin-top: 72px;
   padding-top: 32px;
-  border-top: 1px solid var(--border-dark);
+  border-top: 1px solid var(--border);
 }
 
 .stat {
@@ -372,7 +367,7 @@ const startSimulation = () => {
 
 .stat-label {
   font-size: 0.88rem;
-  color: var(--muted-dark);
+  color: var(--muted);
 }
 
 /* ---------- Shared section label ---------- */
@@ -449,7 +444,7 @@ const startSimulation = () => {
 }
 
 .upload-zone {
-  border: 1px dashed #D4D4D4;
+  border: 1px dashed var(--border);
   height: 170px;
   overflow-y: auto;
   display: flex;
@@ -457,7 +452,7 @@ const startSimulation = () => {
   justify-content: center;
   cursor: pointer;
   transition: border-color 0.2s ease, background 0.2s ease;
-  background: #FAFAFA;
+  background: var(--surface);
 }
 
 .upload-zone:hover,
@@ -489,7 +484,7 @@ const startSimulation = () => {
 .upload-hint {
   font-family: var(--font-mono);
   font-size: 0.82rem;
-  color: #9A9A9A;
+  color: var(--muted);
   margin-top: 6px;
 }
 
@@ -507,7 +502,7 @@ const startSimulation = () => {
   gap: 10px;
   background: var(--white);
   padding: 8px 12px;
-  border: 1px solid #EEE;
+  border: 1px solid var(--border);
   font-family: var(--font-mono);
   font-size: 0.8rem;
 }
@@ -524,7 +519,7 @@ const startSimulation = () => {
   border: none;
   cursor: pointer;
   font-size: 1.1rem;
-  color: #9A9A9A;
+  color: var(--muted);
   line-height: 1;
 }
 
@@ -534,8 +529,8 @@ const startSimulation = () => {
 
 .audience-input {
   width: 100%;
-  border: 1px solid #DDD;
-  background: #FAFAFA;
+  border: 1px solid var(--border);
+  background: var(--surface);
   padding: 18px;
   font-family: var(--font-sans);
   font-size: 1.02rem;
@@ -551,9 +546,9 @@ const startSimulation = () => {
 }
 
 .submit-btn {
-  background: var(--black);
+  background: var(--accent);
   color: var(--white);
-  border: 1px solid var(--black);
+  border: 1px solid var(--accent);
   padding: 19px 26px;
   font-family: var(--font-sans);
   font-size: 1.05rem;
@@ -566,15 +561,15 @@ const startSimulation = () => {
 }
 
 .submit-btn:hover:not(:disabled) {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
   transform: translateY(-2px);
 }
 
 .submit-btn:disabled {
-  background: #F0F0F0;
-  border-color: #E5E5E5;
-  color: #A8A8A8;
+  background: #F5F5F5;
+  border-color: var(--border);
+  color: #A3A3A3;
   cursor: not-allowed;
 }
 

@@ -1216,7 +1216,7 @@ onUnmounted(() => {
 }
 
 .action-btn.primary {
-  background: #000;
+  background: #F97316;
   color: #FFF;
 }
 
@@ -1474,7 +1474,7 @@ onUnmounted(() => {
 .config-block-badge {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  background: #F1F5F9;
+  background: #F5F5F5;
   color: #475569;
   padding: 2px 8px;
   border-radius: 10px;
@@ -1498,7 +1498,7 @@ onUnmounted(() => {
 
 .config-item-label {
   font-size: 11px;
-  color: #94A3B8;
+  color: #A3A3A3;
 }
 
 .config-item-value {
@@ -1528,7 +1528,7 @@ onUnmounted(() => {
 .period-label {
   font-size: 12px;
   font-weight: 500;
-  color: #64748B;
+  color: #666666;
   min-width: 70px;
 }
 
@@ -1543,7 +1543,7 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   font-weight: 600;
-  color: #6366F1;
+  color: #666666;
   background: #EEF2FF;
   padding: 2px 6px;
   border-radius: 4px;
@@ -1592,7 +1592,7 @@ onUnmounted(() => {
   align-items: flex-start;
   margin-bottom: 14px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #F1F5F9;
+  border-bottom: 1px solid #F5F5F5;
 }
 
 .agent-identity {
@@ -1604,7 +1604,7 @@ onUnmounted(() => {
 .agent-id {
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
-  color: #94A3B8;
+  color: #A3A3A3;
 }
 
 .agent-name {
@@ -1620,8 +1620,8 @@ onUnmounted(() => {
 
 .agent-type {
   font-size: 10px;
-  color: #64748B;
-  background: #F1F5F9;
+  color: #666666;
+  background: #F5F5F5;
   padding: 2px 8px;
   border-radius: 4px;
 }
@@ -1635,8 +1635,8 @@ onUnmounted(() => {
 }
 
 .stance-neutral {
-  background: #F1F5F9;
-  color: #64748B;
+  background: #F5F5F5;
+  color: #666666;
 }
 
 .stance-supportive {
@@ -1662,7 +1662,7 @@ onUnmounted(() => {
 .timeline-label {
   display: block;
   font-size: 10px;
-  color: #94A3B8;
+  color: #A3A3A3;
   margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1672,20 +1672,20 @@ onUnmounted(() => {
   display: flex;
   gap: 2px;
   height: 16px;
-  background: #F8FAFC;
+  background: #FAFAFA;
   border-radius: 4px;
   padding: 3px;
 }
 
 .timeline-hour {
   flex: 1;
-  background: #E2E8F0;
+  background: #E5E5E5;
   border-radius: 2px;
   transition: all 0.2s;
 }
 
 .timeline-hour.active {
-  background: linear-gradient(180deg, #6366F1, #818CF8);
+  background: linear-gradient(180deg, #666666, #A3A3A3);
 }
 
 .timeline-marks {
@@ -1694,7 +1694,7 @@ onUnmounted(() => {
   margin-top: 4px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 9px;
-  color: #94A3B8;
+  color: #A3A3A3;
 }
 
 /* Agent Params */
@@ -1718,7 +1718,7 @@ onUnmounted(() => {
 
 .param-item .param-label {
   font-size: 10px;
-  color: #94A3B8;
+  color: #A3A3A3;
 }
 
 .param-item .param-value {
@@ -1736,7 +1736,7 @@ onUnmounted(() => {
 
 .mini-bar {
   height: 4px;
-  background: linear-gradient(90deg, #6366F1, #A855F7);
+  background: linear-gradient(90deg, #A3A3A3, #F97316);
   border-radius: 2px;
   min-width: 4px;
   max-width: 40px;
@@ -1751,11 +1751,11 @@ onUnmounted(() => {
 }
 
 .param-value.neutral {
-  color: #64748B;
+  color: #666666;
 }
 
 .param-value.highlight {
-  color: #6366F1;
+  color: #666666;
 }
 
 /* Platforms Grid */
@@ -1797,7 +1797,7 @@ onUnmounted(() => {
 
 .param-label {
   font-size: 12px;
-  color: #64748B;
+  color: #666666;
 }
 
 .param-value {
@@ -2071,22 +2071,22 @@ onUnmounted(() => {
 
 /* System Logs */
 .system-logs {
-  background: #000;
-  color: #DDD;
+  background: #FAFAFA;
+  color: #333333;
   padding: 16px;
   font-family: 'JetBrains Mono', monospace;
-  border-top: 1px solid #222;
+  border-top: 1px solid #E5E5E5;
   flex-shrink: 0;
 }
 
 .log-header {
   display: flex;
   justify-content: space-between;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid #E5E5E5;
   padding-bottom: 8px;
   margin-bottom: 8px;
   font-size: 10px;
-  color: #888;
+  color: #999999;
 }
 
 .log-content {
@@ -2103,7 +2103,7 @@ onUnmounted(() => {
 }
 
 .log-content::-webkit-scrollbar-thumb {
-  background: #333;
+  background: #D4D4D4;
   border-radius: 2px;
 }
 
@@ -2115,12 +2115,12 @@ onUnmounted(() => {
 }
 
 .log-time {
-  color: #666;
+  color: #999999;
   min-width: 75px;
 }
 
 .log-msg {
-  color: #CCC;
+  color: #333333;
   word-break: break-all;
 }
 
@@ -2321,14 +2321,14 @@ onUnmounted(() => {
 
 .section-desc {
   font-size: 12px;
-  color: #94A3B8;
+  color: #A3A3A3;
 }
 
 .desc-highlight {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 600;
   color: #1E293B;
-  background: #F1F5F9;
+  background: #F5F5F5;
   padding: 1px 6px;
   border-radius: 4px;
   margin: 0 2px;
@@ -2346,7 +2346,7 @@ onUnmounted(() => {
 }
 
 .switch-control:hover {
-  background: #F8FAFC;
+  background: #FAFAFA;
 }
 
 .switch-control input {
@@ -2356,7 +2356,7 @@ onUnmounted(() => {
 .switch-track {
   width: 36px;
   height: 20px;
-  background: #E2E8F0;
+  background: #E5E5E5;
   border-radius: 10px;
   position: relative;
   transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
@@ -2386,7 +2386,7 @@ onUnmounted(() => {
 .switch-label {
   font-size: 12px;
   font-weight: 500;
-  color: #64748B;
+  color: #666666;
 }
 
 .switch-control input:checked ~ .switch-label {
@@ -2427,8 +2427,8 @@ onUnmounted(() => {
 .slider-meta-info {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  color: #64748B;
-  background: #F1F5F9;
+  color: #666666;
+  background: #F5F5F5;
   padding: 4px 8px;
   border-radius: 4px;
 }
@@ -2442,7 +2442,7 @@ onUnmounted(() => {
   -webkit-appearance: none;
   width: 100%;
   height: 4px;
-  background: #E2E8F0;
+  background: #E5E5E5;
   border-radius: 2px;
   outline: none;
   background-image: linear-gradient(#000, #000);
@@ -2479,7 +2479,7 @@ onUnmounted(() => {
   margin-top: 8px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
-  color: #94A3B8;
+  color: #A3A3A3;
   position: relative;
 }
 
@@ -2506,7 +2506,7 @@ onUnmounted(() => {
   transform: translateX(-50%);
   width: 1px;
   height: 4px;
-  background: #CBD5E1;
+  background: #D4D4D4;
 }
 
 /* Auto Info */
@@ -2514,7 +2514,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 24px;
-  background: #F8FAFC;
+  background: #FAFAFA;
   padding: 16px 20px;
   border-radius: 8px;
 }
@@ -2525,7 +2525,7 @@ onUnmounted(() => {
   align-items: baseline;
   gap: 4px;
   padding-right: 24px;
-  border-right: 1px solid #E2E8F0;
+  border-right: 1px solid #E5E5E5;
 }
 
 .auto-content {
@@ -2548,9 +2548,9 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   font-weight: 500;
-  color: #64748B;
+  color: #666666;
   background: #FFFFFF;
-  border: 1px solid #E2E8F0;
+  border: 1px solid #E5E5E5;
   padding: 3px 8px;
   border-radius: 6px;
   box-shadow: 0 1px 2px rgba(0,0,0,0.02);
@@ -2565,7 +2565,7 @@ onUnmounted(() => {
 .auto-desc p {
   margin: 0;
   font-size: 13px;
-  color: #64748B;
+  color: #666666;
   line-height: 1.5;
 }
 

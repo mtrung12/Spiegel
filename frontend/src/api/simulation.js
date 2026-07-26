@@ -116,11 +116,35 @@ export const getRunStatusDetail = (simulationId) => {
  * @param {string} [platform] - 'reddit' | 'twitter'; omitted, the backend picks from the simulation config
  * @param {number} limit - page size
  * @param {number} offset - page offset
+ * @param {string} sortBy - 'created_at' | 'num_likes' | 'num_dislikes' | 'num_shares' | 'num_comments' | 'post_id'
+ * @param {string} order - 'desc' | 'asc'
  */
-export const getSimulationPosts = (simulationId, platform, limit = 50, offset = 0) => {
-  const params = { limit, offset }
+export const getSimulationPosts = (
+  simulationId,
+  platform,
+  limit = 50,
+  offset = 0,
+  sortBy = 'created_at',
+  order = 'desc'
+) => {
+  const params = { limit, offset, sort_by: sortBy, order }
   if (platform) params.platform = platform
   return service.get(`/api/simulation/${simulationId}/posts`, { params })
+}
+
+/**
+ * Get the comments from the simulation, optionally for a single post.
+ * @param {string} simulationId
+ * @param {number|string} [postId] - omitted, returns the newest comments across all posts
+ * @param {string} [platform] - 'reddit' | 'twitter'; omitted, the backend picks from the simulation config
+ * @param {number} limit - page size
+ * @param {number} offset - page offset
+ */
+export const getSimulationComments = (simulationId, postId = null, platform = null, limit = 100, offset = 0) => {
+  const params = { limit, offset }
+  if (postId !== null && postId !== undefined) params.post_id = postId
+  if (platform) params.platform = platform
+  return service.get(`/api/simulation/${simulationId}/comments`, { params })
 }
 
 /**
@@ -186,6 +210,20 @@ export const interviewAgents = (data) => {
  */
 export const getCampaignMetrics = (simulationId) => {
   return service.get(`/api/simulation/${simulationId}/campaign-metrics`)
+}
+
+/**
+ * Get the sentiment digest for what the audience actually wrote.
+ * Positive/neutral/negative split of posts and comments, the loudest post on
+ * each side, recurring objections and recurring hooks. LLM-classified and
+ * cached server-side; pass force to reclassify.
+ * @param {string} simulationId
+ * @param {boolean} force - reclassify instead of reusing the cached digest
+ */
+export const getSentimentDigest = (simulationId, force = false) => {
+  return service.get(`/api/simulation/${simulationId}/sentiment-digest`, {
+    params: force ? { force: true } : {}
+  })
 }
 
 /**

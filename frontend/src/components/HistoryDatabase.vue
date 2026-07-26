@@ -647,14 +647,14 @@ onUnmounted(() => {
 .section-line {
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, transparent, #E5E7EB, transparent);
+  background: linear-gradient(90deg, transparent, #E5E5E5, transparent);
   max-width: 300px;
 }
 
 .section-title {
   font-size: 0.8rem;
   font-weight: 500;
-  color: #9CA3AF;
+  color: #999999;
   letter-spacing: 3px;
   text-transform: uppercase;
 }
@@ -675,7 +675,7 @@ onUnmounted(() => {
   position: absolute;
   width: 280px;
   background: #FFFFFF;
-  border: 1px solid #E5E7EB;
+  border: 1px solid #E5E5E5;
   border-radius: 0;
   padding: 14px;
   cursor: pointer;
@@ -700,13 +700,13 @@ onUnmounted(() => {
   align-items: center;
   margin-bottom: 12px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #F3F4F6;
+  border-bottom: 1px solid #F5F5F5;
   font-family: 'JetBrains Mono', 'SF Mono', monospace;
   font-size: 0.7rem;
 }
 
 .card-id {
-  color: #6B7280;
+  color: #666666;
   letter-spacing: 0.5px;
   font-weight: 500;
 }
@@ -729,12 +729,12 @@ onUnmounted(() => {
 }
 
 /* One colour per feature */
-.status-icon:nth-child(1).available { color: #3B82F6; } /* graph build - blue */
+.status-icon:nth-child(1).available { color: #111111; } /* graph build - blue */
 .status-icon:nth-child(2).available { color: #F59E0B; } /* environment setup - orange */
 .status-icon:nth-child(3).available { color: #10B981; } /* analysis report - green */
 
 .status-icon.unavailable {
-  color: #D1D5DB;
+  color: #D4D4D4;
   opacity: 0.5;
 }
 
@@ -755,8 +755,8 @@ onUnmounted(() => {
 /* Progress state colours */
 .card-progress.completed { color: #10B981; }    /* finished - green */
 .card-progress.in-progress { color: #F59E0B; }  /* in progress - orange */
-.card-progress.not-started { color: #9CA3AF; }  /* not started - grey */
-.card-status.pending { color: #9CA3AF; }
+.card-progress.not-started { color: #999999; }  /* not started - grey */
+.card-status.pending { color: #999999; }
 
 /* File list */
 .card-files-wrapper {
@@ -786,7 +786,7 @@ onUnmounted(() => {
   padding: 3px 6px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.6rem;
-  color: #6B7280;
+  color: #666666;
   background: rgba(255, 255, 255, 0.5);
   border-radius: 3px;
   letter-spacing: 0.3px;
@@ -805,7 +805,7 @@ onUnmounted(() => {
 .file-item:hover {
   background: rgba(255, 255, 255, 1);
   transform: translateX(2px);
-  border-color: #e5e7eb;
+  border-color: #E5E5E5;
 }
 
 /* Minimal file tag styling */
@@ -835,12 +835,12 @@ onUnmounted(() => {
 .file-tag.code { background: #eae6f2; color: #815aa6; }
 .file-tag.img { background: #e6f2f2; color: #5aa6a6; }
 .file-tag.zip { background: #f2f0e6; color: #a69b5a; }
-.file-tag.other { background: #f3f4f6; color: #6b7280; }
+.file-tag.other { background: #F5F5F5; color: #666666; }
 
 .file-name {
   font-family: 'Inter', sans-serif;
   font-size: 0.7rem;
-  color: #4b5563;
+  color: #4D4D4D;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -854,7 +854,7 @@ onUnmounted(() => {
   justify-content: center;
   gap: 8px;
   height: 48px;
-  color: #9CA3AF;
+  color: #999999;
 }
 
 .empty-file-icon {
@@ -870,7 +870,7 @@ onUnmounted(() => {
 
 /* File area on hover */
 .project-card:hover .card-files-wrapper {
-  border-color: #d1d5db;
+  border-color: #D4D4D4;
   background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
 }
 
@@ -892,7 +892,7 @@ onUnmounted(() => {
   font-family: 'Inter', -apple-system, sans-serif;
   font-size: 0.9rem;
   font-weight: 700;
-  color: #111827;
+  color: #000000;
   margin: 0 0 6px 0;
   line-height: 1.4;
   white-space: nowrap;
@@ -902,14 +902,14 @@ onUnmounted(() => {
 }
 
 .project-card:hover .card-title {
-  color: #2563EB;
+  color: #F97316;
 }
 
 /* Card description */
 .card-desc {
   font-family: 'Inter', sans-serif;
   font-size: 0.75rem;
-  color: #6B7280;
+  color: #666666;
   margin: 0 0 16px 0;
   line-height: 1.5;
   height: 34px;
@@ -926,10 +926,10 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding-top: 12px;
-  border-top: 1px solid #F3F4F6;
+  border-top: 1px solid #F5F5F5;
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.65rem;
-  color: #9CA3AF;
+  color: #999999;
   font-weight: 500;
 }
 
@@ -957,7 +957,7 @@ onUnmounted(() => {
 /* Progress state colours, footer */
 .card-footer .card-progress.completed { color: #10B981; }
 .card-footer .card-progress.in-progress { color: #F59E0B; }
-.card-footer .card-progress.not-started { color: #9CA3AF; }
+.card-footer .card-progress.not-started { color: #999999; }
 
 /* Footer rule */
 .card-bottom-line {
@@ -982,7 +982,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 14px;
   padding: 48px;
-  color: #9CA3AF;
+  color: #999999;
 }
 
 .empty-icon {
@@ -993,8 +993,8 @@ onUnmounted(() => {
 .loading-spinner {
   width: 24px;
   height: 24px;
-  border: 2px solid #E5E7EB;
-  border-top-color: #6B7280;
+  border: 2px solid #E5E5E5;
+  border-top-color: #666666;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -1040,7 +1040,7 @@ onUnmounted(() => {
   max-width: 90vw;
   max-height: 85vh;
   overflow-y: auto;
-  border: 1px solid #E5E7EB;
+  border: 1px solid #E5E5E5;
   border-radius: 8px;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
@@ -1080,7 +1080,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 20px 32px;
-  border-bottom: 1px solid #F3F4F6;
+  border-bottom: 1px solid #F5F5F5;
   background: #FFFFFF;
 }
 
@@ -1094,7 +1094,7 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', monospace;
   font-size: 1rem;
   font-weight: 600;
-  color: #111827;
+  color: #000000;
   letter-spacing: 0.5px;
 }
 
@@ -1107,17 +1107,17 @@ onUnmounted(() => {
   font-weight: 600;
   padding: 4px 8px;
   border-radius: 4px;
-  background: #F9FAFB;
+  background: #FAFAFA;
 }
 
 .modal-progress.completed { color: #10B981; background: rgba(16, 185, 129, 0.1); }
 .modal-progress.in-progress { color: #F59E0B; background: rgba(245, 158, 11, 0.1); }
-.modal-progress.not-started { color: #9CA3AF; background: #F3F4F6; }
+.modal-progress.not-started { color: #999999; background: #F5F5F5; }
 
 .modal-create-time {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.75rem;
-  color: #9CA3AF;
+  color: #999999;
   letter-spacing: 0.3px;
 }
 
@@ -1127,7 +1127,7 @@ onUnmounted(() => {
   border: none;
   background: transparent;
   font-size: 1.5rem;
-  color: #9CA3AF;
+  color: #999999;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1137,8 +1137,8 @@ onUnmounted(() => {
 }
 
 .modal-close:hover {
-  background: #F3F4F6;
-  color: #111827;
+  background: #F5F5F5;
+  color: #000000;
 }
 
 /* Dialog body */
@@ -1157,7 +1157,7 @@ onUnmounted(() => {
 .modal-label {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.75rem;
-  color: #6B7280;
+  color: #666666;
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-bottom: 10px;
@@ -1166,11 +1166,11 @@ onUnmounted(() => {
 
 .modal-requirement {
   font-size: 0.95rem;
-  color: #374151;
+  color: #333333;
   line-height: 1.6;
   padding: 16px;
-  background: #F9FAFB;
-  border: 1px solid #F3F4F6;
+  background: #FAFAFA;
+  border: 1px solid #F5F5F5;
   border-radius: 8px;
 }
 
@@ -1189,17 +1189,17 @@ onUnmounted(() => {
 }
 
 .modal-files::-webkit-scrollbar-track {
-  background: #F3F4F6;
+  background: #F5F5F5;
   border-radius: 2px;
 }
 
 .modal-files::-webkit-scrollbar-thumb {
-  background: #D1D5DB;
+  background: #D4D4D4;
   border-radius: 2px;
 }
 
 .modal-files::-webkit-scrollbar-thumb:hover {
-  background: #9CA3AF;
+  background: #999999;
 }
 
 .modal-file-item {
@@ -1208,19 +1208,19 @@ onUnmounted(() => {
   gap: 12px;
   padding: 10px 14px;
   background: #FFFFFF;
-  border: 1px solid #E5E7EB;
+  border: 1px solid #E5E5E5;
   border-radius: 6px;
   transition: all 0.2s ease;
 }
 
 .modal-file-item:hover {
-  border-color: #D1D5DB;
+  border-color: #D4D4D4;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 .modal-file-name {
   font-size: 0.85rem;
-  color: #4B5563;
+  color: #4D4D4D;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1229,10 +1229,10 @@ onUnmounted(() => {
 
 .modal-empty {
   font-size: 0.85rem;
-  color: #9CA3AF;
+  color: #999999;
   padding: 16px;
-  background: #F9FAFB;
-  border: 1px dashed #E5E7EB;
+  background: #FAFAFA;
+  border: 1px dashed #E5E5E5;
   border-radius: 6px;
   text-align: center;
 }
@@ -1249,13 +1249,13 @@ onUnmounted(() => {
 .divider-line {
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, transparent, #E5E7EB, transparent);
+  background: linear-gradient(90deg, transparent, #E5E5E5, transparent);
 }
 
 .divider-text {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.7rem;
-  color: #9CA3AF;
+  color: #999999;
   letter-spacing: 2px;
   text-transform: uppercase;
   white-space: nowrap;
@@ -1276,7 +1276,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 16px;
-  border: 1px solid #E5E7EB;
+  border: 1px solid #E5E5E5;
   border-radius: 8px;
   background: #FFFFFF;
   cursor: pointer;
@@ -1294,14 +1294,14 @@ onUnmounted(() => {
 .modal-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  background: #F9FAFB;
+  background: #FAFAFA;
 }
 
 .btn-step {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.6rem;
   font-weight: 500;
-  color: #9CA3AF;
+  color: #999999;
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
@@ -1317,15 +1317,15 @@ onUnmounted(() => {
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.5px;
-  color: #4B5563;
+  color: #4D4D4D;
 }
 
-.modal-btn.btn-project .btn-icon { color: #3B82F6; }
+.modal-btn.btn-project .btn-icon { color: #111111; }
 .modal-btn.btn-simulation .btn-icon { color: #F59E0B; }
 .modal-btn.btn-report .btn-icon { color: #10B981; }
 
 .modal-btn:hover:not(:disabled) .btn-text {
-  color: #111827;
+  color: #000000;
 }
 
 /* Replay-unavailable notice */
@@ -1340,7 +1340,7 @@ onUnmounted(() => {
 .hint-text {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.7rem;
-  color: #9CA3AF;
+  color: #999999;
   letter-spacing: 0.3px;
   text-align: center;
   line-height: 1.5;

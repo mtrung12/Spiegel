@@ -195,7 +195,7 @@ defineExpose({ load })
 
 <style scoped>
 .kpi-panel {
-  border: 1px solid #E5E7EB;
+  border: 1px solid #E5E5E5;
   background: #FFFFFF;
   padding: 24px;
   margin-bottom: 32px;
@@ -212,20 +212,20 @@ defineExpose({ load })
 .kpi-title {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #1F2937;
+  color: #111111;
   margin: 0;
 }
 
 .kpi-subtitle {
   font-size: 0.78rem;
-  color: #9CA3AF;
+  color: #A3A3A3;
   margin: 4px 0 0;
 }
 
 .kpi-refresh {
-  border: 1px solid #E5E7EB;
+  border: 1px solid #E5E5E5;
   background: transparent;
-  color: #6B7280;
+  color: #666666;
   font-size: 0.75rem;
   padding: 6px 12px;
   cursor: pointer;
@@ -238,7 +238,7 @@ defineExpose({ load })
 
 .kpi-state {
   font-size: 0.82rem;
-  color: #9CA3AF;
+  color: #A3A3A3;
   padding: 12px 0;
 }
 
@@ -254,7 +254,7 @@ defineExpose({ load })
   font-size: 0.7rem;
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: #9CA3AF;
+  color: #A3A3A3;
   margin-bottom: 10px;
 }
 
@@ -265,21 +265,21 @@ defineExpose({ load })
 }
 
 .kpi-card {
-  border: 1px solid #E5E7EB;
-  background: #F9FAFB;
+  border: 1px solid #E5E5E5;
+  background: #FAFAFA;
   padding: 14px 16px;
 }
 
 .kpi-value {
   font-size: 1.4rem;
   font-weight: 600;
-  color: #1F2937;
+  color: #111111;
   font-family: 'JetBrains Mono', monospace;
 }
 
 .kpi-label {
   font-size: 0.72rem;
-  color: #6B7280;
+  color: #666666;
   margin-top: 4px;
 }
 
@@ -297,12 +297,12 @@ defineExpose({ load })
 .kpi-table td {
   text-align: right;
   padding: 8px 12px;
-  border-bottom: 1px solid #F3F4F6;
+  border-bottom: 1px solid #F5F5F5;
   white-space: nowrap;
 }
 
 .kpi-table th {
-  color: #9CA3AF;
+  color: #A3A3A3;
   font-weight: 500;
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -312,7 +312,7 @@ defineExpose({ load })
 .kpi-table th:first-child,
 .kpi-td-name {
   text-align: left;
-  color: #1F2937;
+  color: #111111;
 }
 
 .kpi-rounds {
@@ -320,7 +320,7 @@ defineExpose({ load })
   align-items: flex-end;
   gap: 3px;
   height: 90px;
-  border-bottom: 1px solid #E5E7EB;
+  border-bottom: 1px solid #E5E5E5;
 }
 
 .kpi-round-bar {
@@ -333,6 +333,6 @@ defineExpose({ load })
 
 .kpi-round-fill {
   width: 100%;
-  background: #1F2937;
+  background: #111111;
 }
 </style>
