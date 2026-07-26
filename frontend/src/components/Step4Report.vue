@@ -8,13 +8,20 @@
           <!-- Report Header -->
           <div class="report-header-block">
             <div class="report-meta">
-              <span class="report-tag">Prediction Report</span>
+              <span class="report-tag">{{ $t('step4.reportTag') }}</span>
               <span class="report-id">ID: {{ reportId || 'REF-2024-X92' }}</span>
             </div>
             <h1 class="main-title">{{ reportOutline.title }}</h1>
             <p class="sub-title">{{ reportOutline.summary }}</p>
             <div class="header-divider"></div>
           </div>
+
+          <!-- Measured marketing KPIs, counted from the action log -->
+          <CampaignKpiPanel
+            v-if="simulationId"
+            :simulationId="simulationId"
+            :autoLoad="isComplete"
+          />
 
           <!-- Sections List -->
           <div class="sections-list">
@@ -72,7 +79,7 @@
             <div class="waiting-ring"></div>
             <div class="waiting-ring"></div>
           </div>
-          <span class="waiting-text">Waiting for Report Agent...</span>
+          <span class="waiting-text">{{ $t('step4.waitingForReportAgent') }}</span>
         </div>
       </div>
 
@@ -394,6 +401,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick, h, reactive } f
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getAgentLog, getConsoleLog } from '../api/report'
+import CampaignKpiPanel from './CampaignKpiPanel.vue'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -1483,7 +1491,7 @@ const InterviewDisplay = {
         
         // Selection reason
         props.result.interviews[activeIndex.value]?.selectionReason && h('div', { class: 'selection-reason' }, [
-          h('div', { class: 'reason-label' }, '选择理由'),
+          h('div', { class: 'reason-label' }, t('step4.selectionReason')),
           h('div', { class: 'reason-content' }, props.result.interviews[activeIndex.value].selectionReason)
         ]),
         
@@ -1793,7 +1801,7 @@ const activeStep = computed(() => {
   if (doneSteps.length > 0) return doneSteps[doneSteps.length - 1]
   
   // Otherwise take the first step
-  return steps[0] || { noLabel: '--', title: '等待开始', status: 'todo', meta: '' }
+  return steps[0] || { noLabel: '--', title: t('step4.waitingToStart'), status: 'todo', meta: '' }
 })
 
 const workflowSteps = computed(() => {

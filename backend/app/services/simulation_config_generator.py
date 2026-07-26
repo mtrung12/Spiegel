@@ -393,8 +393,8 @@ class SimulationConfigGenerator:
         
         # Assemble the context
         context_parts = [
-            f"## Simulation requirement\n{simulation_requirement}",
-            f"\n## Entities ({len(entities)})\n{entity_summary}",
+            f"## Campaign brief and target audience\n{simulation_requirement}",
+            f"\n## Audience segments and entities ({len(entities)})\n{entity_summary}",
         ]
         
         current_length = sum(len(p) for p in context_parts)
@@ -404,7 +404,9 @@ class SimulationConfigGenerator:
             doc_text = document_text[:remaining_length]
             if len(document_text) > remaining_length:
                 doc_text += "\n...(document truncated)"
-            context_parts.append(f"\n## Source document\n{doc_text}")
+            context_parts.append(
+                f"\n## Campaign material (creative, messaging, product and market background)\n{doc_text}"
+            )
         
         return "\n".join(context_parts)
     
@@ -543,29 +545,44 @@ class SimulationConfigGenerator:
         # Cap at a share of the total agent count
         max_agents_allowed = max(1, int(num_entities * 0.9))
         
-        prompt = f"""Generate the time simulation configuration for the requirement below.
+        prompt = f"""Generate the media-flighting schedule for the campaign below: how long the
+campaign runs in the simulated market, and how much of the target audience is
+exposed to it per hour.
 
 {context_truncated}
 
 ## Task
 Produce the time configuration as JSON.
 
-### Base principles (guidance only - adapt to the specific event and the groups involved):
-- Infer the target audience's timezone and daily rhythm from the scenario. The
+### Campaign window (total_simulation_hours)
+Match it to the campaign type described in the brief:
+- Launch burst / flash promotion / event tie-in: 24-48 hours
+- Standard social flight: 72 hours
+- Awareness or always-on campaign: 96-168 hours
+A campaign window that is too short truncates the share cascade and understates
+virality; too long and the tail is all noise.
+
+### Exposure rate (agents_per_hour_min / agents_per_hour_max)
+This is the media delivery rate - how many of the {num_entities} audience agents
+see the campaign each simulated hour.
+- A heavy paid push saturates the audience fast: set max near the upper bound
+- An organic or low-budget campaign trickles out: keep max low so reach builds
+  slowly and depends on sharing rather than on spend
+- The two values bracket the hourly rate; the daily rhythm below modulates it
+
+### Daily rhythm (guidance only - adapt to the target audience in the brief):
+- Infer the target audience's timezone and daily rhythm from the brief. The
   examples below are for UTC+8.
 - 00:00-05:00 is nearly dead (activity multiplier 0.05)
 - 06:00-08:00 ramps up (activity multiplier 0.4)
 - 09:00-18:00 working hours, moderate activity (activity multiplier 0.7)
 - 19:00-22:00 is the evening peak (activity multiplier 1.5)
 - Activity falls off after 23:00 (activity multiplier 0.5)
-- General shape: quiet overnight, rising in the morning, moderate during work
-  hours, peaking in the evening
-- **Important**: the values above are only a reference. Adjust the actual bands
-  to the nature of the event and the audience taking part.
-  - For example: a student audience may peak at 21:00-23:00; media are active
-    all day; official bodies only post during working hours
-  - For example: a breaking story can keep discussion alive late at night, so
-    off_peak_hours may be shortened
+- **Important**: adjust the bands to who the campaign actually targets.
+  - A student or Gen-Z audience peaks at 21:00-23:00
+  - Working professionals peak at commute times and in the evening
+  - A B2B audience is active only during working hours, and barely at weekends
+  - Parents of young children have a short late-evening window
 
 ### Return JSON (no markdown)
 
@@ -579,22 +596,21 @@ Example:
     "off_peak_hours": [0, 1, 2, 3, 4, 5],
     "morning_hours": [6, 7, 8],
     "work_hours": [9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
-    "reasoning": "Why this timing fits the event"
+    "reasoning": "Why this flighting fits the campaign"
 }}
 
 Field reference:
-- total_simulation_hours (int): total simulated duration, 24-168 hours. Breaking
-  events are short, sustained topics are long.
+- total_simulation_hours (int): campaign window, 24-168 hours
 - minutes_per_round (int): minutes per round, 30-120; 60 is recommended
-- agents_per_hour_min (int): minimum agents activated per hour (range: 1-{max_agents_allowed})
-- agents_per_hour_max (int): maximum agents activated per hour (range: 1-{max_agents_allowed})
-- peak_hours (int array): peak band, adjusted to the audience taking part
+- agents_per_hour_min (int): minimum audience agents exposed per hour (range: 1-{max_agents_allowed})
+- agents_per_hour_max (int): maximum audience agents exposed per hour (range: 1-{max_agents_allowed})
+- peak_hours (int array): peak band, matched to the target audience
 - off_peak_hours (int array): trough band, usually late night and early morning
 - morning_hours (int array): morning band
 - work_hours (int array): working-hours band
-- reasoning (string): a short note on why this configuration was chosen"""
+- reasoning (string): a short note on why this flighting was chosen"""
 
-        system_prompt = "You are a social media simulation expert. Return pure JSON. The time configuration must match the daily rhythm of the target audience in the scenario."
+        system_prompt = "You are a media planner configuring a campaign test in a simulated market. Return pure JSON. The flighting must match the campaign window and the daily rhythm of the target audience in the brief."
         system_prompt = f"{system_prompt}\n\n{get_language_instruction()}"
 
         try:
@@ -614,7 +630,7 @@ Field reference:
             "off_peak_hours": [0, 1, 2, 3, 4, 5],
             "morning_hours": [6, 7, 8],
             "work_hours": [9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
-            "reasoning": "Using the default China-based daily rhythm (1 hour per round)"
+            "reasoning": "Using the default 72-hour campaign window on a China-based daily rhythm (1 hour per round)"
         }
     
     def _parse_time_config(self, result: Dict[str, Any], num_entities: int) -> TimeSimulationConfig:
@@ -682,39 +698,68 @@ Field reference:
         # Use the configured context truncation length
         context_truncated = context[:self.EVENT_CONFIG_CONTEXT_LENGTH]
         
-        prompt = f"""Generate the event configuration for the requirement below.
+        prompt = f"""Launch the campaign below into the simulated market. Your job is to write the
+seed content the audience will actually encounter in their feed.
 
-Simulation requirement: {simulation_requirement}
+Campaign brief and target audience: {simulation_requirement}
 
 {context_truncated}
 
-## Available entity types and examples
+## Available account types and examples
 {type_info}
 
 ## Task
-Produce the event configuration as JSON:
-- Extract the hot topic keywords
-- Describe how public opinion is expected to develop
-- Draft the initial posts. **Every post must specify poster_type (the type of
-  account publishing it).**
+Produce the campaign launch configuration as JSON:
+- hot_topics: the campaign's message pillars, product name, tagline and the
+  hashtags or phrases the audience would use when talking about it
+- narrative_direction: how the conversation around this campaign is expected to
+  develop across the flight
+- initial_posts: the seed content, described below
 
-**Important**: poster_type must be chosen from the "available entity types"
-above so each initial post can be assigned to a suitable agent.
-For example: an official statement should come from Official/University, news
-from MediaOutlet, and a student's view from Student.
+### The seed posts are the campaign itself
+These are what the audience reacts to, so they decide the whole test. Write
+them as real feed content, not as a description of the campaign.
+
+Compose the seed set from these roles, in this priority:
+1. **The campaign creative itself** (1-3 posts) - the brand's own launch post.
+   Use the actual headline, tagline, offer, price point and call to action from
+   the campaign material above. Write it in the brand's voice as it would ship.
+   If the material contains several creative executions, seed each one so the
+   simulation reveals which lands best.
+2. **Paid and owned amplification** (0-2 posts) - the same message carried by a
+   media partner, retail channel or brand ambassador account, phrased the way
+   that account actually writes.
+3. **Organic first contact** (1-2 posts) - an ordinary audience member's
+   unfiltered first reaction to seeing the ad. Do NOT make this uniformly
+   positive; first reactions to advertising are frequently indifferent or
+   sceptical, and a seed set that only cheers produces a worthless test.
+
+Rules for the seed content:
+- Quote the campaign's real message, claims, offer and price from the material
+  above. Do not invent a different product or a different promise.
+- Keep each post the length that platform's users actually write.
+- Do NOT write the audience's verdict into the seed posts. The point of the
+  simulation is to discover the verdict, not to assert it.
+- Do NOT seed engagement counts, sentiment claims or predicted outcomes.
+
+**Important**: poster_type must be chosen from the "available account types"
+above so each seed post can be assigned to a suitable agent. The brand's own
+creative should come from the advertiser, company or organisation type; media
+amplification from MediaOutlet; organic reactions from an individual consumer
+type.
 
 Return JSON (no markdown):
 {{
-    "hot_topics": ["keyword 1", "keyword 2", ...],
-    "narrative_direction": "<how public opinion is expected to develop>",
+    "hot_topics": ["message pillar / tagline / hashtag", ...],
+    "narrative_direction": "<how the conversation around the campaign is expected to develop>",
     "initial_posts": [
-        {{"content": "post text", "poster_type": "entity type (must come from the available types)"}},
+        {{"content": "the actual post text as it would appear in the feed", "poster_type": "account type (must come from the available types)"}},
         ...
     ],
-    "reasoning": "<short explanation>"
+    "reasoning": "<short explanation of the seed strategy>"
 }}"""
 
-        system_prompt = "You are a public opinion analyst. Return pure JSON. poster_type must match one of the available entity types exactly."
+        system_prompt = "You are a campaign strategist writing the launch content for a marketing campaign test. Return pure JSON. poster_type must match one of the available account types exactly."
         system_prompt = f"{system_prompt}\n\n{get_language_instruction()}\nIMPORTANT: The 'poster_type' field value MUST be in English PascalCase exactly matching the available entity types. Only 'content', 'narrative_direction', 'hot_topics' and 'reasoning' fields should use the specified language."
 
         try:
@@ -762,12 +807,22 @@ Return JSON (no markdown):
         type_aliases = {
             "official": ["official", "university", "governmentagency", "government"],
             "university": ["university", "official"],
-            "mediaoutlet": ["mediaoutlet", "media"],
-            "student": ["student", "person"],
-            "professor": ["professor", "expert", "teacher"],
-            "alumni": ["alumni", "person"],
-            "organization": ["organization", "ngo", "company", "group"],
-            "person": ["person", "student", "alumni"],
+            "mediaoutlet": ["mediaoutlet", "media", "publisher", "influencer"],
+            "student": ["student", "person", "consumer"],
+            "professor": ["professor", "expert", "teacher", "analyst"],
+            "alumni": ["alumni", "person", "consumer"],
+            "organization": ["organization", "ngo", "company", "group", "brand"],
+            "person": ["person", "student", "alumni", "consumer", "customer"],
+            # Marketing-side account types
+            "brand": ["brand", "advertiser", "company", "organization"],
+            "advertiser": ["advertiser", "brand", "company", "organization"],
+            "company": ["company", "brand", "organization"],
+            "retailer": ["retailer", "company", "brand", "organization"],
+            "influencer": ["influencer", "publicfigure", "mediaoutlet", "person"],
+            "publicfigure": ["publicfigure", "influencer", "expert"],
+            "consumer": ["consumer", "customer", "person", "student", "alumni"],
+            "customer": ["customer", "consumer", "person"],
+            "competitor": ["competitor", "company", "brand", "organization"],
         }
         
         # Track the agent index used per type so the same agent is not reused
@@ -842,29 +897,45 @@ Return JSON (no markdown):
                 "summary": e.summary[:summary_len] if e.summary else ""
             })
         
-        prompt = f"""Generate a social media activity configuration for each entity below.
+        prompt = f"""Generate the media behaviour configuration for each audience member below: how
+often they are online, how fast they react to campaign content, and how
+predisposed they are towards the advertised brand.
 
-Simulation requirement: {simulation_requirement}
+Campaign brief and target audience: {simulation_requirement}
 
-## Entities
+## Audience members
 ```json
 {json.dumps(entity_list, ensure_ascii=False, indent=2)}
 ```
 
 ## Task
-Produce an activity configuration per entity. Note:
+Produce an activity configuration per audience member. Note:
 - **Timing must match the target audience's daily rhythm**: the values below are
-  a UTC+8 reference; adjust them to the scenario
-- **Official bodies** (University/GovernmentAgency): low activity (0.1-0.3),
-  active during working hours (9-17), slow to respond (60-240 min), high
-  influence (2.5-3.0)
-- **Media** (MediaOutlet): medium activity (0.4-0.6), active all day (8-23),
-  fast to respond (5-30 min), high influence (2.0-2.5)
-- **Individuals** (Student/Person/Alumni): high activity (0.6-0.9), mostly
-  active in the evening (18-23), fast to respond (1-15 min), low influence
-  (0.8-1.2)
-- **Public figures and experts**: medium activity (0.4-0.6), medium-high
-  influence (1.5-2.0)
+  a UTC+8 reference; adjust them to the campaign's actual target market
+- **Brands, advertisers and official bodies** (Company/Brand/University/
+  GovernmentAgency): low activity (0.1-0.3), active during working hours (9-17),
+  slow to respond (60-240 min), high influence (2.5-3.0)
+- **Media, publishers and influencers** (MediaOutlet/Influencer): medium
+  activity (0.4-0.6), active all day (8-23), fast to respond (5-30 min), high
+  influence (2.0-2.5)
+- **Individual consumers** (Student/Person/Alumni/Consumer): high activity
+  (0.6-0.9), mostly active in the evening (18-23), fast to respond (1-15 min),
+  low influence (0.8-1.2)
+- **Experts, reviewers and category analysts**: medium activity (0.4-0.6),
+  medium-high influence (1.5-2.0) - their verdict carries disproportionate
+  weight in a purchase decision
+
+**sentiment_bias and stance are the audience's PRIOR disposition to the brand,
+not their reaction to this campaign.** Derive them from the entity's existing
+relationship with the brand and category:
+- A loyal existing customer starts supportive with a positive bias
+- A competitor's customer or a burned former buyer starts opposing with a
+  negative bias
+- Most of the audience has no strong prior: neutral, bias near 0
+- Trade press and review communities are usually observer with bias near 0
+
+Do NOT set the whole audience supportive. A test where everyone already likes
+the brand cannot tell the marketing team anything.
 
 Return JSON (no markdown):
 {{
@@ -877,7 +948,7 @@ Return JSON (no markdown):
             "active_hours": [<active hours, matching the audience's daily rhythm>],
             "response_delay_min": <minimum response delay in minutes>,
             "response_delay_max": <maximum response delay in minutes>,
-            "sentiment_bias": <-1.0 to 1.0>,
+            "sentiment_bias": <-1.0 to 1.0, prior disposition to the brand>,
             "stance": "<supportive/opposing/neutral/observer>",
             "influence_weight": <influence weight>
         }},
@@ -885,7 +956,7 @@ Return JSON (no markdown):
     ]
 }}"""
 
-        system_prompt = "You are a social media behaviour analyst. Return pure JSON. The configuration must match the daily rhythm of the target audience in the scenario."
+        system_prompt = "You are a consumer behaviour analyst configuring an audience for a campaign test. Return pure JSON. The configuration must match the daily rhythm and brand priors of the target audience in the campaign brief."
         system_prompt = f"{system_prompt}\n\n{get_language_instruction()}\nIMPORTANT: The 'stance' field value MUST be one of the English strings: 'supportive', 'opposing', 'neutral', 'observer'. All JSON field names and numeric values must remain unchanged. Only natural language text fields should use the specified language."
 
         try:

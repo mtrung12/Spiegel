@@ -179,6 +179,16 @@ export const interviewAgents = (data) => {
 }
 
 /**
+ * Get the measured marketing KPIs for a campaign test.
+ * Counted from the action log — reach, engagement, virality, sentiment,
+ * share of voice, per-segment breakdown and the round-by-round curve.
+ * @param {string} simulationId
+ */
+export const getCampaignMetrics = (simulationId) => {
+  return service.get(`/api/simulation/${simulationId}/campaign-metrics`)
+}
+
+/**
  * List past simulations, enriched with project detail.
  * Powers the history list on the home page.
  * @param {number} limit - page size

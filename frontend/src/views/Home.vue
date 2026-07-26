@@ -1,213 +1,123 @@
 <template>
   <div class="home-container">
-    <!-- Top navigation bar -->
-    <nav class="navbar">
-      <div class="nav-brand">MIROFISH</div>
-      <div class="nav-links">
-        <LanguageSwitcher />
-        <a href="https://github.com/666ghj/MiroFish" target="_blank" class="github-link">
-          {{ $t('nav.visitGithub') }} <span class="arrow">↗</span>
-        </a>
+    <!-- Hero: dark, centered, deliberately sparse -->
+    <section class="hero">
+      <nav class="navbar">
+        <div class="nav-brand">CAMPAIGN REACTION</div>
+        <div class="nav-links">
+          <LanguageSwitcher />
+        </div>
+      </nav>
+
+      <div class="hero-body">
+        <span class="eyebrow">{{ $t('home.tagline') }}</span>
+
+        <h1 class="hero-title">
+          {{ $t('home.heroTitle1') }}<br />
+          <span class="hero-title-accent">{{ $t('home.heroTitle2') }}</span>
+        </h1>
+
+        <p class="hero-sub">{{ $t('home.heroSub') }}</p>
+
+        <button class="cta" @click="scrollToConsole">
+          {{ $t('home.ctaPrimary') }}
+          <span class="cta-arrow">→</span>
+        </button>
+
+        <div class="stat-row">
+          <div class="stat">
+            <span class="stat-value">{{ $t('home.statCostValue') }}</span>
+            <span class="stat-label">{{ $t('home.statCostLabel') }}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">{{ $t('home.statFeedsValue') }}</span>
+            <span class="stat-label">{{ $t('home.statFeedsLabel') }}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">{{ $t('home.statKpiValue') }}</span>
+            <span class="stat-label">{{ $t('home.statKpiLabel') }}</span>
+          </div>
+        </div>
       </div>
-    </nav>
+    </section>
 
-    <div class="main-content">
-      <!-- Upper half: hero area -->
-      <section class="hero-section">
-        <div class="hero-left">
-          <div class="tag-row">
-            <span class="orange-tag">{{ $t('home.tagline') }}</span>
-            <span class="version-text">{{ $t('home.version') }}</span>
-          </div>
-          
-          <h1 class="main-title">
-            {{ $t('home.heroTitle1') }}<br>
-            <span class="gradient-text">{{ $t('home.heroTitle2') }}</span>
-          </h1>
-          
-          <div class="hero-desc">
-            <p>
-              <i18n-t keypath="home.heroDesc" tag="span">
-                <template #brand><span class="highlight-bold">{{ $t('home.heroDescBrand') }}</span></template>
-                <template #agentScale><span class="highlight-orange">{{ $t('home.heroDescAgentScale') }}</span></template>
-                <template #optimalSolution><span class="highlight-code">{{ $t('home.heroDescOptimalSolution') }}</span></template>
-              </i18n-t>
-            </p>
-            <p class="slogan-text">
-              {{ $t('home.slogan') }}<span class="blinking-cursor">_</span>
-            </p>
-          </div>
-           
-          <div class="decoration-square"></div>
-        </div>
-        
-        <div class="hero-right">
-          <!-- Logo -->
-          <div class="logo-container">
-            <img src="../assets/logo/MiroFish_logo_left.jpeg" alt="MiroFish Logo" class="hero-logo" />
-          </div>
-          
-          <button class="scroll-down-btn" @click="scrollToBottom">
-            ↓
-          </button>
-        </div>
-      </section>
+    <!-- Workflow: titles only, no descriptions -->
+    <section class="workflow">
+      <span class="section-label">{{ $t('home.workflowSequence') }}</span>
+      <ol class="workflow-strip">
+        <li v-for="(step, i) in workflowSteps" :key="step" class="workflow-step">
+          <span class="workflow-num">{{ String(i + 1).padStart(2, '0') }}</span>
+          <span class="workflow-title">{{ $t(step) }}</span>
+        </li>
+      </ol>
+    </section>
 
-      <!-- Lower half: two-column layout -->
-      <section class="dashboard-section">
-        <!-- Left column: status and steps -->
-        <div class="left-panel">
-          <div class="panel-header">
-            <span class="status-dot">■</span> {{ $t('home.systemStatus') }}
-          </div>
-          
-          <h2 class="section-title">{{ $t('home.systemReady') }}</h2>
-          <p class="section-desc">
-            {{ $t('home.systemReadyDesc') }}
-          </p>
-          
-          <!-- Metric cards -->
-          <div class="metrics-row">
-            <div class="metric-card">
-              <div class="metric-value">{{ $t('home.metricLowCost') }}</div>
-              <div class="metric-label">{{ $t('home.metricLowCostDesc') }}</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">{{ $t('home.metricHighAvail') }}</div>
-              <div class="metric-label">{{ $t('home.metricHighAvailDesc') }}</div>
-            </div>
+    <!-- Console: the product surface -->
+    <section class="console" ref="consoleRef">
+      <span class="section-label">{{ $t('home.consoleEyebrow') }}</span>
+
+      <div class="console-box">
+        <div class="field">
+          <div class="field-head">
+            <span class="field-label">{{ $t('home.realitySeed') }}</span>
+            <span class="field-meta">{{ $t('home.supportedFormats') }}</span>
           </div>
 
-          <!-- Walkthrough of the simulation steps -->
-          <div class="steps-container">
-            <div class="steps-header">
-               <span class="diamond-icon">◇</span> {{ $t('home.workflowSequence') }}
+          <div
+            class="upload-zone"
+            :class="{ 'drag-over': isDragOver, 'has-files': files.length > 0 }"
+            @dragover.prevent="handleDragOver"
+            @dragleave.prevent="handleDragLeave"
+            @drop.prevent="handleDrop"
+            @click="triggerFileInput"
+          >
+            <input
+              ref="fileInput"
+              type="file"
+              multiple
+              accept=".pdf,.md,.txt"
+              @change="handleFileSelect"
+              style="display: none"
+              :disabled="loading"
+            />
+
+            <div v-if="files.length === 0" class="upload-placeholder">
+              <div class="upload-icon">↑</div>
+              <div class="upload-title">{{ $t('home.dragToUpload') }}</div>
+              <div class="upload-hint">{{ $t('home.orBrowse') }}</div>
             </div>
-            <div class="workflow-list">
-              <div class="workflow-item">
-                <span class="step-num">01</span>
-                <div class="step-info">
-                  <div class="step-title">{{ $t('home.step01Title') }}</div>
-                  <div class="step-desc">{{ $t('home.step01Desc') }}</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">02</span>
-                <div class="step-info">
-                  <div class="step-title">{{ $t('home.step02Title') }}</div>
-                  <div class="step-desc">{{ $t('home.step02Desc') }}</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">03</span>
-                <div class="step-info">
-                  <div class="step-title">{{ $t('home.step03Title') }}</div>
-                  <div class="step-desc">{{ $t('home.step03Desc') }}</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">04</span>
-                <div class="step-info">
-                  <div class="step-title">{{ $t('home.step04Title') }}</div>
-                  <div class="step-desc">{{ $t('home.step04Desc') }}</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">05</span>
-                <div class="step-info">
-                  <div class="step-title">{{ $t('home.step05Title') }}</div>
-                  <div class="step-desc">{{ $t('home.step05Desc') }}</div>
-                </div>
+
+            <div v-else class="file-list">
+              <div v-for="(file, index) in files" :key="index" class="file-item">
+                <span class="file-name">{{ file.name }}</span>
+                <button @click.stop="removeFile(index)" class="remove-btn">×</button>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Right column: interaction console -->
-        <div class="right-panel">
-          <div class="console-box">
-            <!-- Upload area -->
-            <div class="console-section">
-              <div class="console-header">
-                <span class="console-label">{{ $t('home.realitySeed') }}</span>
-                <span class="console-meta">{{ $t('home.supportedFormats') }}</span>
-              </div>
-              
-              <div 
-                class="upload-zone"
-                :class="{ 'drag-over': isDragOver, 'has-files': files.length > 0 }"
-                @dragover.prevent="handleDragOver"
-                @dragleave.prevent="handleDragLeave"
-                @drop.prevent="handleDrop"
-                @click="triggerFileInput"
-              >
-                <input
-                  ref="fileInput"
-                  type="file"
-                  multiple
-                  accept=".pdf,.md,.txt"
-                  @change="handleFileSelect"
-                  style="display: none"
-                  :disabled="loading"
-                />
-                
-                <div v-if="files.length === 0" class="upload-placeholder">
-                  <div class="upload-icon">↑</div>
-                  <div class="upload-title">{{ $t('home.dragToUpload') }}</div>
-                  <div class="upload-hint">{{ $t('home.orBrowse') }}</div>
-                </div>
-                
-                <div v-else class="file-list">
-                  <div v-for="(file, index) in files" :key="index" class="file-item">
-                    <span class="file-icon">📄</span>
-                    <span class="file-name">{{ file.name }}</span>
-                    <button @click.stop="removeFile(index)" class="remove-btn">×</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Divider -->
-            <div class="console-divider">
-              <span>{{ $t('home.inputParams') }}</span>
-            </div>
-
-            <!-- Input area -->
-            <div class="console-section">
-              <div class="console-header">
-                <span class="console-label">{{ $t('home.simulationPrompt') }}</span>
-              </div>
-              <div class="input-wrapper">
-                <textarea
-                  v-model="formData.simulationRequirement"
-                  class="code-input"
-                  :placeholder="$t('home.promptPlaceholder')"
-                  rows="6"
-                  :disabled="loading"
-                ></textarea>
-                <div class="model-badge">{{ $t('home.engineBadge') }}</div>
-              </div>
-            </div>
-
-            <!-- Start button -->
-            <div class="console-section btn-section">
-              <button 
-                class="start-engine-btn"
-                @click="startSimulation"
-                :disabled="!canSubmit || loading"
-              >
-                <span v-if="!loading">{{ $t('home.startEngine') }}</span>
-                <span v-else>{{ $t('home.initializing') }}</span>
-                <span class="btn-arrow">→</span>
-              </button>
-            </div>
+        <div class="field">
+          <div class="field-head">
+            <span class="field-label">{{ $t('home.simulationPrompt') }}</span>
           </div>
+          <textarea
+            v-model="formData.simulationRequirement"
+            class="audience-input"
+            :placeholder="$t('home.promptPlaceholder')"
+            rows="4"
+            :disabled="loading"
+          ></textarea>
         </div>
-      </section>
 
-      <!-- Past project database -->
-      <HistoryDatabase />
-    </div>
+        <button class="submit-btn" @click="startSimulation" :disabled="!canSubmit || loading">
+          <span>{{ loading ? $t('home.initializing') : $t('home.startEngine') }}</span>
+          <span class="btn-arrow">→</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Past project database -->
+    <HistoryDatabase />
   </div>
 </template>
 
@@ -218,6 +128,16 @@ import HistoryDatabase from '../components/HistoryDatabase.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 
 const router = useRouter()
+
+// The workflow strip shows titles only; the long descriptions stay in the
+// locale file for the in-run step headers.
+const workflowSteps = [
+  'home.step01Title',
+  'home.step02Title',
+  'home.step03Title',
+  'home.step04Title',
+  'home.step05Title'
+]
 
 // Form data
 const formData = ref({
@@ -232,8 +152,9 @@ const loading = ref(false)
 const error = ref('')
 const isDragOver = ref(false)
 
-// Ref to the file input
+// Refs
 const fileInput = ref(null)
+const consoleRef = ref(null)
 
 // Computed: is the form submittable?
 const canSubmit = computed(() => {
@@ -267,7 +188,7 @@ const handleDragLeave = (e) => {
 const handleDrop = (e) => {
   isDragOver.value = false
   if (loading.value) return
-  
+
   const droppedFiles = Array.from(e.dataTransfer.files)
   addFiles(droppedFiles)
 }
@@ -286,22 +207,19 @@ const removeFile = (index) => {
   files.value.splice(index, 1)
 }
 
-// Scroll to the bottom
-const scrollToBottom = () => {
-  window.scrollTo({
-    top: document.body.scrollHeight,
-    behavior: 'smooth'
-  })
+// The hero CTA hands off to the console rather than acting on its own
+const scrollToConsole = () => {
+  consoleRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 // Start the simulation: navigate immediately; the API call happens on the Process page
 const startSimulation = () => {
   if (!canSubmit.value || loading.value) return
-  
+
   // Stash the data waiting to be uploaded
   import('../store/pendingUpload.js').then(({ setPendingUpload }) => {
     setPendingUpload(files.value, formData.value.simulationRequirement)
-    
+
     // Navigate straight to the Process page, flagged as a new project
     router.push({
       name: 'Process',
@@ -312,46 +230,46 @@ const startSimulation = () => {
 </script>
 
 <style scoped>
-/* Global variables and reset */
-:root {
+.home-container {
   --black: #000000;
   --white: #FFFFFF;
-  --orange: #FF4500;
-  --gray-light: #F5F5F5;
-  --gray-text: #666666;
+  --accent: #FF4500;
+  --ink: #111111;
+  --muted: #6B6B6B;
+  --muted-dark: rgba(255, 255, 255, 0.55);
   --border: #E5E5E5;
-  /* 
-    Space Grotesk is the display face; JetBrains Mono covers code and labels.
-    Both Google Fonts must be loaded in index.html. 
-  */
+  --border-dark: rgba(255, 255, 255, 0.14);
   --font-mono: 'JetBrains Mono', monospace;
   --font-sans: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
-  --font-cn: 'Noto Sans SC', system-ui, sans-serif;
-}
 
-.home-container {
   min-height: 100vh;
   background: var(--white);
   font-family: var(--font-sans);
-  color: var(--black);
+  color: var(--ink);
 }
 
-/* Top navigation */
-.navbar {
-  height: 60px;
+/* ---------- Hero ---------- */
+.hero {
   background: var(--black);
   color: var(--white);
+  padding-bottom: 96px;
+}
+
+.navbar {
+  height: 72px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 0 40px;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 .nav-brand {
   font-family: var(--font-mono);
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 1px;
-  font-size: 1.2rem;
+  font-size: 0.85rem;
 }
 
 .nav-links {
@@ -360,359 +278,197 @@ const startSimulation = () => {
   gap: 16px;
 }
 
-.github-link {
+/* The language switcher ships with light-surface styling; the hero is dark. */
+.navbar :deep(.switcher-trigger) {
   color: var(--white);
-  text-decoration: none;
+  border-color: var(--border-dark);
+}
+
+.navbar :deep(.switcher-trigger:hover) {
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.hero-body {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 88px 40px 0;
+  text-align: center;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted-dark);
+}
+
+.hero-title {
+  font-size: clamp(2.75rem, 6vw, 4.5rem);
+  line-height: 1.05;
+  letter-spacing: -2.5px;
+  font-weight: 500;
+  margin: 24px 0 0;
+}
+
+.hero-title-accent {
+  color: var(--muted-dark);
+}
+
+.hero-sub {
+  font-size: 1.25rem;
+  line-height: 1.55;
+  color: var(--muted-dark);
+  max-width: 560px;
+  margin: 26px auto 0;
+}
+
+.cta {
+  margin-top: 42px;
+  background: var(--white);
+  color: var(--black);
+  border: none;
+  padding: 17px 32px;
+  font-family: var(--font-sans);
+  font-size: 1.05rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.cta:hover {
+  background: var(--accent);
+  color: var(--white);
+  transform: translateY(-2px);
+}
+
+.cta-arrow {
+  font-family: var(--font-mono);
+}
+
+.stat-row {
+  display: flex;
+  justify-content: center;
+  gap: 56px;
+  margin-top: 72px;
+  padding-top: 32px;
+  border-top: 1px solid var(--border-dark);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-value {
+  font-family: var(--font-mono);
+  font-size: 1.7rem;
+  font-weight: 500;
+}
+
+.stat-label {
+  font-size: 0.88rem;
+  color: var(--muted-dark);
+}
+
+/* ---------- Shared section label ---------- */
+.section-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 32px;
+}
+
+/* ---------- Workflow strip ---------- */
+.workflow {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 96px 40px 0;
+}
+
+.workflow-strip {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  border-top: 1px solid var(--border);
+}
+
+.workflow-step {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 32px 28px 40px 0;
+}
+
+.workflow-num {
   font-family: var(--font-mono);
   font-size: 0.9rem;
   font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  transition: opacity 0.2s;
+  color: var(--accent);
 }
 
-.github-link:hover {
-  opacity: 0.8;
+.workflow-title {
+  font-size: 1.35rem;
+  font-weight: 500;
+  letter-spacing: -0.5px;
+  line-height: 1.25;
 }
 
-.arrow {
-  font-family: sans-serif;
-}
-
-/* Main content area */
-.main-content {
-  max-width: 1400px;
+/* ---------- Console ---------- */
+.console {
+  max-width: 760px;
   margin: 0 auto;
-  padding: 60px 40px;
-}
-
-/* Hero area */
-.hero-section {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 80px;
-  position: relative;
-}
-
-.hero-left {
-  flex: 1;
-  padding-right: 60px;
-}
-
-.tag-row {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  margin-bottom: 25px;
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-}
-
-.orange-tag {
-  background: var(--orange);
-  color: var(--white);
-  padding: 4px 10px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  font-size: 0.75rem;
-}
-
-.version-text {
-  color: #999;
-  font-weight: 500;
-  letter-spacing: 0.5px;
-}
-
-.main-title {
-  font-size: 4.5rem;
-  line-height: 1.2;
-  font-weight: 500;
-  margin: 0 0 40px 0;
-  letter-spacing: -2px;
-  color: var(--black);
-}
-
-.gradient-text {
-  background: linear-gradient(90deg, #000000 0%, #444444 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  display: inline-block;
-}
-
-.hero-desc {
-  font-size: 1.05rem;
-  line-height: 1.8;
-  color: var(--gray-text);
-  max-width: 640px;
-  margin-bottom: 50px;
-  font-weight: 400;
-  text-align: justify;
-}
-
-.hero-desc p {
-  margin-bottom: 1.5rem;
-}
-
-.highlight-bold {
-  color: var(--black);
-  font-weight: 700;
-}
-
-.highlight-orange {
-  color: var(--orange);
-  font-weight: 700;
-  font-family: var(--font-mono);
-}
-
-.highlight-code {
-  background: rgba(0, 0, 0, 0.05);
-  padding: 2px 6px;
-  border-radius: 2px;
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-  color: var(--black);
-  font-weight: 600;
-}
-
-.slogan-text {
-  font-size: 1.2rem;
-  font-weight: 520;
-  color: var(--black);
-  letter-spacing: 1px;
-  border-left: 3px solid var(--orange);
-  padding-left: 15px;
-  margin-top: 20px;
-}
-
-.blinking-cursor {
-  color: var(--orange);
-  animation: blink 1s step-end infinite;
-  font-weight: 700;
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.decoration-square {
-  width: 16px;
-  height: 16px;
-  background: var(--orange);
-}
-
-.hero-right {
-  flex: 0.8;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: flex-end;
-}
-
-.logo-container {
-  width: 100%;
-  display: flex;
-  justify-content: flex-end;
-  padding-right: 40px;
-}
-
-.hero-logo {
-  max-width: 500px; /* Logo size */
-  width: 100%;
-}
-
-.scroll-down-btn {
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--border);
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--orange);
-  font-size: 1.2rem;
-  transition: all 0.2s;
-}
-
-.scroll-down-btn:hover {
-  border-color: var(--orange);
-}
-
-/* Dashboard two-column layout */
-.dashboard-section {
-  display: flex;
-  gap: 60px;
-  border-top: 1px solid var(--border);
-  padding-top: 60px;
-  align-items: flex-start;
-}
-
-.dashboard-section .left-panel,
-.dashboard-section .right-panel {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Left panel */
-.left-panel {
-  flex: 0.8;
-}
-
-.panel-header {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  color: #999;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 20px;
-}
-
-.status-dot {
-  color: var(--orange);
-  font-size: 0.8rem;
-}
-
-.section-title {
-  font-size: 2rem;
-  font-weight: 520;
-  margin: 0 0 15px 0;
-}
-
-.section-desc {
-  color: var(--gray-text);
-  margin-bottom: 25px;
-  line-height: 1.6;
-}
-
-.metrics-row {
-  display: flex;
-  gap: 20px;
-  margin-bottom: 15px;
-}
-
-.metric-card {
-  border: 1px solid var(--border);
-  padding: 20px 30px;
-  min-width: 150px;
-}
-
-.metric-value {
-  font-family: var(--font-mono);
-  font-size: 1.8rem;
-  font-weight: 520;
-  margin-bottom: 5px;
-}
-
-.metric-label {
-  font-size: 0.85rem;
-  color: #999;
-}
-
-/* Simulation step walkthrough */
-.steps-container {
-  border: 1px solid var(--border);
-  padding: 30px;
-  position: relative;
-}
-
-.steps-header {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  color: #999;
-  margin-bottom: 25px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.diamond-icon {
-  font-size: 1.2rem;
-  line-height: 1;
-}
-
-.workflow-list {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.workflow-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 20px;
-}
-
-.step-num {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  color: var(--black);
-  opacity: 0.3;
-}
-
-.step-info {
-  flex: 1;
-}
-
-.step-title {
-  font-weight: 520;
-  font-size: 1rem;
-  margin-bottom: 4px;
-}
-
-.step-desc {
-  font-size: 0.85rem;
-  color: var(--gray-text);
-}
-
-/* Right-hand interaction console */
-.right-panel {
-  flex: 1.2;
+  padding: 80px 40px 96px;
 }
 
 .console-box {
-  border: 1px solid #CCC; /* Outer solid line */
-  padding: 8px; /* Padding gives the double-border look */
+  border: 1px solid var(--border);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
 }
 
-.console-section {
-  padding: 20px;
-}
-
-.console-section.btn-section {
-  padding-top: 0;
-}
-
-.console-header {
+.field-head {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 15px;
+  align-items: baseline;
+  margin-bottom: 14px;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: #666;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 .upload-zone {
-  border: 1px dashed #CCC;
-  height: 200px;
+  border: 1px dashed #D4D4D4;
+  height: 170px;
   overflow-y: auto;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: border-color 0.2s ease, background 0.2s ease;
   background: #FAFAFA;
+}
+
+.upload-zone:hover,
+.upload-zone.drag-over {
+  border-color: var(--ink);
+  background: #F5F5F5;
 }
 
 .upload-zone.has-files {
   align-items: flex-start;
-}
-
-.upload-zone:hover {
-  background: #F0F0F0;
-  border-color: #999;
+  cursor: default;
 }
 
 .upload-placeholder {
@@ -720,234 +476,127 @@ const startSimulation = () => {
 }
 
 .upload-icon {
-  width: 40px;
-  height: 40px;
-  border: 1px solid #DDD;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 15px;
-  color: #999;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  margin-bottom: 10px;
 }
 
 .upload-title {
+  font-size: 1.1rem;
   font-weight: 500;
-  font-size: 0.9rem;
-  margin-bottom: 5px;
 }
 
 .upload-hint {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: #999;
+  font-size: 0.82rem;
+  color: #9A9A9A;
+  margin-top: 6px;
 }
 
 .file-list {
   width: 100%;
-  padding: 15px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .file-item {
   display: flex;
   align-items: center;
+  gap: 10px;
   background: var(--white);
   padding: 8px 12px;
   border: 1px solid #EEE;
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
 }
 
 .file-name {
   flex: 1;
-  margin: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .remove-btn {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 1.2rem;
-  color: #999;
+  font-size: 1.1rem;
+  color: #9A9A9A;
+  line-height: 1;
 }
 
-.console-divider {
-  display: flex;
-  align-items: center;
-  margin: 10px 0;
+.remove-btn:hover {
+  color: var(--accent);
 }
 
-.console-divider::before,
-.console-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: #EEE;
-}
-
-.console-divider span {
-  padding: 0 15px;
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  color: #BBB;
-  letter-spacing: 1px;
-}
-
-.input-wrapper {
-  position: relative;
+.audience-input {
+  width: 100%;
   border: 1px solid #DDD;
   background: #FAFAFA;
-}
-
-.code-input {
-  width: 100%;
-  border: none;
-  background: transparent;
-  padding: 20px;
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
+  padding: 18px;
+  font-family: var(--font-sans);
+  font-size: 1.02rem;
   line-height: 1.6;
   resize: vertical;
   outline: none;
-  min-height: 150px;
+  color: var(--ink);
 }
 
-.model-badge {
-  position: absolute;
-  bottom: 10px;
-  right: 15px;
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  color: #AAA;
+.audience-input:focus {
+  border-color: var(--ink);
+  background: var(--white);
 }
 
-.start-engine-btn {
-  width: 100%;
+.submit-btn {
   background: var(--black);
   color: var(--white);
-  border: none;
-  padding: 20px;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 1.1rem;
+  border: 1px solid var(--black);
+  padding: 19px 26px;
+  font-family: var(--font-sans);
+  font-size: 1.05rem;
+  font-weight: 500;
   display: flex;
   justify-content: space-between;
   align-items: center;
   cursor: pointer;
-  transition: all 0.3s ease;
-  letter-spacing: 1px;
-  position: relative;
-  overflow: hidden;
+  transition: background 0.2s ease, transform 0.2s ease;
 }
 
-/* Clickable state (not disabled) */
-.start-engine-btn:not(:disabled) {
-  background: var(--black);
-  border: 1px solid var(--black);
-  animation: pulse-border 2s infinite;
-}
-
-.start-engine-btn:hover:not(:disabled) {
-  background: var(--orange);
-  border-color: var(--orange);
+.submit-btn:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
   transform: translateY(-2px);
 }
 
-.start-engine-btn:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.start-engine-btn:disabled {
-  background: #E5E5E5;
-  color: #999;
+.submit-btn:disabled {
+  background: #F0F0F0;
+  border-color: #E5E5E5;
+  color: #A8A8A8;
   cursor: not-allowed;
-  transform: none;
-  border: 1px solid #E5E5E5;
 }
 
-/* Nudge animation: a subtle border pulse */
-@keyframes pulse-border {
-  0% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.2); }
-  70% { box-shadow: 0 0 0 6px rgba(0, 0, 0, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
+.btn-arrow {
+  font-family: var(--font-mono);
 }
 
-/* Responsive rules */
-@media (max-width: 1024px) {
-  .dashboard-section {
-    flex-direction: column;
+/* ---------- Responsive ---------- */
+@media (max-width: 720px) {
+  .hero-body {
+    padding-top: 56px;
   }
-  
-  .hero-section {
-    flex-direction: column;
+
+  .stat-row {
+    gap: 28px;
+    margin-top: 48px;
   }
-  
-  .hero-left {
-    padding-right: 0;
-    margin-bottom: 40px;
+
+  .workflow,
+  .console {
+    padding-left: 24px;
+    padding-right: 24px;
   }
-  
-  .hero-logo {
-    max-width: 200px;
-    margin-bottom: 20px;
-  }
-}
-</style>
-
-<style>
-/* English locale adjustments (unscoped to target html[lang]) */
-html[lang="en"] .main-title {
-  font-size: 3.5rem;
-  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  letter-spacing: -1px;
-}
-
-html[lang="en"] .hero-desc {
-  text-align: left;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  letter-spacing: 0;
-}
-
-html[lang="en"] .slogan-text {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  letter-spacing: 0;
-}
-
-html[lang="en"] .tag-row {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-html[lang="en"] .navbar .nav-links {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-/* Left pane: system status + workflow */
-html[lang="en"] .status-section {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-html[lang="en"] .status-section .status-ready {
-  font-size: 1.6rem;
-}
-
-html[lang="en"] .status-section .metric-value {
-  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 1.4rem;
-}
-
-html[lang="en"] .workflow-list .step-title {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-html[lang="en"] .workflow-list .step-desc {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-  font-size: 0.72rem !important;
-  line-height: 1.4 !important;
-}
-
-html[lang="en"] .workflow-list {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 </style>

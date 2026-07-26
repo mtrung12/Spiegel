@@ -55,6 +55,28 @@ class Config:
         'TREND', 'REFRESH', 'DO_NOTHING', 'FOLLOW', 'MUTE'
     ]
     
+    # Corpus settings (public-discussion harvesting)
+    # Identify the client honestly - several APIs reject generic user agents,
+    # and a contactable UA is what makes the traffic defensible.
+    CORPUS_USER_AGENT = os.environ.get(
+        'CORPUS_USER_AGENT',
+        'CampaignReaction/0.1 (research; +https://github.com/666ghj/MiroFish)'
+    )
+    CORPUS_HTTP_TIMEOUT = float(os.environ.get('CORPUS_HTTP_TIMEOUT', '30'))
+    CORPUS_RATE_PER_SECOND = float(os.environ.get('CORPUS_RATE_PER_SECOND', '1.0'))
+    CORPUS_MAX_RESPONSE_BYTES = int(os.environ.get('CORPUS_MAX_RESPONSE_BYTES', str(16 * 1024 * 1024)))
+    # Author handles are hashed with this salt and never stored raw. Changing it
+    # invalidates existing pseudonyms, which is the intended way to rotate.
+    CORPUS_AUTHOR_SALT = os.environ.get('CORPUS_AUTHOR_SALT', 'campaign-reaction-default-salt')
+
+    # Reddit official OAuth API - free "script" app at reddit.com/prefs/apps
+    REDDIT_CLIENT_ID = os.environ.get('REDDIT_CLIENT_ID')
+    REDDIT_CLIENT_SECRET = os.environ.get('REDDIT_CLIENT_SECRET')
+
+    # YouTube Data API v3 - free key, 10000 quota units per day
+    YOUTUBE_API_KEY = os.environ.get('YOUTUBE_API_KEY')
+    YOUTUBE_QUOTA_BUDGET = int(os.environ.get('YOUTUBE_QUOTA_BUDGET', '5000'))
+
     # Report agent settings
     REPORT_AGENT_MAX_TOOL_CALLS = int(os.environ.get('REPORT_AGENT_MAX_TOOL_CALLS', '5'))
     REPORT_AGENT_MAX_REFLECTION_ROUNDS = int(os.environ.get('REPORT_AGENT_MAX_REFLECTION_ROUNDS', '2'))

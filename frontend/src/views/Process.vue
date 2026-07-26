@@ -2,7 +2,7 @@
   <div class="process-page">
     <!-- Top navigation bar -->
     <nav class="navbar">
-      <div class="nav-brand" @click="goHome">MIROFISH</div>
+      <div class="nav-brand" @click="goHome">CAMPAIGN REACTION</div>
       
       <!-- Step indicator -->
       <div class="nav-center">

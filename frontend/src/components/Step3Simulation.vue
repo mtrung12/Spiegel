@@ -264,7 +264,7 @@
 
         <div v-if="allActions.length === 0" class="waiting-state">
           <div class="pulse-ring"></div>
-          <span>Waiting for agent actions...</span>
+          <span>{{ $t('step3.waitingForActions') }}</span>
         </div>
       </div>
     </div>

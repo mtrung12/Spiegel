@@ -524,72 +524,120 @@ A lightweight retrieval tool for simple, direct questions.
 - The facts most relevant to your query"""
 
 TOOL_DESC_INTERVIEW_AGENTS = """\
-[In-depth interview - real agent interviews, across both platforms]
-Calls the OASIS interview API to interview the agents actually running inside
-the simulation. This is not an LLM impersonation: it hits the real interview
-endpoint and returns the agents' own answers. By default it interviews on both
-Twitter and Reddit at once, for a fuller range of views.
+[Audience interview - real agent interviews, across both channels]
+Calls the OASIS interview API to interview the audience agents actually running
+inside the simulation. This is not an LLM impersonation: it hits the real
+interview endpoint and returns the agents' own answers. By default it interviews
+on both Twitter and Reddit at once, for a fuller range of segment views.
 
 How it works:
-1. Read the persona files to learn about every simulation agent
-2. Pick the agents most relevant to the interview topic (students, media,
-   officials, and so on)
+1. Read the persona files to learn about every audience agent
+2. Pick the agents most relevant to the interview topic (a given buyer segment,
+   the loudest detractors, the people who amplified the campaign, and so on)
 3. Write the interview questions automatically
-4. Call /api/simulation/interview/batch to run the real interview on both platforms
-5. Combine the answers into a multi-perspective analysis
+4. Call /api/simulation/interview/batch to run the real interview on both channels
+5. Combine the answers into a multi-segment analysis
 
 [When to use it]
-- You need to know how different roles see the event (what do students think?
-  what does the media say? what is the official line?)
-- You need opinions and positions from several sides
-- You need the simulation agents' own answers, straight from the OASIS environment
-- You want the report to come alive with an interview transcript
+- You need the "why" behind a number the metrics tool gave you (why did this
+  segment not convert? what specifically put them off?)
+- You need purchase intent, brand perception or objections stated in the
+  audience's own words - these are NOT countable from the action log
+- You need to compare how different buyer segments read the same creative
+- You want verbatim audience quotes for the report
 
 [What it returns]
-- Who each interviewee is
+- Who each respondent is, and which segment they belong to
 - Each agent's answers on Twitter and on Reddit
 - Key quotes, ready to quote directly
 - An interview summary and a comparison of the views
 
 [Important] The OASIS simulation environment must be running for this to work."""
 
+TOOL_DESC_CAMPAIGN_METRICS = """\
+[Campaign KPIs - hard numbers, counted not estimated]
+Reads the raw action log of the simulation and returns the measured marketing
+KPIs. Every figure here is a count, not an LLM estimate, so you may state these
+numbers in the report as measurements.
+
+[What it returns]
+- Reach / exposure: audience size, agents reached, reach rate, total impressions
+- Engagement: engaged agents, engagement rate, passive share, and the split
+  across posts, comments, likes, dislikes and follows
+- Virality: reposts, quotes, amplifier agents, virality ratio (amplifications
+  per authored post), cascade depth in rounds, and the peak round
+- Sentiment split: positive vs negative behavioural signals and a net score
+- Share of voice: which audience segment authored what share of the conversation
+- Segment breakdown: reach, engagement, sentiment and amplification per segment
+- The round-by-round curve, so you can see when the campaign peaked and decayed
+- The loudest voices driving the conversation
+
+[When to use it]
+- ALWAYS call this first when a section reports on reach, engagement, virality,
+  sentiment split, share of voice or segment performance
+- Whenever you are about to state a number - use the measured figure instead
+
+[What it does NOT cover]
+Purchase intent and specific objections are not countable from the action log.
+Get those from interview_agents and from what the agents actually wrote.
+
+[Parameters] None required."""
+
 # -- Outline planning prompts --
 
 PLAN_SYSTEM_PROMPT = """\
-You write "future prediction reports" and you have a god's-eye view of the
-simulated world: you can see every agent's behaviour, statements and interactions.
+You are a marketing effectiveness analyst writing a CAMPAIGN ASSESSMENT REPORT.
+You have full visibility into a simulated audience: every reaction, post,
+comment, like, share and silence is logged and available to you.
 
 [Core idea]
-We built a simulated world and injected a specific "simulation requirement" into
-it as the variable. How that world then evolved is our prediction of what may
-happen. What you are looking at is not "experimental data" - it is a rehearsal
-of the future.
+We took a campaign brief - its creative, its message, its target audience - and
+released it to a simulated audience built from that audience's real
+characteristics. How that audience reacted is our forecast of how the real
+market will receive the campaign. What you are looking at is a pre-flight test
+of the campaign, not an academic experiment.
 
 [Your task]
-Write a future prediction report that answers:
-1. Under the conditions we set, what happened next?
-2. How did each kind of agent (each group of people) react and act?
-3. What future trends and risks does this simulation reveal that deserve attention?
+Write a campaign assessment that answers the questions a marketing lead has
+before spending the budget:
+1. How far did the campaign travel, and who did it actually reach?
+2. Did the audience engage, ignore it, or push back - and in what proportion?
+3. Did it spread on its own, or did it need to be pushed?
+4. Which segments bought into the message, and which resisted it?
+5. What are the objections, and what should change before launch?
 
 [What the report is]
-- YES: a simulation-based prediction of the future, showing "if this, then what"
-- YES: focused on the predicted outcome - how the event unfolds, how groups
-  react, what emerges, what could go wrong
-- YES: agent behaviour in the simulated world IS the prediction of how real
-  people will behave
-- NO: an analysis of the present-day real world
-- NO: a vague general survey of public opinion
+- YES: an assessment of THIS campaign's likely market performance
+- YES: built on marketing KPIs - reach, engagement, sentiment split, virality,
+  purchase intent, share of voice, segment performance
+- YES: the simulated agents' posts and reactions ARE audience reactions to the
+  campaign; treat them as verbatim consumer response
+- NO: a generic prediction of the future or a public-opinion survey
+- NO: a description of the brand or the market as it exists today
+- NO: vague conclusions with no number attached
+
+[Sections to draw from]
+Pick the ones the evidence actually supports. Candidates:
+- Reach and exposure
+- Sentiment split (positive / negative / indifferent)
+- Engagement quality
+- Virality and the share cascade
+- Purchase intent and conversion signals
+- Key objections and message risks
+- Segment breakdown
+- Recommendations before launch
 
 [Section count]
 - At least 2 sections, at most 5
 - No sub-sections; write each section as one complete piece
-- Keep it tight and focused on the core predictive findings
-- You design the section structure yourself, based on what the prediction shows
+- Merge related KPIs into one section rather than spreading them thin
+- Always reserve one section for actionable recommendations
+- You design the section structure yourself, based on what the results show
 
 Output the report outline as JSON, in this shape:
 {
     "title": "report title",
-    "summary": "report summary (one sentence capturing the core predictive finding)",
+    "summary": "report summary (one sentence stating the campaign's headline result)",
     "sections": [
         {
             "title": "section title",
@@ -601,36 +649,42 @@ Output the report outline as JSON, in this shape:
 Note: the sections array must hold at least 2 and at most 5 elements."""
 
 PLAN_USER_PROMPT_TEMPLATE = """\
-[Predicted scenario]
-The variable we injected into the simulated world (the simulation requirement): {simulation_requirement}
+[Campaign under assessment]
+The campaign brief and target audience we released into the simulated market: {simulation_requirement}
 
-[Scale of the simulated world]
-- Entities taking part: {total_nodes}
-- Relationships formed between them: {total_edges}
-- Entity type distribution: {entity_types}
-- Active agents: {total_entities}
+[Scale of the simulated audience]
+- Audience entities modelled: {total_nodes}
+- Relationships between them (the social fabric the message travels through): {total_edges}
+- Audience segment types: {entity_types}
+- Active audience agents: {total_entities}
 
-[A sample of the future facts the simulation predicted]
+[Measured campaign KPIs]
+{campaign_metrics}
+
+[A sample of the audience reactions the simulation produced]
 {related_facts_json}
 
-Take the god's-eye view of this rehearsal of the future:
-1. Under the conditions we set, what state did the future end up in?
-2. How did each group of people (each agent) react and act?
-3. What future trends does this simulation reveal that deserve attention?
+Assess this campaign the way a marketing lead would before signing off the spend:
+1. What is the headline result - did this campaign land, and how hard?
+2. Where did reach, engagement and virality actually come from?
+3. Which segments converted, which stayed indifferent, and which pushed back?
+4. What has to change before launch?
 
-Design the section structure that best fits what the prediction shows.
+Design the section structure that best fits what the results show. Lead with the
+KPIs that moved, not with a fixed template.
 
-[Reminder] Section count: at least 2, at most 5. Keep it tight and focused on
-the core predictive findings."""
+[Reminder] Section count: at least 2, at most 5. Keep every section anchored to
+evidence, and reserve one for recommendations."""
 
 # -- Section generation prompts --
 
 SECTION_SYSTEM_PROMPT_TEMPLATE = """\
-You write "future prediction reports" and you are writing one section of one.
+You are a marketing effectiveness analyst writing one section of a CAMPAIGN
+ASSESSMENT REPORT.
 
 Report title: {report_title}
 Report summary: {report_summary}
-Predicted scenario (the simulation requirement): {simulation_requirement}
+Campaign under assessment (brief and target audience): {simulation_requirement}
 
 The section you are writing now: {section_title}
 
@@ -638,39 +692,47 @@ The section you are writing now: {section_title}
 [Core idea]
 ═══════════════════════════════════════════════════════════════
 
-The simulated world is a rehearsal of the future. We injected specific
-conditions into it (the simulation requirement), and the behaviour and
-interactions of the agents inside it ARE the prediction of how real people will
-behave.
+The simulated audience is a pre-flight test of this campaign. We released the
+campaign's creative and message to an audience built from the target market's
+real characteristics, and what those agents posted, shared, liked, ignored and
+argued with IS the forecast of how the real market will react.
 
 Your task is to:
-- Show what happened next under the conditions we set
-- Predict how each group of people (each agent) reacted and acted
-- Surface the future trends, risks and opportunities worth attention
+- Report how the campaign performed against marketing KPIs
+- Explain WHY it performed that way, in the audience's own words
+- Show which segments responded and which did not
+- Surface the objections and risks that would cost money at launch
 
-NO: do not write an analysis of the present-day real world
-YES: focus on "what the future looks like" - the simulation result is the
-     predicted future
+NO: do not describe the brand or the market as it exists today
+NO: do not write a generic public-opinion survey
+YES: assess THIS campaign's likely market performance
 
 ═══════════════════════════════════════════════════════════════
 [The rules that matter most - you must follow them]
 ═══════════════════════════════════════════════════════════════
 
-1. [You must call tools to observe the simulated world]
-   - You are observing a rehearsal of the future from a god's-eye view
-   - Every statement must come from events and agent behaviour inside the
-     simulated world
-   - Do not write report content out of your own knowledge
-   - Call tools at least 3 times per section (at most 5) to observe the
-     simulated world, which stands in for the future
+1. [Numbers come from campaign_metrics, never from your own head]
+   - campaign_metrics returns COUNTED figures from the action log
+   - If your section states any reach, engagement, sentiment, virality, share of
+     voice or segment figure, it must be the measured figure from that tool
+   - Never estimate, round for effect, or infer a percentage the tool did not give you
+   - Percentages that the tool did not return do not belong in the report
 
-2. [You must quote the agents' own words and actions]
-   - What an agent says and does is the prediction of how real people will behave
-   - Present those predictions as quotes, for example:
-     > "One group will say: ...verbatim content..."
-   - Those quotes are the core evidence for the prediction
+2. [You must call tools to observe the audience]
+   - Every statement must come from measured KPIs or from the agents' own
+     behaviour inside the simulation
+   - Do not write report content out of your own marketing knowledge
+   - Call tools at least 3 times per section (at most 5)
 
-3. [Language consistency - quoted material must be translated into the report language]
+3. [You must quote the audience's own words]
+   - What an agent posts is a consumer reaction to the campaign - the closest
+     thing to a verbatim from a focus group
+   - Present those reactions as quotes, for example:
+     > "One buyer in this segment reacted: ...verbatim content..."
+   - Those quotes are what turns a number into an insight: the metric says
+     engagement was low, the quote says why
+
+4. [Language consistency - quoted material must be translated into the report language]
    - Tool output may be phrased in a different language from the report
    - The whole report must be written in the language the user specified
    - When you quote tool output written in another language, translate it into
@@ -678,16 +740,17 @@ YES: focus on "what the future looks like" - the simulation result is the
    - Keep the meaning intact and make the phrasing read naturally
    - This applies to body text and to quote blocks (> format) alike
 
-4. [Present the prediction faithfully]
-   - The report must reflect the simulation results that stand in for the future
-   - Do not add information the simulation does not contain
-   - Where the information is thin, say so plainly
+5. [Report the result faithfully, good or bad]
+   - A campaign that underperformed must be reported as underperforming
+   - Do not soften a weak number or pad a thin result with optimism
+   - Where the evidence is thin, say so plainly rather than filling the gap
+   - A finding the marketing lead can act on beats a finding that flatters
 
-5. [Never fabricate data]
+6. [Never fabricate data]
    - NO: do not invent usernames, quotes, statistics or interaction counts
    - NO: do not include a <tool_result> block in your reply - only the system
      supplies tool results
-   - YES: only cite entities, quotes and numbers that genuinely appear in the
+   - YES: only cite segments, quotes and numbers that genuinely appear in the
      tool results
    - If the tool results contain nothing relevant, say so honestly rather than
      making something up
@@ -706,21 +769,23 @@ YES: focus on "what the future looks like" - the simulation result is the
 
 [Correct example]
 ```
-This section analyses how public opinion spread. A close reading of the
-simulation data shows that...
+The campaign reached 142 of the 180 modelled audience members, a 78.9% reach
+rate, but only 41 of those reacted - an engagement rate of 28.9%.
 
-**The initial flashpoint**
+**Where the engagement came from**
 
-Weibo was where the story broke, and carried the bulk of the first wave:
+Amplification was concentrated in one segment rather than spread across the
+audience:
 
-> "Weibo accounted for 68% of the initial volume..."
+> "Finally a brand that gets what commuting is actually like. Sending this to
+> my group chat."
 
-**The amplification phase**
+**Where it stalled**
 
-Douyin pushed the story further:
+The older segment saw the creative and stayed passive:
 
-- Strong visual impact
-- High emotional resonance
+- Price framing read as aimed at someone else
+- No product benefit stated in the first line
 ```
 
 [Incorrect example]
@@ -739,12 +804,21 @@ This section analyses...
 {tools_description}
 
 [Advice - mix the tools, do not lean on just one]
-- insight_forge: deep analysis; decomposes the question and retrieves facts and
-  relationships along several dimensions
-- panorama_search: wide-angle view; the whole arc, the timeline, how things evolved
+- campaign_metrics: the measured KPIs. Call this FIRST in any section that
+  reports reach, engagement, sentiment split, virality, share of voice or
+  segment performance. Every number you print should come from here.
+- insight_forge: deep analysis; decomposes the question and retrieves audience
+  reactions and relationships along several dimensions
+- panorama_search: wide-angle view; the whole campaign arc, how reaction evolved
+  from launch through decay
 - quick_search: verify one specific point fast
-- interview_agents: interview the simulation agents for first-person views and
-  genuine reactions from different roles
+- interview_agents: interview the audience agents for purchase intent, brand
+  perception and objections in their own words - the things no counter can measure
+
+[The pattern that produces a good section]
+Measure first, then explain: pull the number from campaign_metrics, then use
+insight_forge or interview_agents to find out why the audience behaved that way.
+A number with no explanation is a dashboard, not an assessment.
 
 ═══════════════════════════════════════════════════════════════
 [Workflow]
@@ -774,34 +848,38 @@ Strictly forbidden:
 [What the section must contain]
 ═══════════════════════════════════════════════════════════════
 
-1. Content must rest on simulation data retrieved through the tools
-2. Quote the source material generously to show what the simulation produced
-3. Use Markdown, but no headings:
+1. Content must rest on measured KPIs and audience reactions retrieved through
+   the tools
+2. Quote the audience generously - verbatim reactions are what make the
+   assessment persuasive
+3. Where the section allows it, end on what the marketing team should DO about
+   the finding, not just what the finding is
+4. Use Markdown, but no headings:
    - **Bold** for emphasis, in place of sub-headings
    - Lists (- or 1. 2. 3.) to organise points
    - Blank lines between paragraphs
    - NO #, ##, ###, #### or any other heading syntax
-4. [Quote formatting - a quote must stand alone]
+5. [Quote formatting - a quote must stand alone]
    A quote must be its own paragraph, with a blank line before and after. Never
    inline it inside a paragraph:
 
    Correct:
    ```
-   The institution's response was seen as lacking substance.
+   The value message did not survive contact with this segment.
 
-   > "The institution's playbook looks rigid and slow against the pace of social media."
+   > "Looks nice but nothing here tells me why it costs twice what I pay now."
 
-   That judgement reflects the general public frustration.
+   That objection came up repeatedly and is the clearest fix available.
    ```
 
    Incorrect:
    ```
-   The institution's response was seen as lacking substance. > "The playbook..." That judgement reflects...
+   The value message did not land. > "Looks nice but..." That objection came up...
    ```
-5. Stay logically coherent with the other sections
-6. [Avoid repetition] Read the completed sections below carefully and do not
+6. Stay logically coherent with the other sections
+7. [Avoid repetition] Read the completed sections below carefully and do not
    restate the same information
-7. [Once more] Add no headings. Use **bold** in place of sub-headings."""
+8. [Once more] Add no headings. Use **bold** in place of sub-headings."""
 
 SECTION_USER_PROMPT_TEMPLATE = """\
 Sections completed so far (read them carefully; do not repeat them):
@@ -813,9 +891,13 @@ Sections completed so far (read them carefully; do not repeat them):
 
 [Reminders]
 1. Read the completed sections above carefully and do not restate them
-2. Call a tool for simulation data before you start writing
-3. Mix the tools; do not lean on just one
-4. The content must come from the retrieval results, not from your own knowledge
+2. If this section states any KPI, call campaign_metrics and use its measured
+   figures - never your own estimate
+3. Then find out WHY: insight_forge or interview_agents for the audience's
+   reasoning behind the number
+4. Mix the tools; do not lean on just one
+5. The content must come from the tool results, not from your own marketing
+   knowledge
 
 [Formatting warning - must be followed]
 - Do not write any heading (#, ##, ###, #### - none of them)
@@ -824,8 +906,9 @@ Sections completed so far (read them carefully; do not repeat them):
 - Write body text directly, using **bold** in place of sub-headings
 
 Begin:
-1. First reason (Thought) about what this section needs
-2. Then call a tool (Action) to get simulation data
+1. First reason (Thought) about which KPI this section rests on
+2. Then call a tool (Action) - campaign_metrics for the numbers, the retrieval
+   and interview tools for the reasoning behind them
 3. Once you have enough, write the Final Answer (body text only, no headings)"""
 
 # -- Message templates used inside the ReACT loop --
@@ -866,19 +949,22 @@ REACT_FORCE_FINAL_MSG = "The tool call limit has been reached. Write the section
 # -- Chat prompt --
 
 CHAT_SYSTEM_PROMPT_TEMPLATE = """\
-You are a concise, efficient assistant for simulation predictions.
+You are a concise marketing analyst answering questions about a campaign
+assessment you already produced.
 
-[Background]
-Prediction conditions: {simulation_requirement}
+[Campaign assessed]
+Campaign brief and target audience: {simulation_requirement}
 
-[The analysis report already generated]
+[The campaign assessment report already generated]
 {report_content}
 
 [Rules]
 1. Answer from the report above wherever you can
 2. Answer directly; skip long deliberation
 3. Only call a tool when the report does not cover the question
-4. Keep answers short, clear and well organised
+4. For any KPI the report does not already state, call campaign_metrics rather
+   than estimating it
+5. Keep answers short, clear and well organised
 
 [Available tools] (use only when needed, 1-2 calls at most)
 {tools_description}
@@ -890,8 +976,9 @@ Prediction conditions: {simulation_requirement}
 
 [Answer style]
 - Short and direct; no essays
-- Use > to quote key material
-- Lead with the conclusion, then explain why"""
+- Quote the audience with > when a verbatim makes the point better than a summary
+- Lead with the number or the conclusion, then explain why
+- When asked "should we launch this", give a straight answer with the evidence"""
 
 CHAT_OBSERVATION_SUFFIX = "\n\nAnswer the question concisely."
 
@@ -958,6 +1045,11 @@ class ReportAgent:
     def _define_tools(self) -> Dict[str, Dict[str, Any]]:
         """Define the available tools."""
         return {
+            "campaign_metrics": {
+                "name": "campaign_metrics",
+                "description": TOOL_DESC_CAMPAIGN_METRICS,
+                "parameters": {}
+            },
             "insight_forge": {
                 "name": "insight_forge",
                 "description": TOOL_DESC_INSIGHT_FORGE,
@@ -986,7 +1078,7 @@ class ReportAgent:
                 "name": "interview_agents",
                 "description": TOOL_DESC_INTERVIEW_AGENTS,
                 "parameters": {
-                    "interview_topic": "the interview topic or brief, e.g. 'find out what students think about the dormitory formaldehyde incident'",
+                    "interview_topic": "the interview topic or brief, e.g. 'find out whether the young-professional segment would actually buy after seeing this campaign, and what is holding them back'",
                     "max_agents": "maximum number of agents to interview (optional, default 5, max 10)"
                 }
             }
@@ -1007,7 +1099,12 @@ class ReportAgent:
         logger.info(t('report.executingTool', toolName=tool_name, params=parameters))
         
         try:
-            if tool_name == "insight_forge":
+            if tool_name == "campaign_metrics":
+                # Counted KPIs from the action log - no LLM, no estimation
+                from .campaign_metrics import CampaignMetricsService
+                return CampaignMetricsService.compute_as_text(self.simulation_id)
+
+            elif tool_name == "insight_forge":
                 query = parameters.get("query", "")
                 ctx = parameters.get("report_context", "") or report_context
                 result = self.zep_tools.insight_forge(
@@ -1095,14 +1192,20 @@ class ReportAgent:
                 return json.dumps(result, ensure_ascii=False, indent=2)
             
             else:
-                return f"Unknown tool: {tool_name}. Use one of: insight_forge, panorama_search, quick_search"
+                return (
+                    f"Unknown tool: {tool_name}. Use one of: campaign_metrics, "
+                    "insight_forge, panorama_search, quick_search, interview_agents"
+                )
                 
         except Exception as e:
             logger.error(t('report.toolExecFailed', toolName=tool_name, error=str(e)))
             return f"Tool call failed: {str(e)}"
     
     # Valid tool names, used to validate the bare-JSON fallback parse
-    VALID_TOOL_NAMES = {"insight_forge", "panorama_search", "quick_search", "interview_agents"}
+    VALID_TOOL_NAMES = {
+        "campaign_metrics", "insight_forge", "panorama_search",
+        "quick_search", "interview_agents",
+    }
 
     def _parse_tool_calls(self, response: str) -> List[Dict[str, Any]]:
         """
@@ -1237,6 +1340,11 @@ class ReportAgent:
         if progress_callback:
             progress_callback("planning", 30, t('progress.generatingOutline'))
         
+        # Plan the outline against the real KPIs, so the sections chosen reflect
+        # what actually moved rather than a fixed marketing template.
+        from .campaign_metrics import CampaignMetricsService
+        campaign_metrics = CampaignMetricsService.compute_as_text(self.simulation_id)
+
         system_prompt = f"{PLAN_SYSTEM_PROMPT}\n\n{get_language_instruction()}"
         user_prompt = PLAN_USER_PROMPT_TEMPLATE.format(
             simulation_requirement=self.simulation_requirement,
@@ -1244,6 +1352,7 @@ class ReportAgent:
             total_edges=context.get('graph_statistics', {}).get('total_edges', 0),
             entity_types=list(context.get('graph_statistics', {}).get('entity_types', {}).keys()),
             total_entities=context.get('total_entities', 0),
+            campaign_metrics=campaign_metrics,
             related_facts_json=json.dumps(context.get('related_facts', [])[:10], ensure_ascii=False, indent=2),
         )
 
@@ -1268,7 +1377,7 @@ class ReportAgent:
                 ))
             
             outline = ReportOutline(
-                title=response.get("title", "Simulation analysis report"),
+                title=response.get("title", "Campaign assessment report"),
                 summary=response.get("summary", ""),
                 sections=sections
             )
@@ -1283,12 +1392,12 @@ class ReportAgent:
             logger.error(t('report.outlinePlanFailed', error=str(e)))
             # Fall back to a default 3-section outline
             return ReportOutline(
-                title="Future prediction report",
-                summary="Future trends and risks, analysed from the simulation prediction",
+                title="Campaign assessment report",
+                summary="Simulated audience reaction to the campaign, measured against marketing KPIs",
                 sections=[
-                    ReportSection(title="Predicted scenario and core findings"),
-                    ReportSection(title="Predicted behaviour of each group"),
-                    ReportSection(title="Outlook and risks")
+                    ReportSection(title="Reach, engagement and sentiment"),
+                    ReportSection(title="Virality and segment breakdown"),
+                    ReportSection(title="Key objections and recommendations")
                 ]
             )
     
@@ -1362,10 +1471,10 @@ class ReportAgent:
         min_tool_calls = 3  # Minimum tool calls
         conflict_retries = 0  # Consecutive replies containing both a tool call and a Final Answer
         used_tools = set()  # Tool names called so far
-        all_tools = {"insight_forge", "panorama_search", "quick_search", "interview_agents"}
+        all_tools = set(self.VALID_TOOL_NAMES)
 
         # Report context, used by InsightForge to generate sub-questions
-        report_context = f"Section title: {section.title}\nSimulation requirement: {self.simulation_requirement}"
+        report_context = f"Section title: {section.title}\nCampaign brief: {self.simulation_requirement}"
         
         for iteration in range(max_iterations):
             if progress_callback:

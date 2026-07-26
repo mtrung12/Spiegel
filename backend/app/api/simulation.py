@@ -2122,6 +2122,35 @@ def get_simulation_timeline(simulation_id: str):
         }), 500
 
 
+@simulation_bp.route('/<simulation_id>/campaign-metrics', methods=['GET'])
+def get_campaign_metrics(simulation_id: str):
+    """
+    Return the measured marketing KPIs for the campaign.
+
+    Reach, engagement, virality, sentiment split, share of voice and the
+    per-segment breakdown, all counted from the action log rather than
+    estimated. Powers the campaign KPI dashboard, and is the same data the
+    report agent quotes.
+    """
+    try:
+        from ..services.campaign_metrics import CampaignMetricsService
+
+        metrics = CampaignMetricsService.compute_as_dict(simulation_id)
+
+        return jsonify({
+            "success": True,
+            "data": metrics
+        })
+
+    except Exception as e:
+        logger.error(f"计算营销KPI失败: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
 @simulation_bp.route('/<simulation_id>/agent-stats', methods=['GET'])
 def get_agent_stats(simulation_id: str):
     """

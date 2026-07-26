@@ -231,16 +231,22 @@ class OasisProfileGenerator:
         "Canada", "Australia", "Brazil", "India", "South Korea"
     ]
     
-    # Individual entity types (get a concrete person persona)
+    # Individual entity types (get a concrete buyer persona)
     INDIVIDUAL_ENTITY_TYPES = [
-        "student", "alumni", "professor", "person", "publicfigure", 
-        "expert", "faculty", "official", "journalist", "activist"
+        "student", "alumni", "professor", "person", "publicfigure",
+        "expert", "faculty", "official", "journalist", "activist",
+        # Marketing audience types
+        "consumer", "customer", "buyer", "shopper", "influencer",
+        "reviewer", "creator", "prospect",
     ]
-    
+
     # Group and institutional entity types (get a representative account persona)
     GROUP_ENTITY_TYPES = [
-        "university", "governmentagency", "organization", "ngo", 
-        "mediaoutlet", "company", "institution", "group", "community"
+        "university", "governmentagency", "organization", "ngo",
+        "mediaoutlet", "company", "institution", "group", "community",
+        # Marketing-side account types
+        "brand", "advertiser", "competitor", "retailer", "agency",
+        "publisher", "association",
     ]
     
     def __init__(
@@ -719,7 +725,27 @@ class OasisProfileGenerator:
     
     def _get_system_prompt(self, is_individual: bool) -> str:
         """Return the system prompt."""
-        base_prompt = "You are an expert at building social media user profiles. Produce detailed, believable personas for opinion simulation, staying as close to the real situation as possible. You must return valid JSON, and no string value may contain an unescaped newline."
+        if is_individual:
+            base_prompt = (
+                "You are a consumer insights researcher who builds audience segment personas "
+                "for marketing campaign testing. Produce detailed, believable buyer personas "
+                "grounded in real demographics, needs, brand attitudes, purchase behaviour and "
+                "media habits, staying as close to the real audience as possible. These personas "
+                "will be dropped into a simulated social feed to react to campaign creative, so "
+                "their buying motivations and their scepticism must both be concrete enough to "
+                "drive a realistic reaction. You must return valid JSON, and no string value may "
+                "contain an unescaped newline."
+            )
+        else:
+            base_prompt = (
+                "You are a consumer insights researcher who profiles the organisations, brands "
+                "and media outlets that shape how a marketing campaign is received. Produce a "
+                "detailed, believable account profile covering the organisation's role in the "
+                "category, its stance towards the brand being advertised, and how it talks about "
+                "products publicly. This account will be dropped into a simulated social feed to "
+                "react to campaign creative. You must return valid JSON, and no string value may "
+                "contain an unescaped newline."
+            )
         return f"{base_prompt}\n\n{get_language_instruction()}"
     
     def _build_individual_persona_prompt(
@@ -735,7 +761,9 @@ class OasisProfileGenerator:
         attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else "none"
         context_str = context[:3000] if context else "no additional context"
         
-        return f"""Generate a detailed social media persona for this entity, staying as close to the real situation as possible.
+        return f"""Generate a detailed AUDIENCE SEGMENT PERSONA for this entity: a buyer who will
+see a marketing campaign in their social feed and react to it. Stay as close to
+the real audience as possible.
 
 Entity name: {entity_name}
 Entity type: {entity_type}
@@ -748,20 +776,30 @@ Context:
 Return JSON with the following fields:
 
 1. bio: social media bio, around 200 characters
-2. persona: detailed persona description (around 2000 characters of plain text), covering:
-   - Basics (age, occupation, education, location)
-   - Background (formative experiences, connection to the event, social ties)
-   - Personality (MBTI type, core traits, how they express emotion)
-   - Social media behaviour (posting frequency, content preferences, interaction style, language quirks)
-   - Views and stance (attitude to the topic, what would anger or move them)
-   - Distinctive traits (catchphrases, notable experiences, personal hobbies)
-   - Personal memory (a key part of the persona: how this individual is connected to the event, and what they have already done and said during it)
+2. persona: detailed buyer persona (around 2000 characters of plain text), covering:
+   - Demographics (age, income band, occupation, education, household, location)
+   - Needs and pain points (what problem in their life this product category
+     addresses, what they currently do instead, what frustrates them about it)
+   - Brand attitude (which brands in this category they trust or avoid and why,
+     how loyal they are, how they react to being marketed to)
+   - Purchase behaviour (price sensitivity, how they research before buying,
+     who influences the decision, how long they deliberate, what triggers a
+     purchase, what kills one)
+   - Media habits (which platforms they use and when, what content they stop
+     scrolling for, whether they share things publicly, what they consider
+     worth reposting versus quietly ignoring)
+   - Personality (MBTI type, core traits, how they express approval and
+     annoyance in public)
+   - Voice (posting frequency, tone, language quirks, catchphrases)
+   - Category memory (a key part of the persona: their history with this
+     product category and this brand - past purchases, past disappointments,
+     what they have already said publicly about it)
 3. age: age as a number (must be an integer)
 4. gender: must be the English string "male" or "female"
 5. mbti: MBTI type (e.g. INTJ, ENFP)
 6. country: country name (e.g. "China")
 7. profession: occupation
-8. interested_topics: array of topics of interest
+8. interested_topics: array of topics and product categories they follow
 
 Important:
 - Every field value must be a string or a number, with no newline characters
@@ -769,6 +807,9 @@ Important:
 - {get_language_instruction()} (the gender field must stay English: male/female)
 - The content must stay consistent with the entity information
 - age must be a valid integer and gender must be "male" or "female"
+- Give this persona a specific, non-neutral relationship to the product
+  category. A persona with no clear buying motivation and no clear objection
+  produces a useless campaign test.
 """
 
     def _build_group_persona_prompt(
@@ -784,7 +825,10 @@ Important:
         attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else "none"
         context_str = context[:3000] if context else "no additional context"
         
-        return f"""Generate a detailed social media account profile for this organisation or group, staying as close to the real situation as possible.
+        return f"""Generate a detailed social media account profile for this organisation, brand,
+media outlet or community group - one of the collective voices that shapes how a
+marketing campaign is received in this category. Stay as close to the real
+organisation as possible.
 
 Entity name: {entity_name}
 Entity type: {entity_type}
@@ -799,12 +843,19 @@ Return JSON with the following fields:
 1. bio: official account bio, around 200 characters, professional in tone
 2. persona: detailed account description (around 2000 characters of plain text), covering:
    - Organisation basics (formal name, nature of the body, founding background, main remit)
-   - Account positioning (account type, target audience, core purpose)
+   - Role in the category (competitor, retail channel, trade press, consumer
+     watchdog, review community, industry body, or the advertiser itself)
+   - Audience it speaks to (who follows this account, and how much they trust it)
+   - Account positioning (account type, core purpose, what it exists to say)
+   - Stance towards the advertised brand and towards marketing in general
+     (does it amplify campaigns, scrutinise claims, stay neutral, or compete?)
+   - How it talks about products (does it quote prices, test claims, run
+     comparisons, publish complaints?)
    - Voice (language traits, stock phrases, topics it avoids)
    - Content patterns (content types, posting frequency, active hours)
-   - Stance (official position on the core topic, how it handles controversy)
-   - Special notes (profile of the group it represents, operating habits)
-   - Institutional memory (a key part of the profile: how this organisation is connected to the event, and what it has already done and said during it)
+   - Institutional memory (a key part of the profile: this organisation's
+     history with the advertised brand and category, and what it has already
+     said publicly about them)
 3. age: always 30 (the notional age of an institutional account)
 4. gender: always "other" (institutional accounts use other to mark a non-person)
 5. mbti: MBTI type describing the account's voice, e.g. ISTJ for rigorous and conservative
@@ -817,7 +868,9 @@ Important:
 - persona must read as one continuous passage with no newline characters
 - {get_language_instruction()} (the gender field must stay the English string "other")
 - age must be the integer 30 and gender must be the string "other"
-- The account's voice must match its official identity"""
+- The account's voice must match its official identity, and its reaction to a
+  campaign must follow from its role in the category rather than being neutral
+  by default"""
     
     def _generate_profile_rule_based(
         self,
