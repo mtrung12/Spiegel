@@ -371,6 +371,10 @@
               <span v-if="isSurveying" class="loading-spinner"></span>
               <span v-else>{{ $t('step5.submitSurvey') }}</span>
             </button>
+
+            <!-- A failed survey used to write to the log panel only, which left
+                 the button looking like it had done nothing at all. -->
+            <div v-if="surveyError" class="survey-error">{{ surveyError }}</div>
           </div>
 
           <!-- Survey Results -->
@@ -448,6 +452,7 @@ const selectedAgents = ref(new Set())
 const surveyQuestion = ref('')
 const surveyResults = ref([])
 const isSurveying = ref(false)
+const surveyError = ref('')
 
 // Report Data
 const reportOutline = ref(null)
@@ -721,6 +726,7 @@ const submitSurvey = async () => {
   if (selectedAgents.value.size === 0 || !surveyQuestion.value.trim()) return
   
   isSurveying.value = true
+  surveyError.value = ''
   addLog(t('log.sendSurvey', { count: selectedAgents.value.size }))
   
   try {
@@ -780,6 +786,7 @@ const submitSurvey = async () => {
       throw new Error(res.error || t('step5.requestFailed'))
     }
   } catch (err) {
+    surveyError.value = err.message || t('step5.requestFailed')
     addLog(t('log.surveySendFailed', { error: err.message }))
   } finally {
     isSurveying.value = false
@@ -2293,6 +2300,19 @@ watch(() => props.simulationId, (newId) => {
   background: #E5E5E5;
   color: #999999;
   cursor: not-allowed;
+}
+
+.survey-error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #E9C4C6;
+  border-left: 3px solid #C1666B;
+  border-radius: 4px;
+  background: #FCF6F6;
+  color: #A14A4F;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
 }
 
 .loading-spinner {

@@ -73,6 +73,7 @@ import multiprocessing
 import random
 import signal
 import sqlite3
+import time
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -211,6 +212,12 @@ IPC_COMMANDS_DIR = "ipc_commands"
 IPC_RESPONSES_DIR = "ipc_responses"
 ENV_STATUS_FILE = "env_status.json"
 
+# How long command-wait mode stays up with no IPC command before closing the
+# environment itself. Without it a run whose client went away (tab closed,
+# browser crashed) never exits, so SimulationRunner's monitor never publishes a
+# terminal status and the report step waits on a process that will never end.
+DEFAULT_IDLE_TIMEOUT = 3600.0
+
 class CommandType:
     """Command type constants."""
     INTERVIEW = "interview"
@@ -242,6 +249,12 @@ class ParallelIPCHandler:
         self.commands_dir = os.path.join(simulation_dir, IPC_COMMANDS_DIR)
         self.responses_dir = os.path.join(simulation_dir, IPC_RESPONSES_DIR)
         self.status_file = os.path.join(simulation_dir, ENV_STATUS_FILE)
+
+        # Monotonic timestamp of the last serviced command. The command-wait
+        # loop uses it to close an environment nobody is interviewing, so a run
+        # that finishes while no client is attached still reaches a terminal
+        # status instead of parking here forever.
+        self.last_command_at = time.monotonic()
         
         # Make sure the directories exist
         os.makedirs(self.commands_dir, exist_ok=True)
@@ -282,6 +295,11 @@ class ParallelIPCHandler:
     
     def send_response(self, command_id: str, status: str, result: Dict = None, error: str = None):
         """Send a response."""
+        # A long batch interview can outlast the idle timeout on its own, so the
+        # deadline is measured from when a command *finishes*, not only from
+        # when it arrived.
+        self.last_command_at = time.monotonic()
+
         response = {
             "command_id": command_id,
             "status": status,
@@ -571,7 +589,9 @@ class ParallelIPCHandler:
         command = self.poll_command()
         if not command:
             return True
-        
+
+        self.last_command_at = time.monotonic()
+
         command_id = command.get("command_id")
         command_type = command.get("command_type")
         args = command.get("args", {})
@@ -1533,6 +1553,16 @@ async def main():
         default=False,
         help='shut the environment down as soon as the run finishes, skipping command-wait mode'
     )
+    parser.add_argument(
+        '--idle-timeout',
+        type=float,
+        default=DEFAULT_IDLE_TIMEOUT,
+        help=(
+            'seconds to stay in command-wait mode with no IPC command before '
+            'closing the environment; 0 disables the timeout and waits forever '
+            f'(default: {DEFAULT_IDLE_TIMEOUT:.0f})'
+        )
+    )
     
     args = parser.parse_args()
     
@@ -1611,8 +1641,13 @@ async def main():
     if wait_for_commands:
         log_manager.info("")
         log_manager.info("=" * 60)
+        idle_timeout = max(0.0, args.idle_timeout)
         log_manager.info("Entering wait-for-command mode - the environment stays up")
         log_manager.info("Supported commands: interview, batch_interview, close_env")
+        if idle_timeout:
+            log_manager.info(f"Idle timeout: {idle_timeout:.0f}s with no command closes the environment")
+        else:
+            log_manager.info("Idle timeout: disabled - waiting for close_env")
         log_manager.info("=" * 60)
         
         # Create the IPC handler
@@ -1631,6 +1666,16 @@ async def main():
                 should_continue = await ipc_handler.process_commands()
                 if not should_continue:
                     break
+                # An idle environment closes itself. process_commands() refreshes
+                # last_command_at on every serviced command, so an active
+                # interview session keeps pushing the deadline out.
+                if idle_timeout:
+                    idle_for = time.monotonic() - ipc_handler.last_command_at
+                    if idle_for >= idle_timeout:
+                        log_manager.info(
+                            f"\nNo command for {idle_for:.0f}s - closing the environment on idle timeout"
+                        )
+                        break
                 # wait_for instead of sleep, so shutdown_event can interrupt it
                 try:
                     await asyncio.wait_for(_shutdown_event.wait(), timeout=0.5)

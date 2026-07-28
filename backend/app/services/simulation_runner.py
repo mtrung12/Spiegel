@@ -641,6 +641,141 @@ class SimulationRunner:
             cls._monitor_simulation_body(simulation_id, locale)
 
     @classmethod
+    def _publish_terminal_status(
+        cls,
+        simulation_id: str,
+        state: SimulationRunState,
+        sim_dir: str,
+        process_exited: bool,
+        exit_code: int | None = None,
+        monitor_error: Exception | None = None,
+    ) -> SimulationRunState:
+        """
+        Publish the run's terminal status, exactly once.
+
+        A healthy run reaches this twice: first when every enabled platform has
+        reported simulation_end, then again when the child process exits. The
+        first call is the one that matters. The child does not exit at the end
+        of the last round - it parks in IPC command-wait mode so agents can
+        still be interviewed - so a terminal status that waited for the exit
+        would leave the report step blocked for as long as the environment
+        stays up. The terminal-status guard below makes the second call a no-op.
+
+        Manual stop and natural completion can observe the same exit, so the
+        whole sequence is serialized under the per-simulation finalization lock.
+
+        Returns:
+            The run state that now carries the terminal status.
+        """
+        with cls._finalization_lock(simulation_id):
+            latest_state = cls.get_run_state(simulation_id)
+            if latest_state is not None:
+                state = latest_state
+
+            already_terminal = state.runner_status in {
+                RunnerStatus.STOPPED,
+                RunnerStatus.FAILED,
+                RunnerStatus.COMPLETED,
+            }
+
+            if not already_terminal:
+                manual_stop = simulation_id in cls._manual_stop_requests
+                desired_status = (
+                    RunnerStatus.STOPPED
+                    if manual_stop
+                    else RunnerStatus.COMPLETED
+                )
+                error_message = None
+                if not manual_stop and monitor_error is not None:
+                    desired_status = RunnerStatus.FAILED
+                    error_message = str(monitor_error)
+                elif not manual_stop and process_exited and exit_code != 0:
+                    # Only meaningful once the process is gone. On the early
+                    # call there is no exit code yet, and a still-running
+                    # environment is not a failure.
+                    desired_status = RunnerStatus.FAILED
+                    main_log_path = os.path.join(sim_dir, "simulation.log")
+                    error_info = ""
+                    try:
+                        if os.path.exists(main_log_path):
+                            with open(main_log_path, 'r', encoding='utf-8') as f:
+                                error_info = f.read()[-2000:]
+                    except Exception:
+                        pass
+                    error_message = (
+                        f"process exit code: {exit_code}, error: {error_info}"
+                    )
+
+                state.twitter_running = False
+                state.reddit_running = False
+
+                if cls._graph_memory_enabled.get(simulation_id, False):
+                    # STOPPING is a non-terminal ingestion barrier. The UI
+                    # and report API must not observe COMPLETED until every
+                    # accepted episode is processed by Zep Cloud.
+                    state.runner_status = RunnerStatus.STOPPING
+                    cls._save_run_state(state)
+                    cls._sync_simulation_status(
+                        simulation_id,
+                        RunnerStatus.STOPPING,
+                    )
+                    try:
+                        ZepGraphMemoryManager.stop_updater(simulation_id)
+                        cls._graph_memory_enabled.pop(simulation_id, None)
+                        logger.info(
+                            "stopped graph memory updates: simulation_id=%s",
+                            simulation_id,
+                        )
+                    except Exception as error:
+                        logger.error(f"failed to stop graph memory updater: {error}")
+                        desired_status = RunnerStatus.FAILED
+                        error_message = f"Zep graph writes did not complete: {error}"
+
+                state.runner_status = desired_status
+                state.error = error_message
+                state.completed_at = datetime.now().isoformat()
+                cls._save_run_state(state)
+                cls._sync_simulation_status(
+                    simulation_id,
+                    desired_status,
+                    error_message,
+                )
+                pipeline_log.action(
+                    'SimulationRunner', 'simulation_finished',
+                    status='ok' if desired_status == RunnerStatus.COMPLETED else 'error',
+                    target=simulation_id,
+                    metrics={
+                        'final_status': desired_status.value,
+                        'exit_code': exit_code,
+                        'rounds_completed': state.current_round,
+                        'total_actions': (
+                            state.twitter_actions_count + state.reddit_actions_count
+                        ),
+                    },
+                    error=error_message,
+                )
+                if desired_status == RunnerStatus.COMPLETED:
+                    logger.info(f"simulation complete: {simulation_id}")
+                else:
+                    logger.error(f"simulation failed: {simulation_id}, error={state.error}")
+
+            elif process_exited and exit_code not in (0, None):
+                # The run was already published as finished, so a bad exit code
+                # from the environment teardown does not retract that. Record it
+                # rather than silently dropping it.
+                logger.warning(
+                    "simulation environment exited with code %s after the run "
+                    "was already finalized: simulation_id=%s",
+                    exit_code,
+                    simulation_id,
+                )
+
+            if process_exited:
+                cls._manual_stop_requests.discard(simulation_id)
+
+            return state
+
+    @classmethod
     def _monitor_simulation_body(cls, simulation_id: str, locale: str = 'zh'):
         """Poll the child process and drain the per-platform action logs."""
         set_locale(locale)
@@ -661,6 +796,7 @@ class SimulationRunner:
         
         monitor_error: Exception | None = None
         exit_code: int | None = None
+        published_terminal_status = False
         try:
             while process.poll() is None:  # The process is still running
                 # Read the Twitter action log
@@ -668,13 +804,25 @@ class SimulationRunner:
                     twitter_position = cls._read_action_log(
                         twitter_actions_log, twitter_position, state, "twitter"
                     )
-                
+
                 # Read the Reddit action log
                 if os.path.exists(reddit_actions_log):
                     reddit_position = cls._read_action_log(
                         reddit_actions_log, reddit_position, state, "reddit"
                     )
-                
+
+                # The run is finished once every platform says so. The process
+                # is still alive at this point - it serves interviews from
+                # command-wait mode - so the terminal status is published here
+                # rather than at exit, and the loop keeps polling only to see
+                # the environment go away.
+                if not published_terminal_status and cls._check_all_platforms_completed(state):
+                    state = cls._publish_terminal_status(
+                        simulation_id, state, sim_dir, process_exited=False
+                    )
+                    published_terminal_status = True
+                    continue
+
                 # Update the state
                 cls._save_run_state(state)
                 time.sleep(2)
@@ -692,96 +840,15 @@ class SimulationRunner:
             monitor_error = e
         
         finally:
-            # Manual stop and natural completion can observe the same process
-            # exit. Serialize terminal state and updater drain so only one path
-            # owns the final result.
-            with cls._finalization_lock(simulation_id):
-                latest_state = cls.get_run_state(simulation_id)
-                if latest_state is not None:
-                    state = latest_state
+            state = cls._publish_terminal_status(
+                simulation_id,
+                state,
+                sim_dir,
+                process_exited=True,
+                exit_code=exit_code,
+                monitor_error=monitor_error,
+            )
 
-                if state.runner_status not in {
-                    RunnerStatus.STOPPED,
-                    RunnerStatus.FAILED,
-                }:
-                    manual_stop = simulation_id in cls._manual_stop_requests
-                    desired_status = (
-                        RunnerStatus.STOPPED
-                        if manual_stop
-                        else RunnerStatus.COMPLETED
-                    )
-                    error_message = None
-                    if not manual_stop and monitor_error is not None:
-                        desired_status = RunnerStatus.FAILED
-                        error_message = str(monitor_error)
-                    elif not manual_stop and exit_code != 0:
-                        desired_status = RunnerStatus.FAILED
-                        main_log_path = os.path.join(sim_dir, "simulation.log")
-                        error_info = ""
-                        try:
-                            if os.path.exists(main_log_path):
-                                with open(main_log_path, 'r', encoding='utf-8') as f:
-                                    error_info = f.read()[-2000:]
-                        except Exception:
-                            pass
-                        error_message = (
-                            f"process exit code: {exit_code}, error: {error_info}"
-                        )
-
-                    state.twitter_running = False
-                    state.reddit_running = False
-
-                    if cls._graph_memory_enabled.get(simulation_id, False):
-                        # STOPPING is a non-terminal ingestion barrier. The UI
-                        # and report API must not observe COMPLETED until every
-                        # accepted episode is processed by Zep Cloud.
-                        state.runner_status = RunnerStatus.STOPPING
-                        cls._save_run_state(state)
-                        cls._sync_simulation_status(
-                            simulation_id,
-                            RunnerStatus.STOPPING,
-                        )
-                        try:
-                            ZepGraphMemoryManager.stop_updater(simulation_id)
-                            cls._graph_memory_enabled.pop(simulation_id, None)
-                            logger.info(
-                                "stopped graph memory updates: simulation_id=%s",
-                                simulation_id,
-                            )
-                        except Exception as error:
-                            logger.error(f"failed to stop graph memory updater: {error}")
-                            desired_status = RunnerStatus.FAILED
-                            error_message = f"Zep graph writes did not complete: {error}"
-
-                    state.runner_status = desired_status
-                    state.error = error_message
-                    state.completed_at = datetime.now().isoformat()
-                    cls._save_run_state(state)
-                    cls._sync_simulation_status(
-                        simulation_id,
-                        desired_status,
-                        error_message,
-                    )
-                    pipeline_log.action(
-                        'SimulationRunner', 'simulation_finished',
-                        status='ok' if desired_status == RunnerStatus.COMPLETED else 'error',
-                        target=simulation_id,
-                        metrics={
-                            'final_status': desired_status.value,
-                            'exit_code': exit_code,
-                            'rounds_completed': state.current_round,
-                            'total_actions': (
-                                state.twitter_actions_count + state.reddit_actions_count
-                            ),
-                        },
-                        error=error_message,
-                    )
-                    if desired_status == RunnerStatus.COMPLETED:
-                        logger.info(f"simulation complete: {simulation_id}")
-                    else:
-                        logger.error(f"simulation failed: {simulation_id}, error={state.error}")
-                cls._manual_stop_requests.discard(simulation_id)
-            
             # Release the process resources
             cls._processes.pop(simulation_id, None)
             cls._action_queues.pop(simulation_id, None)

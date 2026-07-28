@@ -23,6 +23,7 @@ import random
 import signal
 import sys
 import sqlite3
+import time
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
@@ -138,6 +139,11 @@ IPC_COMMANDS_DIR = "ipc_commands"
 IPC_RESPONSES_DIR = "ipc_responses"
 ENV_STATUS_FILE = "env_status.json"
 
+# How long command-wait mode stays up with no IPC command before closing the
+# environment itself. Without it a run whose client went away never exits, so
+# SimulationRunner's monitor never publishes a terminal status.
+DEFAULT_IDLE_TIMEOUT = 3600.0
+
 class CommandType:
     """Command type constants."""
     INTERVIEW = "interview"
@@ -156,6 +162,10 @@ class IPCHandler:
         self.responses_dir = os.path.join(simulation_dir, IPC_RESPONSES_DIR)
         self.status_file = os.path.join(simulation_dir, ENV_STATUS_FILE)
         self._running = True
+
+        # Monotonic timestamp of the last serviced command; drives the idle
+        # timeout in the command-wait loop.
+        self.last_command_at = time.monotonic()
         
         # Make sure the directories exist
         os.makedirs(self.commands_dir, exist_ok=True)
@@ -194,6 +204,11 @@ class IPCHandler:
     
     def send_response(self, command_id: str, status: str, result: Dict = None, error: str = None):
         """Send a response."""
+        # A long batch interview can outlast the idle timeout on its own, so the
+        # deadline is measured from when a command *finishes*, not only from
+        # when it arrived.
+        self.last_command_at = time.monotonic()
+
         response = {
             "command_id": command_id,
             "status": status,
@@ -352,7 +367,9 @@ class IPCHandler:
         command = self.poll_command()
         if not command:
             return True
-        
+
+        self.last_command_at = time.monotonic()
+
         command_id = command.get("command_id")
         command_type = command.get("command_type")
         args = command.get("args", {})
@@ -398,18 +415,26 @@ class TwitterSimulationRunner:
         ActionType.QUOTE_POST,
     ]
     
-    def __init__(self, config_path: str, wait_for_commands: bool = True):
+    def __init__(
+        self,
+        config_path: str,
+        wait_for_commands: bool = True,
+        idle_timeout: float = DEFAULT_IDLE_TIMEOUT,
+    ):
         """
         Initialise the simulation runner.
-        
+
         Args:
             config_path: Path to simulation_config.json
             wait_for_commands: Wait for commands once the run finishes (default True)
+            idle_timeout: Seconds without a command before command-wait mode
+                closes the environment; 0 waits forever
         """
         self.config_path = config_path
         self.config = self._load_config()
         self.simulation_dir = os.path.dirname(config_path)
         self.wait_for_commands = wait_for_commands
+        self.idle_timeout = max(0.0, idle_timeout)
         self.env = None
         self.agent_graph = None
         self.ipc_handler = None
@@ -680,16 +705,27 @@ class TwitterSimulationRunner:
             print("\n" + "=" * 60)
             print("Entering wait-for-command mode - the environment stays up")
             print("Supported commands: interview, batch_interview, close_env")
+            if self.idle_timeout:
+                print(f"Idle timeout: {self.idle_timeout:.0f}s with no command closes the environment")
+            else:
+                print("Idle timeout: disabled - waiting for close_env")
             print("=" * 60)
-            
+
             self.ipc_handler.update_status("alive")
-            
+
             # Command-wait loop, driven by the global _shutdown_event
             try:
                 while not _shutdown_event.is_set():
                     should_continue = await self.ipc_handler.process_commands()
                     if not should_continue:
                         break
+                    # An idle environment closes itself, so a run whose client
+                    # went away still reaches a terminal status.
+                    if self.idle_timeout:
+                        idle_for = time.monotonic() - self.ipc_handler.last_command_at
+                        if idle_for >= self.idle_timeout:
+                            print(f"\nNo command for {idle_for:.0f}s - closing the environment on idle timeout")
+                            break
                     try:
                         await asyncio.wait_for(_shutdown_event.wait(), timeout=0.5)
                         break  # Shutdown signal received
@@ -732,7 +768,17 @@ async def main():
         default=False,
         help='shut the environment down as soon as the run finishes, skipping command-wait mode'
     )
-    
+    parser.add_argument(
+        '--idle-timeout',
+        type=float,
+        default=DEFAULT_IDLE_TIMEOUT,
+        help=(
+            'seconds to stay in command-wait mode with no IPC command before '
+            'closing the environment; 0 disables the timeout and waits forever '
+            f'(default: {DEFAULT_IDLE_TIMEOUT:.0f})'
+        )
+    )
+
     args = parser.parse_args()
     
     # Create the shutdown event as main() starts
@@ -749,7 +795,8 @@ async def main():
     
     runner = TwitterSimulationRunner(
         config_path=args.config,
-        wait_for_commands=not args.no_wait
+        wait_for_commands=not args.no_wait,
+        idle_timeout=args.idle_timeout
     )
     await runner.run(max_rounds=args.max_rounds)
 

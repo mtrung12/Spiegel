@@ -219,9 +219,9 @@ async function loadPosts() {
       order.value
     )
 
-    if (res.data?.success) {
-      posts.value = res.data.data.posts || []
-      total.value = res.data.data.total || 0
+    if (res?.success) {
+      posts.value = res.data?.posts || []
+      total.value = res.data?.total || 0
 
       // A post kept open across a refresh should show the newer counts.
       if (selectedPost.value) {
@@ -229,7 +229,7 @@ async function loadPosts() {
         if (fresh) selectedPost.value = fresh
       }
     } else {
-      error.value = res.data?.error || t('feedBoard.loadFailed')
+      error.value = res?.error || t('feedBoard.loadFailed')
       posts.value = []
     }
   } catch (e) {
@@ -251,8 +251,8 @@ async function selectPost(post) {
       post.post_id,
       platform.value
     )
-    if (res.data?.success) {
-      comments.value = res.data.data.comments || []
+    if (res?.success) {
+      comments.value = res.data?.comments || []
     }
   } catch (e) {
     comments.value = []
