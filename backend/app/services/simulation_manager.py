@@ -15,6 +15,7 @@ from enum import Enum
 
 from ..config import Config
 from ..utils.logger import get_logger
+from ..utils.pipeline_logger import pipeline_log
 from .zep_entity_reader import ZepEntityReader, FilteredEntities
 from .oasis_profile_generator import OasisProfileGenerator, OasisAgentProfile
 from .simulation_config_generator import SimulationConfigGenerator, SimulationParameters
@@ -313,6 +314,35 @@ class SimulationManager:
         Returns:
             SimulationState
         """
+        with pipeline_log.run(
+            run_id=simulation_id,
+            kind='simulation_prepare',
+            requirement_chars=len(simulation_requirement or ''),
+            document_chars=len(document_text or ''),
+            use_llm_for_profiles=use_llm_for_profiles,
+            parallel_profile_count=parallel_profile_count,
+        ):
+            return self._prepare_simulation_impl(
+                simulation_id=simulation_id,
+                simulation_requirement=simulation_requirement,
+                document_text=document_text,
+                defined_entity_types=defined_entity_types,
+                use_llm_for_profiles=use_llm_for_profiles,
+                progress_callback=progress_callback,
+                parallel_profile_count=parallel_profile_count,
+            )
+
+    def _prepare_simulation_impl(
+        self,
+        simulation_id: str,
+        simulation_requirement: str,
+        document_text: str,
+        defined_entity_types: Optional[List[str]] = None,
+        use_llm_for_profiles: bool = True,
+        progress_callback: Optional[callable] = None,
+        parallel_profile_count: int = 3
+    ) -> SimulationState:
+        """Run the preparation stages. See prepare_simulation for the contract."""
         state = self._load_simulation_state(simulation_id)
         if not state:
             raise ValueError(f"simulation does not exist: {simulation_id}")
@@ -328,23 +358,45 @@ class SimulationManager:
             sim_dir = self._get_simulation_dir(simulation_id)
             
             # ========== Stage 1: read and filter entities ==========
+            stage_handle = pipeline_log.begin_stage(
+                'reading_entities', graph_id=state.graph_id,
+            )
             if progress_callback:
                 progress_callback("reading", 0, t('progress.connectingZepGraph'))
-            
+
             reader = ZepEntityReader()
-            
+
             if progress_callback:
                 progress_callback("reading", 30, t('progress.readingNodeData'))
-            
-            filtered = reader.filter_defined_entities(
-                graph_id=state.graph_id,
+
+            with pipeline_log.step(
+                'ZepEntityReader', 'filter_defined_entities',
+                target=state.graph_id,
                 defined_entity_types=defined_entity_types,
-                enrich_with_edges=True
-            )
-            
+                enrich_with_edges=True,
+            ) as step:
+                filtered = reader.filter_defined_entities(
+                    graph_id=state.graph_id,
+                    defined_entity_types=defined_entity_types,
+                    enrich_with_edges=True
+                )
+                step.metric(
+                    entities=filtered.filtered_count,
+                    entity_types=len(filtered.entity_types),
+                )
+                step.output(
+                    entity_types=list(filtered.entity_types),
+                    entity_names=[e.name for e in filtered.entities],
+                )
+
             state.entities_count = filtered.filtered_count
             state.entity_types = list(filtered.entity_types)
-            
+            pipeline_log.end_stage(
+                stage_handle,
+                entities=filtered.filtered_count,
+                entity_types=len(filtered.entity_types),
+            )
+
             if progress_callback:
                 progress_callback(
                     "reading", 100,
@@ -361,7 +413,13 @@ class SimulationManager:
             
             # ========== Stage 2: generate agent profiles ==========
             total_entities = len(filtered.entities)
-            
+            stage_handle = pipeline_log.begin_stage(
+                'generating_profiles',
+                entities=total_entities,
+                use_llm=use_llm_for_profiles,
+                parallel_count=parallel_profile_count,
+            )
+
             if progress_callback:
                 progress_callback(
                     "generating_profiles", 0,
@@ -420,20 +478,28 @@ class SimulationManager:
                 )
             
             if state.enable_reddit:
-                generator.save_profiles(
-                    profiles=profiles,
-                    file_path=os.path.join(sim_dir, "reddit_profiles.json"),
-                    platform="reddit"
-                )
-            
+                with pipeline_log.step(
+                    'OasisProfileGenerator', 'save_profiles', target='reddit',
+                    profiles=len(profiles),
+                ):
+                    generator.save_profiles(
+                        profiles=profiles,
+                        file_path=os.path.join(sim_dir, "reddit_profiles.json"),
+                        platform="reddit"
+                    )
+
             if state.enable_twitter:
                 # Twitter must be CSV - OASIS requires it
-                generator.save_profiles(
-                    profiles=profiles,
-                    file_path=os.path.join(sim_dir, "twitter_profiles.csv"),
-                    platform="twitter"
-                )
-            
+                with pipeline_log.step(
+                    'OasisProfileGenerator', 'save_profiles', target='twitter',
+                    profiles=len(profiles),
+                ):
+                    generator.save_profiles(
+                        profiles=profiles,
+                        file_path=os.path.join(sim_dir, "twitter_profiles.csv"),
+                        platform="twitter"
+                    )
+
             if progress_callback:
                 progress_callback(
                     "generating_profiles", 100,
@@ -441,8 +507,12 @@ class SimulationManager:
                     current=len(profiles),
                     total=len(profiles)
                 )
-            
+            pipeline_log.end_stage(stage_handle, profiles=len(profiles))
+
             # ========== Stage 3: generate the simulation config with the LLM ==========
+            stage_handle = pipeline_log.begin_stage(
+                'generating_config', entities=len(filtered.entities),
+            )
             if progress_callback:
                 progress_callback(
                     "generating_config", 0,
@@ -482,12 +552,18 @@ class SimulationManager:
             
             # Write the config file
             config_path = os.path.join(sim_dir, "simulation_config.json")
-            with open(config_path, 'w', encoding='utf-8') as f:
-                f.write(sim_params.to_json())
-            
+            with pipeline_log.step(
+                'SimulationManager', 'write_config', target=config_path,
+            ) as step:
+                config_json = sim_params.to_json()
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    f.write(config_json)
+                step.output_text(config_json)
+                step.metric(config_bytes=len(config_json))
+
             state.config_generated = True
             state.config_reasoning = sim_params.generation_reasoning
-            
+
             if progress_callback:
                 progress_callback(
                     "generating_config", 100,
@@ -495,7 +571,8 @@ class SimulationManager:
                     current=3,
                     total=3
                 )
-            
+            pipeline_log.end_stage(stage_handle)
+
             # The runner scripts stay in backend/scripts/ and are no longer copied
             # into the simulation directory; simulation_runner launches them from there.
             
@@ -512,6 +589,11 @@ class SimulationManager:
             logger.error(f"simulation preparation failed: {simulation_id}, error={str(e)}")
             import traceback
             logger.error(traceback.format_exc())
+            pipeline_log.action(
+                'SimulationManager', 'prepare_failed',
+                status='error', target=simulation_id,
+                error=f"{type(e).__name__}: {e}",
+            )
             state.status = SimulationStatus.FAILED
             state.error = str(e)
             self._save_simulation_state(state)

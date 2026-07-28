@@ -30,7 +30,6 @@ help:
 
 run:
 	$(COMPOSE) up -d --build
-	@echo.
 	@echo Frontend $(FRONTEND_URL)
 	@echo Backend  $(BACKEND_URL)
 	@echo Logs with: make logs
@@ -38,7 +37,6 @@ run:
 rebuild:
 	$(COMPOSE) build --no-cache
 	$(COMPOSE) up -d --force-recreate
-	@echo.
 	@echo Rebuilt. Frontend $(FRONTEND_URL)  Backend $(BACKEND_URL)
 
 build:

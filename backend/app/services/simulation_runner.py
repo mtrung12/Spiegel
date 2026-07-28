@@ -22,6 +22,7 @@ from queue import Queue
 from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.locale import get_locale, set_locale
+from ..utils.pipeline_logger import pipeline_log
 from ..utils.zep import (
     ZEP_HTTP_REQUEST_TIMEOUT_SECONDS,
     ZEP_INGESTION_WAIT_TIMEOUT_SECONDS,
@@ -620,13 +621,30 @@ class SimulationRunner:
                     RunnerStatus.FAILED,
                     state.error,
                 )
+            pipeline_log.action(
+                'SimulationRunner', 'simulation_start_failed',
+                status='error', target=simulation_id,
+                metrics={'platform': platform},
+                error=state.error,
+            )
             raise
-        
+
         return state
-    
+
     @classmethod
     def _monitor_simulation(cls, simulation_id: str, locale: str = 'zh'):
         """Monitor the simulation process and parse the action log."""
+        # The monitor owns its own thread, so it opens its own run scope rather
+        # than inheriting one from whoever called start_simulation.
+        with pipeline_log.run(
+            run_id=simulation_id,
+            kind='simulation_run',
+        ), pipeline_log.stage('running'):
+            cls._monitor_simulation_body(simulation_id, locale)
+
+    @classmethod
+    def _monitor_simulation_body(cls, simulation_id: str, locale: str = 'zh'):
+        """Poll the child process and drain the per-platform action logs."""
         set_locale(locale)
         sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
         
@@ -746,6 +764,20 @@ class SimulationRunner:
                         desired_status,
                         error_message,
                     )
+                    pipeline_log.action(
+                        'SimulationRunner', 'simulation_finished',
+                        status='ok' if desired_status == RunnerStatus.COMPLETED else 'error',
+                        target=simulation_id,
+                        metrics={
+                            'final_status': desired_status.value,
+                            'exit_code': exit_code,
+                            'rounds_completed': state.current_round,
+                            'total_actions': (
+                                state.twitter_actions_count + state.reddit_actions_count
+                            ),
+                        },
+                        error=error_message,
+                    )
                     if desired_status == RunnerStatus.COMPLETED:
                         logger.info(f"simulation complete: {simulation_id}")
                     else:
@@ -812,6 +844,14 @@ class SimulationRunner:
                                 
                                 # simulation_end marks a platform as finished
                                 if event_type == "simulation_end":
+                                    pipeline_log.action(
+                                        f'agent.{platform}', 'simulation_end',
+                                        target=platform,
+                                        metrics={
+                                            'total_rounds': action_data.get('total_rounds'),
+                                            'total_actions': action_data.get('total_actions'),
+                                        },
+                                    )
                                     if platform == "twitter":
                                         state.twitter_completed = True
                                         state.twitter_running = False
@@ -839,7 +879,17 @@ class SimulationRunner:
                                 elif event_type == "round_end":
                                     round_num = action_data.get("round", 0)
                                     simulated_hours = action_data.get("simulated_hours", 0)
-                                    
+
+                                    pipeline_log.action(
+                                        f'agent.{platform}', 'round_end',
+                                        target=f"round {round_num}",
+                                        metrics={
+                                            'round': round_num,
+                                            'simulated_hours': simulated_hours,
+                                            'actions_count': action_data.get('actions_count'),
+                                        },
+                                    )
+
                                     # Update the per-platform round and time
                                     if platform == "twitter":
                                         if round_num > state.twitter_current_round:
@@ -870,7 +920,8 @@ class SimulationRunner:
                                 success=action_data.get("success", True),
                             )
                             state.add_action(action)
-                            
+                            cls._log_agent_action(action)
+
                             # Update the round
                             if action.round_num and action.round_num > state.current_round:
                                 state.current_round = action.round_num
@@ -886,6 +937,45 @@ class SimulationRunner:
             logger.warning(f"failed to read action log: {log_path}, error={e}")
             return position
     
+    @staticmethod
+    def _log_agent_action(action: AgentAction) -> None:
+        """
+        Mirror one agent action into the pipeline streams.
+
+        What the agent *did* goes to actions.jsonl. What it *wrote* - post
+        bodies, comments, tool results - goes to debug.jsonl only, which is why
+        the action stream stays readable at simulation scale.
+        """
+        args = action.action_args or {}
+        text_fields = {
+            key: value for key, value in args.items()
+            if isinstance(value, str) and len(value) > 80
+        }
+        debug_id = pipeline_log.debug(
+            f'agent.{action.platform}', action.action_type or 'UNKNOWN',
+            target=action.agent_name,
+            status='ok' if action.success else 'error',
+            inputs={
+                'agent_id': action.agent_id,
+                'round': action.round_num,
+                'action_args': args,
+            },
+            outputs={'result': action.result},
+            output_text='\n\n'.join(text_fields.values()) or None,
+        )
+        pipeline_log.action(
+            f'agent.{action.platform}', action.action_type or 'UNKNOWN',
+            status='ok' if action.success else 'error',
+            target=action.agent_name,
+            metrics={
+                'agent_id': action.agent_id,
+                'round': action.round_num,
+                'content_chars': sum(len(v) for v in text_fields.values()),
+                'arg_keys': sorted(args.keys()),
+            },
+            debug_id=debug_id,
+        )
+
     @classmethod
     def _check_all_platforms_completed(cls, state: SimulationRunState) -> bool:
         """
@@ -1004,6 +1094,14 @@ class SimulationRunner:
             cls._manual_stop_requests.add(simulation_id)
             cls._save_run_state(state)
             cls._sync_simulation_status(simulation_id, RunnerStatus.STOPPING)
+            pipeline_log.action(
+                'SimulationRunner', 'stop_requested',
+                target=simulation_id,
+                metrics={
+                    'current_round': state.current_round,
+                    'retrying_finalization': retrying_finalization,
+                },
+            )
 
             # Kill the process
             process = cls._processes.get(simulation_id)

@@ -107,3 +107,5 @@ data/
 *.drawio.dtmp
 *.drawio.bak
 *.dtmp
+# Local working documents: campaign briefs, creative, notes. Never committed.
+local-doc/

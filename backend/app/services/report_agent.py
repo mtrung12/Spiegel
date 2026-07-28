@@ -22,6 +22,7 @@ from ..config import Config
 from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, t
+from ..utils.pipeline_logger import llm_caller, pipeline_log
 from .zep_tools import (
     ZepToolsService, 
     SearchResult, 
@@ -1130,7 +1131,19 @@ class ReportAgent:
             The tool result, as text
 """
         logger.info(t('report.executingTool', toolName=tool_name, params=parameters))
-        
+
+        with pipeline_log.step(
+            'ReportAgent', 'tool_call', target=tool_name, parameters=parameters,
+        ) as step:
+            result = self._execute_tool_impl(tool_name, parameters, report_context)
+            step.output_text(result)
+            step.metric(result_chars=len(result or ''))
+            return result
+
+    def _execute_tool_impl(
+        self, tool_name: str, parameters: Dict[str, Any], report_context: str = ""
+    ) -> str:
+        """Dispatch one tool call. See _execute_tool for the contract."""
         try:
             if tool_name == "campaign_metrics":
                 # Counted KPIs from the action log - no LLM, no estimation
@@ -1249,6 +1262,11 @@ class ReportAgent:
                 
         except Exception as e:
             logger.error(t('report.toolExecFailed', toolName=tool_name, error=str(e)))
+            pipeline_log.action(
+                'ReportAgent', 'tool_failed',
+                status='error', target=tool_name,
+                error=f"{type(e).__name__}: {e}",
+            )
             return f"Tool call failed: {str(e)}"
     
     # Valid tool names, used to validate the bare-JSON fallback parse
@@ -1407,39 +1425,53 @@ class ReportAgent:
         )
 
         try:
-            response = self.llm.chat_json(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.3
-            )
-            
-            if progress_callback:
-                progress_callback("planning", 80, t('progress.parsingOutline'))
-            
-            # Parse the outline
-            sections = []
-            for section_data in response.get("sections", []):
-                sections.append(ReportSection(
-                    title=section_data.get("title", ""),
-                    content=""
-                ))
-            
-            outline = ReportOutline(
-                title=response.get("title", "Campaign assessment report"),
-                summary=response.get("summary", ""),
-                sections=sections
-            )
-            
+            with pipeline_log.step(
+                'ReportAgent', 'plan_outline', target=self.simulation_id,
+            ) as step, llm_caller('ReportAgent', self.simulation_id):
+                step.input_text(user_prompt)
+                response = self.llm.chat_json(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.3
+                )
+
+                if progress_callback:
+                    progress_callback("planning", 80, t('progress.parsingOutline'))
+
+                # Parse the outline
+                sections = []
+                for section_data in response.get("sections", []):
+                    sections.append(ReportSection(
+                        title=section_data.get("title", ""),
+                        content=""
+                    ))
+
+                outline = ReportOutline(
+                    title=response.get("title", "Campaign assessment report"),
+                    summary=response.get("summary", ""),
+                    sections=sections
+                )
+                step.output(
+                    title=outline.title,
+                    section_titles=[s.title for s in sections],
+                )
+                step.metric(sections=len(sections))
+
             if progress_callback:
                 progress_callback("planning", 100, t('progress.outlinePlanComplete'))
-            
+
             logger.info(t('report.outlinePlanDone', count=len(sections)))
             return outline
-            
+
         except Exception as e:
             logger.error(t('report.outlinePlanFailed', error=str(e)))
+            pipeline_log.action(
+                'ReportAgent', 'outline_fallback_default',
+                status='warn', target=self.simulation_id,
+                error=f"{type(e).__name__}: {e}",
+            )
             # Fall back to a default 3-section outline
             return ReportOutline(
                 title="Campaign assessment report",
@@ -1535,11 +1567,12 @@ class ReportAgent:
                 )
             
             # Call the LLM
-            response = self.llm.chat(
-                messages=messages,
-                temperature=0.5,
-                max_tokens=4096
-            )
+            with llm_caller('ReportAgent', f"{section.title} #{iteration + 1}"):
+                response = self.llm.chat(
+                    messages=messages,
+                    temperature=0.5,
+                    max_tokens=4096
+                )
 
             # The LLM returned None (API error, or empty content)
             if response is None:
@@ -1558,6 +1591,21 @@ class ReportAgent:
             tool_calls = self._parse_tool_calls(response)
             has_tool_calls = bool(tool_calls)
             has_final_answer = "Final Answer:" in response
+
+            # The reply text itself stays out of the action stream; only the
+            # decision the agent reached is recorded here.
+            pipeline_log.action(
+                'ReportAgent', 'react_iteration',
+                target=section.title,
+                metrics={
+                    'iteration': iteration + 1,
+                    'tool_calls': len(tool_calls),
+                    'tool_names': [c.get('name') for c in tool_calls],
+                    'has_final_answer': has_final_answer,
+                    'response_chars': len(response),
+                    'tool_calls_so_far': tool_calls_count,
+                },
+            )
 
             # -- Conflict: the reply held both a tool call and a Final Answer --
             if has_tool_calls and has_final_answer:
@@ -1740,12 +1788,13 @@ class ReportAgent:
         # Iteration limit reached: force the content out
         logger.warning(t('report.sectionMaxIter', title=section.title))
         messages.append({"role": "user", "content": REACT_FORCE_FINAL_MSG})
-        
-        response = self.llm.chat(
-            messages=messages,
-            temperature=0.5,
-            max_tokens=4096
-        )
+
+        with llm_caller('ReportAgent', f"{section.title} (forced close)"):
+            response = self.llm.chat(
+                messages=messages,
+                temperature=0.5,
+                max_tokens=4096
+            )
 
         # The forced close may also return None
         if response is None:
@@ -1795,12 +1844,29 @@ reports/{report_id}/
             Report: the complete report
 """
         import uuid
-        
+
         # Generate a report_id when none was supplied
         if not report_id:
             report_id = f"report_{uuid.uuid4().hex[:12]}"
+
+        # Report generation runs on its own background thread, so it opens its
+        # own run scope instead of inheriting the request context.
+        with pipeline_log.run(
+            run_id=report_id,
+            kind='report_generate',
+            simulation_id=self.simulation_id,
+            graph_id=self.graph_id,
+        ):
+            return self._generate_report_impl(progress_callback, report_id)
+
+    def _generate_report_impl(
+        self,
+        progress_callback: Optional[Callable[[str, int, str], None]],
+        report_id: str,
+    ) -> Report:
+        """Run the report pipeline. See generate_report for the contract."""
         start_time = datetime.now()
-        
+
         report = Report(
             report_id=report_id,
             simulation_id=self.simulation_id,
@@ -1892,19 +1958,29 @@ reports/{report_id}/
                     )
                 
                 # Generate the section body
-                section_content = self._generate_section_react(
-                    section=section,
-                    outline=outline,
-                    previous_sections=generated_sections,
-                    progress_callback=lambda stage, prog, msg:
-                        progress_callback(
-                            stage, 
-                            base_progress + int(prog * 0.7 / total_sections),
-                            msg
-                        ) if progress_callback else None,
-                    section_index=section_num
-                )
-                
+                with pipeline_log.stage(
+                    f'section_{section_num:02d}', title=section.title,
+                ), pipeline_log.step(
+                    'ReportAgent', 'generate_section',
+                    target=section.title,
+                    section_index=section_num,
+                    total_sections=total_sections,
+                ) as step:
+                    section_content = self._generate_section_react(
+                        section=section,
+                        outline=outline,
+                        previous_sections=generated_sections,
+                        progress_callback=lambda stage, prog, msg:
+                            progress_callback(
+                                stage,
+                                base_progress + int(prog * 0.7 / total_sections),
+                                msg
+                            ) if progress_callback else None,
+                        section_index=section_num
+                    )
+                    step.output_text(section_content)
+                    step.metric(content_chars=len(section_content or ''))
+
                 section.content = section_content
                 generated_sections.append(f"## {section.title}\n\n{section_content}")
 
@@ -2064,11 +2140,12 @@ reports/{report_id}/
         max_iterations = 2  # Fewer iterations here
         
         for iteration in range(max_iterations):
-            response = self.llm.chat(
-                messages=messages,
-                temperature=0.5
-            )
-            
+            with llm_caller('ReportAgent.chat', f"turn {iteration + 1}"):
+                response = self.llm.chat(
+                    messages=messages,
+                    temperature=0.5
+                )
+
             # Parse the tool call
             tool_calls = self._parse_tool_calls(response)
             
@@ -2106,10 +2183,11 @@ reports/{report_id}/
             })
         
         # Iteration limit reached: take the final response
-        final_response = self.llm.chat(
-            messages=messages,
-            temperature=0.5
-        )
+        with llm_caller('ReportAgent.chat', 'final turn'):
+            final_response = self.llm.chat(
+                messages=messages,
+                temperature=0.5
+            )
         
         # Clean the response
         clean_response = re.sub(r'<tool_call>.*?</tool_call>', '', final_response, flags=re.DOTALL)

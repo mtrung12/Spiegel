@@ -19,6 +19,7 @@ from ..services.text_processor import TextProcessor
 from ..utils.file_parser import FileParser
 from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
+from ..utils.pipeline_logger import pipeline_log
 from ..utils.zep_lifecycle import get_graph_readers, graph_lifecycle_lock
 from ..models.task import TaskManager, TaskStatus
 from ..models.project import ProjectManager, ProjectStatus
@@ -421,6 +422,9 @@ def generate_ontology():
         }
     """
     project = None
+    # The run scope only opens once the project exists, because the project id
+    # is what correlates these records with the later graph build.
+    log_scope = ExitStack()
     try:
         logger.info("=== generating ontology definition ===")
         
@@ -454,26 +458,33 @@ def generate_ontology():
         # Save the files and extract their text
         document_texts = []
         all_text = ""
-        
+
         for file in uploaded_files:
             if file and file.filename and allowed_file(file.filename):
                 # Save the file into the project directory
                 file_info = ProjectManager.save_file_to_project(
-                    project.project_id, 
-                    file, 
+                    project.project_id,
+                    file,
                     file.filename
                 )
                 project.files.append({
                     "filename": file_info["original_filename"],
                     "size": file_info["size"]
                 })
-                
+
                 # Extract the text
-                text = FileParser.extract_text(file_info["path"])
-                text = TextProcessor.preprocess_text(text)
+                with pipeline_log.step(
+                    'FileParser', 'extract_text',
+                    target=file_info["original_filename"],
+                    size_bytes=file_info["size"],
+                ) as step:
+                    text = FileParser.extract_text(file_info["path"])
+                    text = TextProcessor.preprocess_text(text)
+                    step.output_text(text)
+                    step.metric(chars=len(text))
                 document_texts.append(text)
                 all_text += f"\n\n=== {file_info['original_filename']} ===\n{text}"
-        
+
         if not document_texts:
             ProjectManager.delete_project(project.project_id)
             return jsonify({
@@ -551,6 +562,14 @@ def generate_ontology():
             response_status = 500
             logger.exception("Unexpected ontology generation failure")
 
+        pipeline_log.action(
+            'api.graph', 'ontology_generate_failed',
+            status='error',
+            target=project.project_id if project is not None else None,
+            metrics={'http_status': response_status},
+            error=f"{type(error).__name__}: {error}",
+        )
+
         response_data = None
         if project is not None:
             project.status = ProjectStatus.FAILED
@@ -571,6 +590,9 @@ def generate_ontology():
         if response_data is not None:
             payload["data"] = response_data
         return jsonify(payload), response_status
+
+    finally:
+        log_scope.close()
 
 
 # ============== Endpoint 2: build the graph ==============
@@ -779,6 +801,8 @@ def _build_graph_impl():
 
         # Start the background task
         def build_task():
+            # A background thread starts with an empty logging context, so the
+            # run scope is opened here rather than inherited from the request.
             set_locale(current_locale)
             build_logger = get_logger('spiegel.build')
             try:
@@ -798,14 +822,21 @@ def _build_graph_impl():
                     message=t('progress.textChunking'),
                     progress=5
                 )
-                chunks = TextProcessor.split_text(
-                    text, 
-                    chunk_size=chunk_size, 
-                    overlap=chunk_overlap
-                )
-                builder.validate_batch_chunks(chunks, batch_size=350)
-                total_chunks = len(chunks)
-                
+                with pipeline_log.step(
+                    'TextProcessor', 'split_text',
+                    chunk_size=chunk_size, chunk_overlap=chunk_overlap,
+                ) as step:
+                    step.input_text(text)
+                    chunks = TextProcessor.split_text(
+                        text,
+                        chunk_size=chunk_size,
+                        overlap=chunk_overlap
+                    )
+                    builder.validate_batch_chunks(chunks, batch_size=350)
+                    total_chunks = len(chunks)
+                    step.metric(chunks=total_chunks, text_chars=len(text))
+                    step.output(first_chunk_preview=chunks[0][:400] if chunks else '')
+
                 if resume_existing_batch:
                     graph_id = project.graph_id
                     operation_id = builder.build_operation_id(graph_id, chunks)
@@ -836,10 +867,14 @@ def _build_graph_impl():
                         project.graph_id = graph_id
                         ProjectManager.save_project(project)
 
-                    graph_id = builder.create_graph(
-                        name=graph_name,
-                        graph_id_callback=remember_graph,
-                    )
+                    with pipeline_log.step(
+                        'GraphBuilderService', 'create_graph', target=graph_name,
+                    ) as step:
+                        graph_id = builder.create_graph(
+                            name=graph_name,
+                            graph_id_callback=remember_graph,
+                        )
+                        step.target(graph_id).metric(graph_id=graph_id)
 
                     # Install the ontology
                     task_manager.update_task(
@@ -847,7 +882,15 @@ def _build_graph_impl():
                         message=t('progress.settingOntology'),
                         progress=15
                     )
-                    builder.set_ontology(graph_id, ontology)
+                    with pipeline_log.step(
+                        'GraphBuilderService', 'set_ontology', target=graph_id,
+                    ) as step:
+                        step.input(ontology=ontology)
+                        step.metric(
+                            entity_types=len(ontology.get('entity_types') or []),
+                            edge_types=len(ontology.get('edge_types') or []),
+                        )
+                        builder.set_ontology(graph_id, ontology)
 
                     # Add the text (progress_callback takes (msg, progress_ratio))
                     def add_progress_callback(msg, progress_ratio):
@@ -869,14 +912,22 @@ def _build_graph_impl():
                         project.zep_batch_operation_id = operation_id
                         ProjectManager.save_project(project)
 
-                    submission = builder.add_text_batches(
-                        graph_id,
-                        chunks,
-                        batch_size=350,
-                        progress_callback=add_progress_callback,
-                        batch_created_callback=remember_batch,
-                    )
-                
+                    with pipeline_log.step(
+                        'GraphBuilderService', 'add_text_batches', target=graph_id,
+                        batch_size=350, chunks=total_chunks,
+                    ) as step:
+                        submission = builder.add_text_batches(
+                            graph_id,
+                            chunks,
+                            batch_size=350,
+                            progress_callback=add_progress_callback,
+                            batch_created_callback=remember_batch,
+                        )
+                        step.metric(
+                            batch_id=submission.batch_id,
+                            items=submission.item_count,
+                        )
+
                 # Wait for Zep to finish (polls each episode's processed flag)
                 task_manager.update_task(
                     task_id,
@@ -892,8 +943,12 @@ def _build_graph_impl():
                         progress=progress
                     )
                 
-                builder._wait_for_batch(submission, wait_progress_callback)
-                
+                with pipeline_log.step(
+                    'GraphBuilderService', 'wait_for_batch',
+                    target=submission.batch_id, items=submission.item_count,
+                ):
+                    builder._wait_for_batch(submission, wait_progress_callback)
+
                 # Fetch the graph data
                 task_manager.update_task(
                     task_id,

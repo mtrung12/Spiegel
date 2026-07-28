@@ -21,6 +21,7 @@ from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, get_locale, set_locale, t
 from ..utils.openai_chat_compat import create_chat_completion, extract_chat_completion_text
+from ..utils.pipeline_logger import pipeline_log
 from ..utils.zep import (
     call_zep_read_with_retry,
     get_zep_client,
@@ -30,6 +31,18 @@ from ..utils.zep import (
 from .zep_entity_reader import EntityNode, ZepEntityReader
 
 logger = get_logger('spiegel.oasis_profile')
+
+
+def _usage_dict(response: Any) -> Dict[str, Any]:
+    """Pull the token counts off a completion, when the provider reports them."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return {}
+    return {
+        key: getattr(usage, key, None)
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+        if getattr(usage, key, None) is not None
+    }
 
 
 def _coerce_to_str(value: Any) -> str:
@@ -298,32 +311,49 @@ class OasisProfileGenerator:
             OasisAgentProfile
         """
         entity_type = entity.get_entity_type() or "Entity"
-        
+
         # Basics
         name = entity.name
         user_name = self._generate_username(name)
-        
-        # Build the context
-        context = self._build_entity_context(entity)
-        
-        if use_llm:
-            # Build the detailed persona with the LLM
-            profile_data = self._generate_profile_with_llm(
-                entity_name=name,
-                entity_type=entity_type,
-                entity_summary=entity.summary,
-                entity_attributes=entity.attributes,
-                context=context
+
+        with pipeline_log.step(
+            'OasisProfileGenerator', 'generate_profile',
+            target=f"{entity_type}:{name}",
+            user_id=user_id,
+            use_llm=use_llm,
+            entity_uuid=entity.uuid,
+        ) as step:
+            # Build the context
+            context = self._build_entity_context(entity)
+            step.input_text(context)
+            step.note('entity context built', chars=len(context))
+
+            if use_llm:
+                # Build the detailed persona with the LLM
+                profile_data = self._generate_profile_with_llm(
+                    entity_name=name,
+                    entity_type=entity_type,
+                    entity_summary=entity.summary,
+                    entity_attributes=entity.attributes,
+                    context=context
+                )
+                step.metric(source='llm')
+            else:
+                # Build a basic persona from the rules
+                profile_data = self._generate_profile_rule_based(
+                    entity_name=name,
+                    entity_type=entity_type,
+                    entity_summary=entity.summary,
+                    entity_attributes=entity.attributes
+                )
+                step.metric(source='rule_based')
+
+            step.output(profile=profile_data)
+            step.metric(
+                persona_chars=len(str(profile_data.get('persona') or '')),
+                interests=len(profile_data.get('interested_topics') or []),
             )
-        else:
-            # Build a basic persona from the rules
-            profile_data = self._generate_profile_rule_based(
-                entity_name=name,
-                entity_type=entity_type,
-                entity_summary=entity.summary,
-                entity_attributes=entity.attributes
-            )
-        
+
         return OasisAgentProfile(
             user_id=user_id,
             user_name=user_name,
@@ -580,22 +610,42 @@ class OasisProfileGenerator:
         
         for attempt in range(max_attempts):
             try:
+                messages = [
+                    {"role": "system", "content": self._get_system_prompt(is_individual)},
+                    {"role": "user", "content": prompt}
+                ]
+                temperature = 0.7 - (attempt * 0.1)  # Lower the temperature on each retry
+                call_started = time.perf_counter()
                 response = create_chat_completion(
                     self.client,
                     model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": self._get_system_prompt(is_individual)},
-                        {"role": "user", "content": prompt}
-                    ],
+                    messages=messages,
                     response_format={"type": "json_object"},
-                    temperature=0.7 - (attempt * 0.1),  # Lower the temperature on each retry
+                    temperature=temperature,
                     # No max_tokens: let the model use its own limit
                 )
-                
+
                 content = extract_chat_completion_text(response)
-                
+
                 # Detect truncation (finish_reason is not 'stop')
                 finish_reason = response.choices[0].finish_reason
+
+                pipeline_log.llm_call(
+                    'OasisProfileGenerator', 'llm.persona',
+                    model=self.model_name,
+                    messages=messages,
+                    params={'temperature': temperature, 'response_format': 'json_object'},
+                    response_text=content,
+                    duration_ms=(time.perf_counter() - call_started) * 1000,
+                    target=f"{entity_type}:{entity_name}",
+                    usage=_usage_dict(response),
+                    attempts=attempt + 1,
+                    extra_metrics={
+                        'finish_reason': finish_reason,
+                        'is_individual': is_individual,
+                    },
+                )
+
                 if finish_reason == 'length':
                     logger.warning(f"LLM output was truncated (attempt {attempt+1}), attempting repair...")
                     content = self._fix_truncated_json(content)
@@ -617,16 +667,23 @@ class OasisProfileGenerator:
                     
                     # Try to repair the JSON
                     result = self._try_fix_json(content, entity_name, entity_type, entity_summary)
-                    if result.get("_fixed"):
+                    repaired = bool(result.get("_fixed"))
+                    pipeline_log.action(
+                        'OasisProfileGenerator', 'persona_json_repair',
+                        status='ok' if repaired else 'error',
+                        target=f"{entity_type}:{entity_name}",
+                        metrics={'attempt': attempt + 1, 'repaired': repaired},
+                        error=str(je),
+                    )
+                    if repaired:
                         del result["_fixed"]
                         return result
-                    
+
                     last_error = je
                     
             except Exception as e:
                 logger.warning(f"LLM call failed (attempt {attempt+1}): {str(e)[:80]}")
                 last_error = e
-                import time
                 time.sleep(1 * (attempt + 1))  # Exponential backoff
         
         logger.warning(f"LLM profile generation failed after {max_attempts} attempts: {last_error}; falling back to rules")
@@ -976,8 +1033,9 @@ Important:
             The agent profiles
         """
         import concurrent.futures
+        from contextvars import copy_context
         from threading import Lock
-        
+
         # Set the graph_id used for Zep retrieval
         if graph_id:
             self.graph_id = graph_id
@@ -1059,9 +1117,11 @@ Important:
         
         # Run on a thread pool
         with concurrent.futures.ThreadPoolExecutor(max_workers=parallel_count) as executor:
-            # Submit every task
+            # Submit every task. Each worker runs inside its own copy of the
+            # caller's context so the pipeline run and stage carry over into
+            # the pool threads, which do not inherit context by default.
             future_to_entity = {
-                executor.submit(generate_single_profile, idx, entity): (idx, entity)
+                executor.submit(copy_context().run, generate_single_profile, idx, entity): (idx, entity)
                 for idx, entity in enumerate(entities)
             }
             

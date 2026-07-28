@@ -19,6 +19,7 @@ from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.llm_client import LLMClient
 from ..utils.locale import get_locale, t
+from ..utils.pipeline_logger import llm_caller
 from ..utils.zep_paging import fetch_all_nodes, fetch_all_edges
 from ..utils.zep import (
     call_zep_read_with_retry,
@@ -1127,14 +1128,15 @@ Break the following question into {max_queries} sub-questions:
 Return the sub-questions as JSON."""
 
         try:
-            response = self.llm.chat_json(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.3
-            )
-            
+            with llm_caller('ZepTools.sub_queries'):
+                response = self.llm.chat_json(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.3
+                )
+
             sub_queries = response.get("sub_queries", [])
             # Coerce to a list of strings
             return [str(sq) for sq in sub_queries[:max_queries]]
@@ -1619,14 +1621,15 @@ Available agents ({len(agent_summaries)} total):
 Pick at most {max_agents} agents to interview and explain why."""
 
         try:
-            response = self.llm.chat_json(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.3
-            )
-            
+            with llm_caller('ZepTools.select_agents'):
+                response = self.llm.chat_json(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.3
+                )
+
             selected_indices = response.get("selected_indices", [])[:max_agents]
             reasoning = response.get("reasoning", "Selected automatically by relevance")
             
@@ -1678,14 +1681,15 @@ Interviewee roles: {', '.join(agent_roles)}
 Write 3-5 interview questions."""
 
         try:
-            response = self.llm.chat_json(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.5
-            )
-            
+            with llm_caller('ZepTools.interview_questions'):
+                response = self.llm.chat_json(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.5
+                )
+
             return response.get("questions", [f"What is your view on {interview_requirement}?"])
             
         except Exception as e:
@@ -1736,14 +1740,15 @@ Transcript:
 Write the interview summary."""
 
         try:
-            summary = self.llm.chat(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.3,
-                max_tokens=800
-            )
+            with llm_caller('ZepTools.interview_summary'):
+                summary = self.llm.chat(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.3,
+                    max_tokens=800
+                )
             return summary
             
         except Exception as e:

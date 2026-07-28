@@ -21,3 +21,5 @@ frontend/dist
 frontend/.vite
 
 backend/uploads
+
+local-doc

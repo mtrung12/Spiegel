@@ -6,11 +6,13 @@ All providers are called through the OpenAI format.
 import json
 import logging
 import re
+import time
 from typing import Optional, Dict, Any, List
 from openai import OpenAI
 
 from ..config import Config
 from .openai_chat_compat import create_chat_completion, extract_chat_completion_text
+from .pipeline_logger import current_llm_caller, pipeline_log
 
 
 logger = logging.getLogger(__name__)
@@ -74,6 +76,19 @@ def _clean_chat_text(content: str) -> str:
     return cleaned.strip()
 
 
+def _extract_usage(response: Any) -> Dict[str, Any]:
+    """Pull the token counts off a completion, when the provider reports them."""
+
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return {}
+    return {
+        key: getattr(usage, key, None)
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+        if getattr(usage, key, None) is not None
+    }
+
+
 def _contains_additional_json_container(content: str) -> bool:
     """Return True when trailing text embeds another JSON object or array."""
 
@@ -125,17 +140,64 @@ class LLMClient:
         temperature: Optional[float],
         max_tokens: Optional[int],
         response_format: Optional[Dict[str, Any]],
+        call_kind: str = "chat",
+        attempt: int = 1,
     ) -> Any:
         """Send one raw Chat Completions request through the compatibility layer."""
 
-        return create_chat_completion(
-            self.client,
+        component, target = current_llm_caller()
+        params = {
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "response_format": response_format,
+        }
+        started = time.perf_counter()
+
+        try:
+            response = create_chat_completion(
+                self.client,
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+            )
+        except Exception as error:
+            pipeline_log.llm_call(
+                component or "LLMClient",
+                f"llm.{call_kind}",
+                model=self.model,
+                messages=messages,
+                params=params,
+                response_text=None,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                status="error",
+                target=target,
+                attempts=attempt,
+                error=f"{type(error).__name__}: {error}",
+            )
+            raise
+
+        duration_ms = (time.perf_counter() - started) * 1000
+        finish_reason = None
+        choices = getattr(response, "choices", None) or []
+        if choices:
+            finish_reason = getattr(choices[0], "finish_reason", None)
+
+        pipeline_log.llm_call(
+            component or "LLMClient",
+            f"llm.{call_kind}",
             model=self.model,
             messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            response_format=response_format,
+            params=params,
+            response_text=extract_chat_completion_text(response),
+            duration_ms=duration_ms,
+            target=target,
+            usage=_extract_usage(response),
+            attempts=attempt,
+            extra_metrics={"finish_reason": finish_reason},
         )
+        return response
     
     def chat(
         self,
@@ -203,6 +265,8 @@ class LLMClient:
                         temperature=temperature,
                         max_tokens=request_max_tokens,
                         response_format=response_format,
+                        call_kind="chat_json",
+                        attempt=attempt,
                     )
                 except Exception as error:
                     if (
@@ -213,6 +277,14 @@ class LLMClient:
                             "LLM provider explicitly rejected response_format; "
                             "retrying once with prompt-only JSON guidance"
                         )
+                        component, target = current_llm_caller()
+                        pipeline_log.action(
+                            component or "LLMClient",
+                            "llm.json_mode_downgrade",
+                            status="warn",
+                            target=target,
+                            metrics={"attempt": attempt},
+                        )
                         response_format = None
                         continue
                     raise
@@ -222,6 +294,19 @@ class LLMClient:
                 return self._parse_json_response(response)
             except LLMResponseError as error:
                 last_error = error
+                component, target = current_llm_caller()
+                pipeline_log.action(
+                    component or "LLMClient",
+                    "llm.json_parse_failed",
+                    status="error" if attempt >= max_attempts else "warn",
+                    target=target,
+                    metrics={
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "finish_reason": error.finish_reason,
+                    },
+                    error=str(error),
+                )
                 if attempt >= max_attempts:
                     raise
 
