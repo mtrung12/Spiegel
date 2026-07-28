@@ -12,7 +12,7 @@ from ..utils.logger import get_logger
 from ..utils.zep_paging import fetch_all_nodes, fetch_all_edges
 from ..utils.zep import call_zep_read_with_retry, get_zep_client
 
-logger = get_logger('mirofish.zep_entity_reader')
+logger = get_logger('spiegel.zep_entity_reader')
 
 # Generic return type
 T = TypeVar('T')
@@ -81,7 +81,7 @@ class ZepEntityReader:
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or Config.ZEP_API_KEY
         if not self.api_key:
-            raise ValueError("ZEP_API_KEY 未配置")
+            raise ValueError("ZEP_API_KEY is not configured")
         
         self.client = get_zep_client(self.api_key)
     
@@ -121,7 +121,7 @@ class ZepEntityReader:
         Returns:
             The nodes
         """
-        logger.info(f"获取图谱 {graph_id} 的所有节点...")
+        logger.info(f"fetching all nodes for graph {graph_id}...")
 
         nodes = fetch_all_nodes(self.client, graph_id)
 
@@ -135,7 +135,7 @@ class ZepEntityReader:
                 "attributes": node.attributes or {},
             })
 
-        logger.info(f"共获取 {len(nodes_data)} 个节点")
+        logger.info(f"fetched {len(nodes_data)} nodes")
         return nodes_data
 
     def get_all_edges(self, graph_id: str) -> List[Dict[str, Any]]:
@@ -148,7 +148,7 @@ class ZepEntityReader:
         Returns:
             The edges
         """
-        logger.info(f"获取图谱 {graph_id} 的所有边...")
+        logger.info(f"fetching all edges for graph {graph_id}...")
 
         edges = fetch_all_edges(self.client, graph_id)
 
@@ -163,7 +163,7 @@ class ZepEntityReader:
                 "attributes": edge.attributes or {},
             })
 
-        logger.info(f"共获取 {len(edges_data)} 条边")
+        logger.info(f"fetched {len(edges_data)} edges")
         return edges_data
     
     def get_node_edges(
@@ -217,7 +217,7 @@ class ZepEntityReader:
         except Exception as e:
             # An empty edge list is valid data. Authentication, permission and
             # transport failures must not be made indistinguishable from it.
-            logger.error(f"获取节点 {node_uuid} 的边失败: {str(e)}")
+            logger.error(f"failed to fetch edges for node {node_uuid}: {str(e)}")
             raise
     
     def filter_defined_entities(
@@ -244,7 +244,7 @@ class ZepEntityReader:
         Returns:
             FilteredEntities: the filtered entity set
         """
-        logger.info(f"开始筛选图谱 {graph_id} 的实体...")
+        logger.info(f"filtering entities for graph {graph_id}...")
         
         # Fetch every node
         all_nodes = self.get_all_nodes(graph_id)
@@ -331,8 +331,8 @@ class ZepEntityReader:
             
             filtered_entities.append(entity)
         
-        logger.info(f"筛选完成: 总节点 {total_count}, 符合条件 {len(filtered_entities)}, "
-                   f"实体类型: {entity_types_found}")
+        logger.info(f"filtering complete: {total_count} nodes total, {len(filtered_entities)} matching, "
+                   f"entity types: {entity_types_found}")
         
         return FilteredEntities(
             entities=filtered_entities,
@@ -423,7 +423,7 @@ class ZepEntityReader:
             # Only an actual Zep 404 means "entity not found". Propagate 401,
             # 403 and exhausted transport errors so callers cannot prepare a
             # simulation with silently incomplete graph context.
-            logger.error(f"获取实体 {entity_uuid} 失败: {str(e)}")
+            logger.error(f"failed to fetch entity {entity_uuid}: {str(e)}")
             raise
     
     def get_entities_by_type(

@@ -38,7 +38,6 @@ from .filters import (
 from .harvester import CorpusHarvester, HarvestResult
 from .http import PoliteClient, RateLimitedError
 from .models import (
-    KIND_ARTICLE,
     KIND_COMMENT,
     KIND_POST,
     CorpusItem,
@@ -49,7 +48,6 @@ from .models import (
 from .sources import (
     CREDENTIALED_SOURCES,
     DEFAULT_SOURCES,
-    KEYLESS_SOURCES,
     SOURCE_REGISTRY,
     SourceAdapter,
     describe_sources,
@@ -76,10 +74,8 @@ __all__ = [
     'pseudonymize_author',
     'KIND_POST',
     'KIND_COMMENT',
-    'KIND_ARTICLE',
     'SourceAdapter',
     'SOURCE_REGISTRY',
-    'KEYLESS_SOURCES',
     'CREDENTIALED_SOURCES',
     'DEFAULT_SOURCES',
     'get_source',

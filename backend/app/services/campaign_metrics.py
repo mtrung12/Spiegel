@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional, Set
 from ..utils.logger import get_logger
 from .simulation_runner import SimulationRunner
 
-logger = get_logger('mirofish.campaign_metrics')
+logger = get_logger('spiegel.campaign_metrics')
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -397,7 +397,7 @@ class CampaignMetricsService:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
         except (json.JSONDecodeError, OSError) as e:
-            logger.warning(f"读取模拟配置失败，分群将退化为 Unknown: {e}")
+            logger.warning(f"failed to read simulation config; segments fall back to Unknown: {e}")
             return {}
 
         segment_map: Dict[int, str] = {}
@@ -597,7 +597,7 @@ class CampaignMetricsService:
         try:
             return cls.compute(simulation_id).to_text()
         except Exception as e:
-            logger.error(f"计算营销KPI失败: {simulation_id}, error={e}")
+            logger.error(f"failed to compute campaign KPIs: {simulation_id}, error={e}")
             return (
                 f"Campaign KPIs could not be computed for this simulation: {e}. "
                 "Fall back to the qualitative evidence from the graph and the agents."

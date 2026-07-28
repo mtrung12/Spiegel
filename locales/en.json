@@ -471,6 +471,8 @@
     "reportAlreadyExists": "Report already exists",
     "reportGenerateStarted": "Report generation task started. Query progress via /api/report/generate/status.",
     "reportGenerated": "Report generated",
+    "internalError": "Internal server error",
+    "resourceNotFound": "Resource not found",
     "reportNotFound": "Report not found: {id}",
     "noReportForSim": "No report found for this simulation: {id}",
     "reportDeleted": "Report deleted: {id}",

@@ -1,11 +1,11 @@
 [project]
-name = "mirofish-backend"
+name = "spiegel-backend"
 version = "0.1.0"
-description = "MiroFish - a simple, general-purpose collective intelligence engine that predicts anything"
+description = "Spiegel - simulates how an audience reacts to a marketing campaign"
 requires-python = ">=3.11,<3.13"
 license = { text = "AGPL-3.0" }
 authors = [
-    { name = "MiroFish Team" }
+    { name = "Spiegel Team" }
 ]
 
 dependencies = [

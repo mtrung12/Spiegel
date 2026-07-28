@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 
 # Load the .env file from the project root
-# Path: MiroFish/.env (relative to backend/app/config.py)
+# Path: Spiegel/.env (relative to backend/app/config.py)
 project_root_env = os.path.join(PROJECT_ROOT, '.env')
 
 if os.path.exists(project_root_env):
@@ -75,8 +75,10 @@ def resolve_llm_api_key(api_key: str | None, base_url: str | None) -> str | None
 class Config:
     """Flask configuration."""
     
-    # Flask settings
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'mirofish-secret-key')
+    # Flask settings. SECRET_KEY has no default: a fallback baked into a public
+    # repo is a known value everywhere it is not overridden, which is worse than
+    # failing to start. validate() reports it as a missing setting like any other.
+    SECRET_KEY = os.environ.get('SECRET_KEY')
     DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     
     # JSON settings - disable ASCII escaping so non-ASCII text renders literally
@@ -154,7 +156,7 @@ class Config:
     # config/corpus.yml; the CORPUS_* environment variables still win, which is
     # how a deployment overrides a file it cannot edit.
     CORPUS_USER_AGENT = os.environ.get('CORPUS_USER_AGENT') or _corpus_limits.get(
-        'user_agent', 'CampaignReaction/0.1 (research; +https://github.com/666ghj/MiroFish)'
+        'user_agent', 'Spiegel/0.1 (marketing-campaign research)'
     )
     CORPUS_HTTP_TIMEOUT = float(
         os.environ.get('CORPUS_HTTP_TIMEOUT') or _corpus_limits.get('http_timeout', 30)
@@ -190,20 +192,25 @@ class Config:
     def validate(cls) -> list[str]:
         """Validate required configuration."""
         errors: list[str] = []
+        if not cls.SECRET_KEY:
+            errors.append(
+                "SECRET_KEY is not configured"
+                " (generate one with: python -c \"import secrets; print(secrets.token_hex(32))\")"
+            )
         if not cls.LLM_API_KEY:
-            errors.append("LLM_API_KEY 未配置")
+            errors.append("LLM_API_KEY is not configured")
         # Only a chatbot on its own endpoint needs its own key. Sharing the
         # endpoint means the key is inherited, and a missing one is already
         # reported as LLM_API_KEY above - do not report the same gap twice.
         if cls.CHATBOT_LLM_BASE_URL != cls.LLM_BASE_URL and not cls.CHATBOT_LLM_API_KEY:
             errors.append(
-                "CHATBOT_LLM_API_KEY 未配置"
-                "（CHATBOT_LLM_BASE_URL 与 LLM_BASE_URL 不同，需要单独的密钥）"
+                "CHATBOT_LLM_API_KEY is not configured"
+                " (CHATBOT_LLM_BASE_URL differs from LLM_BASE_URL, so it needs its own key)"
             )
         if not cls.ZEP_API_KEY:
-            errors.append("ZEP_API_KEY 未配置")
+            errors.append("ZEP_API_KEY is not configured")
         if os.environ.get("ZEP_API_URL"):
-            errors.append("ZEP_API_URL 不受支持；MiroFish 仅连接 Zep Cloud")
+            errors.append("ZEP_API_URL is not supported; Spiegel only connects to Zep Cloud")
         if cls.DEBUG:
             import warnings
             warnings.warn("Flask DEBUG mode is enabled. Do not use in production.", RuntimeWarning)

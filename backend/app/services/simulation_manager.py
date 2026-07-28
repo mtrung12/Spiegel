@@ -7,6 +7,7 @@ preset scripts plus LLM-generated configuration parameters.
 import os
 import json
 import shutil
+import threading
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -19,7 +20,7 @@ from .oasis_profile_generator import OasisProfileGenerator, OasisAgentProfile
 from .simulation_config_generator import SimulationConfigGenerator, SimulationParameters
 from ..utils.locale import t
 
-logger = get_logger('mirofish.simulation')
+logger = get_logger('spiegel.simulation')
 
 
 class SimulationStatus(str, Enum):
@@ -138,17 +139,47 @@ class SimulationManager:
     
     # Directory holding simulation data
     SIMULATION_DATA_DIR = os.path.join(
-        os.path.dirname(__file__), 
+        os.path.dirname(__file__),
         '../../uploads/simulations'
     )
-    
+
+    # Singleton. `_simulations` below is a write-back cache over the state files,
+    # and the handlers construct SimulationManager() freely (~20 call sites). As
+    # a plain class each of those got its own cache, so two threads serving two
+    # requests could hold divergent views of the same simulation and last-writer
+    # -wins on disk. One instance per process makes the cache authoritative.
+    #
+    # Matches TaskManager in models/task.py, and carries the same constraint:
+    # the state is per-process, so more than one gunicorn worker would undo it.
+    # See the --workers 1 note in docker/entrypoint.sh.
+    _instance = None
+    _instance_lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self):
+        # __init__ runs on every SimulationManager() call, including the ones
+        # that return the existing instance - so the cache must only be built
+        # once, or each construction would silently empty it.
+        if self._initialized:
+            return
+
         # Make sure the directory exists
         os.makedirs(self.SIMULATION_DATA_DIR, exist_ok=True)
-        
+
         # In-memory simulation state cache
         self._simulations: Dict[str, SimulationState] = {}
-    
+        # Guards the cache: the handlers are served by gunicorn's thread pool,
+        # and the monitor threads in SimulationRunner touch state too.
+        self._cache_lock = threading.RLock()
+        self._initialized = True
+
     def _get_simulation_dir(self, simulation_id: str) -> str:
         """Return the data directory for a simulation."""
         sim_dir = os.path.join(self.SIMULATION_DATA_DIR, simulation_id)
@@ -162,16 +193,21 @@ class SimulationManager:
         
         state.updated_at = datetime.now().isoformat()
         
+        # Write the file before publishing to the cache, so a reader that wins
+        # the lock never sees a cached state with no file behind it.
         with open(state_file, 'w', encoding='utf-8') as f:
             json.dump(state.to_dict(), f, ensure_ascii=False, indent=2)
-        
-        self._simulations[state.simulation_id] = state
-    
+
+        with self._cache_lock:
+            self._simulations[state.simulation_id] = state
+
     def _load_simulation_state(self, simulation_id: str) -> Optional[SimulationState]:
         """Load the simulation state from disk."""
-        if simulation_id in self._simulations:
-            return self._simulations[simulation_id]
-        
+        with self._cache_lock:
+            cached = self._simulations.get(simulation_id)
+        if cached is not None:
+            return cached
+
         sim_dir = self._get_simulation_dir(simulation_id)
         state_file = os.path.join(sim_dir, "state.json")
         
@@ -202,9 +238,11 @@ class SimulationManager:
             error=data.get("error"),
         )
         
-        self._simulations[simulation_id] = state
-        return state
-    
+        # Another thread may have loaded the same id concurrently; keep whichever
+        # entry is already published so both callers share one object.
+        with self._cache_lock:
+            return self._simulations.setdefault(simulation_id, state)
+
     def create_simulation(
         self,
         project_id: str,
@@ -237,7 +275,7 @@ class SimulationManager:
         )
         
         self._save_simulation_state(state)
-        logger.info(f"创建模拟: {simulation_id}, project={project_id}, graph={graph_id}")
+        logger.info(f"created simulation: {simulation_id}, project={project_id}, graph={graph_id}")
         
         return state
     
@@ -277,7 +315,7 @@ class SimulationManager:
         """
         state = self._load_simulation_state(simulation_id)
         if not state:
-            raise ValueError(f"模拟不存在: {simulation_id}")
+            raise ValueError(f"simulation does not exist: {simulation_id}")
         
         try:
             state.status = SimulationStatus.PREPARING
@@ -317,7 +355,7 @@ class SimulationManager:
             
             if filtered.filtered_count == 0:
                 state.status = SimulationStatus.FAILED
-                state.error = "没有找到符合条件的实体，请检查图谱是否正确构建"
+                state.error = "No matching entities found; check that the graph was built correctly"
                 self._save_simulation_state(state)
                 raise ValueError(state.error)
             
@@ -465,13 +503,13 @@ class SimulationManager:
             state.status = SimulationStatus.READY
             self._save_simulation_state(state)
             
-            logger.info(f"模拟准备完成: {simulation_id}, "
+            logger.info(f"simulation prepared: {simulation_id}, "
                        f"entities={state.entities_count}, profiles={state.profiles_count}")
             
             return state
             
         except Exception as e:
-            logger.error(f"模拟准备失败: {simulation_id}, error={str(e)}")
+            logger.error(f"simulation preparation failed: {simulation_id}, error={str(e)}")
             import traceback
             logger.error(traceback.format_exc())
             state.status = SimulationStatus.FAILED
@@ -505,26 +543,27 @@ class SimulationManager:
         """Delete a simulation directory and its cached state."""
         # Not _get_simulation_dir: that one creates the directory it returns.
         sim_dir = os.path.join(self.SIMULATION_DATA_DIR, simulation_id)
-        self._simulations.pop(simulation_id, None)
+        with self._cache_lock:
+            self._simulations.pop(simulation_id, None)
 
         if not os.path.isdir(sim_dir):
             return False
 
         shutil.rmtree(sim_dir)
-        logger.info(f"删除模拟: {simulation_id}")
+        logger.info(f"deleted simulation: {simulation_id}")
         return True
 
     def get_profiles(self, simulation_id: str, platform: str = None) -> List[Dict[str, Any]]:
         """Return the agent profiles for a simulation."""
         state = self._load_simulation_state(simulation_id)
         if not state:
-            raise ValueError(f"模拟不存在: {simulation_id}")
+            raise ValueError(f"simulation does not exist: {simulation_id}")
 
         if platform is None:
             platform = state.get_default_platform()
 
         if platform not in {"twitter", "reddit"}:
-            raise ValueError(f"不支持的平台: {platform}")
+            raise ValueError(f"unsupported platform: {platform}")
 
         sim_dir = self._get_simulation_dir(simulation_id)
         profile_path = os.path.join(
@@ -571,10 +610,10 @@ class SimulationManager:
                 "parallel": f"python {scripts_dir}/run_parallel_simulation.py --config {config_path}",
             },
             "instructions": (
-                f"1. 激活conda环境: conda activate MiroFish\n"
-                f"2. 运行模拟 (脚本位于 {scripts_dir}):\n"
-                f"   - 单独运行Twitter: python {scripts_dir}/run_twitter_simulation.py --config {config_path}\n"
-                f"   - 单独运行Reddit: python {scripts_dir}/run_reddit_simulation.py --config {config_path}\n"
-                f"   - 并行运行双平台: python {scripts_dir}/run_parallel_simulation.py --config {config_path}"
+                f"1. Activate the conda environment: conda activate Spiegel\n"
+                f"2. Run the simulation (scripts live in {scripts_dir}):\n"
+                f"   - Twitter only: python {scripts_dir}/run_twitter_simulation.py --config {config_path}\n"
+                f"   - Reddit only: python {scripts_dir}/run_reddit_simulation.py --config {config_path}\n"
+                f"   - Both platforms in parallel: python {scripts_dir}/run_parallel_simulation.py --config {config_path}"
             )
         }

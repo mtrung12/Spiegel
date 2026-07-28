@@ -1,18 +1,22 @@
 services:
-  mirofish:
+  spiegel:
     # Builds this repo's code. To run the upstream published image instead,
     # comment out `build` and uncomment one of the image lines below.
     build: .
-    image: mirofish:local
+    image: spiegel:local
     # image: ghcr.io/666ghj/mirofish:latest
     # Mirror image (swap the address above if pulls are slow)
     # image: ghcr.nju.edu.cn/666ghj/mirofish:latest
-    container_name: mirofish
+    container_name: spiegel
     env_file:
       - .env
+    # Only nginx is published. It serves the frontend and proxies /api to
+    # gunicorn on 127.0.0.1:5001 inside the container, so the backend port is
+    # deliberately not exposed to the host.
     ports:
       - "3000:3000"
-      - "5001:5001"
     restart: unless-stopped
     volumes:
+      # Uploads, projects, simulations and reports live here; the image runs as
+      # uid 10001, which needs write access to this path on the host.
       - ./backend/uploads:/app/backend/uploads

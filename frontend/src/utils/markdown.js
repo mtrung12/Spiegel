@@ -1,15 +1,37 @@
+import DOMPurify from 'dompurify'
+
 /**
  * Minimal Markdown renderer for report sections and chat replies.
  *
- * ponytail: hand-rolled because it predates this file and only has to cover
- * what the report agent emits. Swap for `marked` + `dompurify` if the agent
- * ever emits tables, footnotes or raw HTML.
+ * Hand-rolled because it only has to cover what the report agent emits. Swap
+ * for `marked` if the agent ever emits tables or footnotes.
+ *
+ * The input is NOT trusted. Report text is derived from harvested public
+ * discussion (Reddit, HN, RSS), so a crafted post can carry markup all the way
+ * to the `v-html` bindings that render this output. Two defences, in order:
+ *
+ *   1. escapeHtml() below neutralises markup in the source before any regex
+ *      runs, so `<img onerror=...>` becomes text rather than an element.
+ *   2. DOMPurify.sanitize() on the way out, as defence in depth - it catches
+ *      anything the generated markup itself gets wrong.
+ *
+ * Removing either one reintroduces stored XSS.
  */
+
+// Escapes the five characters that can open a tag or break out of an attribute.
+// Runs first, so every later regex sees inert text.
+const escapeHtml = (text) => text
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+
 export const renderMarkdown = (content) => {
   if (!content) return ''
 
   // Drop a leading ## heading: the section title is already shown outside
-  let processedContent = content.replace(/^##\s+.+\n+/, '')
+  let processedContent = escapeHtml(content).replace(/^##\s+.+\n+/, '')
 
   // Code blocks
   let html = processedContent.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="code-block"><code>$2</code></pre>')
@@ -23,8 +45,9 @@ export const renderMarkdown = (content) => {
   html = html.replace(/^## (.+)$/gm, '<h3 class="md-h3">$1</h3>')
   html = html.replace(/^# (.+)$/gm, '<h2 class="md-h2">$1</h2>')
 
-  // Blockquotes
-  html = html.replace(/^> (.+)$/gm, '<blockquote class="md-quote">$1</blockquote>')
+  // Blockquotes. Matches the escaped marker: escapeHtml() has already turned a
+  // leading "> " into "&gt; " by the time this runs.
+  html = html.replace(/^&gt; (.+)$/gm, '<blockquote class="md-quote">$1</blockquote>')
 
   // Lists, nested ones included
   html = html.replace(/^(\s*)- (.+)$/gm, (match, indent, text) => {
@@ -107,7 +130,15 @@ export const renderMarkdown = (content) => {
   }
   html = tokens.join('')
 
-  return html
+  // Defence in depth - see the note at the top of this file. The allowlist is
+  // exactly the tags and attributes generated above; anything else is dropped.
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'hr', 'strong', 'em', 'code', 'pre',
+      'h2', 'h3', 'h4', 'h5', 'ul', 'ol', 'li', 'blockquote',
+    ],
+    ALLOWED_ATTR: ['class', 'data-level', 'start'],
+  })
 }
 
 export default renderMarkdown

@@ -1,4 +1,4 @@
-# Campaign-Reaction / MiroFish
+# Campaign-Reaction / Spiegel
 #
 # make run       - build (if needed) and start the stack in Docker
 # make rebuild   - rebuild the image from scratch and restart
@@ -59,7 +59,7 @@ ps:
 	$(COMPOSE) ps
 
 shell:
-	$(COMPOSE) exec mirofish bash
+	$(COMPOSE) exec spiegel bash
 
 # Node deps are prerequisites, not part of the recipe: they install once, on the
 # first run or after a wipe, instead of on every `make dev`. Backend deps need no

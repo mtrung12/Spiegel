@@ -1,24 +1,15 @@
 """
 Source adapter registry.
 
-Sources are grouped by how much trust they need. The keyless group works out of
-the box; the credentialed group needs free API keys but stays on official APIs.
-Anything that would require scraping a site that does not offer an API is
-deliberately absent.
+Every source here stays on an official API; anything that would require
+scraping a site that does not offer one is deliberately absent. Reddit is
+currently the only registered source, and it needs a free API key.
 """
 
 from typing import Any, Dict, List, Type
 
 from .base import SourceAdapter
-from .hackernews import HackerNewsSource
 from .reddit import RedditSource
-from .rss import RssSource
-
-#: Adapters that need no credentials at all.
-KEYLESS_SOURCES: Dict[str, Type[SourceAdapter]] = {
-    HackerNewsSource.name: HackerNewsSource,
-    RssSource.name: RssSource,
-}
 
 #: Adapters on official APIs that need a free key.
 CREDENTIALED_SOURCES: Dict[str, Type[SourceAdapter]] = {
@@ -26,7 +17,6 @@ CREDENTIALED_SOURCES: Dict[str, Type[SourceAdapter]] = {
 }
 
 SOURCE_REGISTRY: Dict[str, Type[SourceAdapter]] = {
-    **KEYLESS_SOURCES,
     **CREDENTIALED_SOURCES,
 }
 
@@ -77,11 +67,8 @@ def describe_sources() -> List[Dict[str, Any]]:
 
 __all__ = [
     'SourceAdapter',
-    'HackerNewsSource',
-    'RssSource',
     'RedditSource',
     'SOURCE_REGISTRY',
-    'KEYLESS_SOURCES',
     'CREDENTIALED_SOURCES',
     'DEFAULT_SOURCES',
     'get_source',

@@ -47,13 +47,11 @@ def test_shipped_config_runs_reddit_only():
 def test_config_file_switches_sources_off(tmp_path, monkeypatch):
     loaded = _write_config(tmp_path, monkeypatch, """
         sources:
-          hackernews: true
-          rss: true
           reddit: false
     """)
     enabled = [name for name, on in loaded['sources'].items() if on]
     monkeypatch.setattr(Config, 'CORPUS_SOURCES', enabled)
-    assert CorpusHarvester().source_names == ['hackernews', 'rss']
+    assert CorpusHarvester().source_names == []
 
 
 def test_everything_off_harvests_nothing(monkeypatch):
@@ -69,7 +67,7 @@ def test_missing_file_falls_back_to_every_source(tmp_path, monkeypatch):
 
 
 def test_explicit_sources_beat_the_file(monkeypatch):
-    monkeypatch.setattr(Config, 'CORPUS_SOURCES', ['hackernews'])
+    monkeypatch.setattr(Config, 'CORPUS_SOURCES', [])
     assert CorpusHarvester(sources=['reddit']).source_names == ['reddit']
 
 

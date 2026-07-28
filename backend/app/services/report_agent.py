@@ -30,7 +30,7 @@ from .zep_tools import (
     InterviewResult
 )
 
-logger = get_logger('mirofish.report_agent')
+logger = get_logger('spiegel.report_agent')
 
 
 class ReportLogger:
@@ -355,8 +355,8 @@ class ReportConsoleLogger:
         
         # Attach to the report_agent loggers
         loggers_to_attach = [
-            'mirofish.report_agent',
-            'mirofish.zep_tools',
+            'spiegel.report_agent',
+            'spiegel.zep_tools',
         ]
         
         for logger_name in loggers_to_attach:
@@ -371,8 +371,8 @@ class ReportConsoleLogger:
         
         if self._file_handler:
             loggers_to_detach = [
-                'mirofish.report_agent',
-                'mirofish.zep_tools',
+                'spiegel.report_agent',
+                'spiegel.zep_tools',
             ]
             
             for logger_name in loggers_to_detach:
@@ -1687,7 +1687,7 @@ class ReportAgent:
                 unused_tools = all_tools - used_tools
                 unused_hint = ""
                 if unused_tools and tool_calls_count < self.MAX_TOOL_CALLS_PER_SECTION:
-                    unused_hint = REACT_UNUSED_TOOLS_HINT.format(unused_list="、".join(unused_tools))
+                    unused_hint = REACT_UNUSED_TOOLS_HINT.format(unused_list=", ".join(unused_tools))
 
                 cleaned_response = ReportAgent._strip_fake_tool_results(response)
                 messages.append({"role": "assistant", "content": cleaned_response})

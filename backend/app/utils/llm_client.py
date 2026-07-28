@@ -102,7 +102,7 @@ class LLMClient:
         self.model = model or Config.LLM_MODEL_NAME
         
         if not self.api_key:
-            raise ValueError(f"LLM_API_KEY 未配置 (base_url={self.base_url})")
+            raise ValueError(f"LLM_API_KEY is not configured (base_url={self.base_url})")
         
         self.client = OpenAI(
             api_key=self.api_key,

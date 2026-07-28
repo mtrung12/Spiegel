@@ -18,7 +18,7 @@ from .http import PoliteClient
 from .models import CorpusItem, FetchResult, SourceQuery
 from .sources import DEFAULT_SOURCES, get_source
 
-logger = get_logger('mirofish.corpus.harvester')
+logger = get_logger('spiegel.corpus.harvester')
 
 
 @dataclass
@@ -96,8 +96,8 @@ class CorpusHarvester:
         started = time.monotonic()
         result = HarvestResult()
 
-        if not query.terms and not query.feed_urls:
-            result.errors.append('query has no terms or feed_urls')
+        if not query.terms:
+            result.errors.append('query has no terms')
             return result
 
         fetched = self._fetch_all(query, result)

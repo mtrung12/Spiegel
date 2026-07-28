@@ -15,7 +15,6 @@ from typing import Any, Dict, List, Optional
 # far more aggressively - most of the noise lives in comment threads.
 KIND_POST = 'post'
 KIND_COMMENT = 'comment'
-KIND_ARTICLE = 'article'
 
 
 def pseudonymize_author(author: Optional[str], salt: str) -> Optional[str]:
@@ -103,7 +102,7 @@ class CorpusItem:
     author_pseudonym: Optional[str] = None
     created_at: Optional[str] = None   # RFC3339 UTC
     parent_id: Optional[str] = None    # set on comments
-    channel: Optional[str] = None      # subreddit, video id, app id, feed title
+    channel: Optional[str] = None      # subreddit
 
     # Signals used later for weighting
     score: int = 0                     # upvotes / likes / helpful votes
@@ -158,7 +157,6 @@ class SourceQuery:
 
     # Per-source scoping. Adapters ignore keys they do not understand.
     subreddits: List[str] = field(default_factory=list)
-    feed_urls: List[str] = field(default_factory=list)
 
     # Limits
     max_items: int = 500

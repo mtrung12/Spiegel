@@ -12,3 +12,9 @@ from . import graph  # noqa: E402, F401
 from . import simulation  # noqa: E402, F401
 from . import report  # noqa: E402, F401
 
+# Reject malformed resource ids before any handler runs. Registered here rather
+# than in each module so a new route is covered by default; see guards.py.
+from .guards import register_identifier_guard  # noqa: E402
+
+register_identifier_guard(graph_bp, simulation_bp, report_bp)
+

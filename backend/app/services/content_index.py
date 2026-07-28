@@ -39,7 +39,7 @@ from ..utils.file_parser import split_text_into_chunks
 from ..utils.logger import get_logger
 from .content_sentiment import ContentItem, ContentSentimentService
 
-logger = get_logger('mirofish.content_index')
+logger = get_logger('spiegel.content_index')
 
 
 # Above this many characters a single record is too long for one embedding and

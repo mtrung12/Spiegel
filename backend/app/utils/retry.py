@@ -9,7 +9,7 @@ import functools
 from typing import Callable, Any, Optional, Type, Tuple
 from ..utils.logger import get_logger
 
-logger = get_logger('mirofish.retry')
+logger = get_logger('spiegel.retry')
 
 
 def retry_with_backoff(
@@ -52,7 +52,7 @@ def retry_with_backoff(
                     last_exception = e
                     
                     if attempt == max_retries:
-                        logger.error(f"函数 {func.__name__} 在 {max_retries} 次重试后仍失败: {str(e)}")
+                        logger.error(f"{func.__name__} still failing after {max_retries} retries: {str(e)}")
                         raise
                     
                     # Compute the delay
@@ -61,8 +61,8 @@ def retry_with_backoff(
                         current_delay = current_delay * (0.5 + random.random())
                     
                     logger.warning(
-                        f"函数 {func.__name__} 第 {attempt + 1} 次尝试失败: {str(e)}, "
-                        f"{current_delay:.1f}秒后重试..."
+                        f"{func.__name__} attempt {attempt + 1} failed: {str(e)}, "
+                        f"retrying in {current_delay:.1f}s..."
                     )
                     
                     if on_retry:
@@ -105,7 +105,7 @@ def retry_with_backoff_async(
                     last_exception = e
                     
                     if attempt == max_retries:
-                        logger.error(f"异步函数 {func.__name__} 在 {max_retries} 次重试后仍失败: {str(e)}")
+                        logger.error(f"async {func.__name__} still failing after {max_retries} retries: {str(e)}")
                         raise
                     
                     current_delay = min(delay, max_delay)
@@ -113,8 +113,8 @@ def retry_with_backoff_async(
                         current_delay = current_delay * (0.5 + random.random())
                     
                     logger.warning(
-                        f"异步函数 {func.__name__} 第 {attempt + 1} 次尝试失败: {str(e)}, "
-                        f"{current_delay:.1f}秒后重试..."
+                        f"async {func.__name__} attempt {attempt + 1} failed: {str(e)}, "
+                        f"retrying in {current_delay:.1f}s..."
                     )
                     
                     if on_retry:
@@ -176,15 +176,15 @@ class RetryableAPIClient:
                 last_exception = e
                 
                 if attempt == self.max_retries:
-                    logger.error(f"API调用在 {self.max_retries} 次重试后仍失败: {str(e)}")
+                    logger.error(f"API call still failing after {self.max_retries} retries: {str(e)}")
                     raise
                 
                 current_delay = min(delay, self.max_delay)
                 current_delay = current_delay * (0.5 + random.random())
                 
                 logger.warning(
-                    f"API调用第 {attempt + 1} 次尝试失败: {str(e)}, "
-                    f"{current_delay:.1f}秒后重试..."
+                    f"API call attempt {attempt + 1} failed: {str(e)}, "
+                    f"retrying in {current_delay:.1f}s..."
                 )
                 
                 time.sleep(current_delay)
@@ -224,7 +224,7 @@ class RetryableAPIClient:
                 results.append(result)
                 
             except Exception as e:
-                logger.error(f"处理第 {idx + 1} 项失败: {str(e)}")
+                logger.error(f"item {idx + 1} failed: {str(e)}")
                 failures.append({
                     "index": idx,
                     "item": item,
