@@ -6,14 +6,12 @@ Endpoint 2: build a standalone graph through the Zep API.
 import hashlib
 import uuid
 import time
-import threading
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
 
 from zep_cloud import BatchAddItem, EntityEdgeSourceTarget, NotFoundError
 
 from ..config import Config
-from ..models.task import TaskManager, TaskStatus
 from ..utils.zep_paging import fetch_all_nodes, fetch_all_edges
 from ..utils.ontology import (
     MAX_ONTOLOGY_TYPES,
@@ -27,25 +25,7 @@ from ..utils.zep import (
     get_zep_client,
     is_retryable_zep_error,
 )
-from .text_processor import TextProcessor
-from ..utils.locale import t, get_locale, set_locale
-
-
-@dataclass
-class GraphInfo:
-    """Graph information."""
-    graph_id: str
-    node_count: int
-    edge_count: int
-    entity_types: List[str]
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "graph_id": self.graph_id,
-            "node_count": self.node_count,
-            "edge_count": self.edge_count,
-            "entity_types": self.entity_types,
-        }
+from ..utils.locale import t
 
 
 @dataclass(frozen=True)
@@ -70,151 +50,7 @@ class GraphBuilderService:
             raise ValueError("ZEP_API_KEY is not configured")
         
         self.client = get_zep_client(self.api_key)
-        self.task_manager = TaskManager()
-    
-    def build_graph_async(
-        self,
-        text: str,
-        ontology: Dict[str, Any],
-        graph_name: str = "Spiegel Graph",
-        chunk_size: int = 500,
-        chunk_overlap: int = 50,
-        batch_size: int = 350
-    ) -> str:
-        """
-        Build the graph asynchronously.
 
-        Args:
-            text: Input text
-            ontology: Ontology definition (output of endpoint 1)
-            graph_name: Graph name
-            chunk_size: Text chunk size
-            chunk_overlap: Overlap between chunks
-            batch_size: Number of chunks sent per batch
-            
-        Returns:
-            The task ID
-        """
-        # Create the task
-        task_id = self.task_manager.create_task(
-            task_type="graph_build",
-            metadata={
-                "graph_name": graph_name,
-                "chunk_size": chunk_size,
-                "text_length": len(text),
-            }
-        )
-        
-        # Capture locale before spawning background thread
-        current_locale = get_locale()
-
-        # Run the build on a background thread
-        thread = threading.Thread(
-            target=self._build_graph_worker,
-            args=(task_id, text, ontology, graph_name, chunk_size, chunk_overlap, batch_size, current_locale)
-        )
-        thread.daemon = True
-        thread.start()
-        
-        return task_id
-    
-    def _build_graph_worker(
-        self,
-        task_id: str,
-        text: str,
-        ontology: Dict[str, Any],
-        graph_name: str,
-        chunk_size: int,
-        chunk_overlap: int,
-        batch_size: int,
-        locale: str = 'zh'
-    ):
-        """Graph build worker thread."""
-        set_locale(locale)
-        try:
-            self.task_manager.update_task(
-                task_id,
-                status=TaskStatus.PROCESSING,
-                progress=5,
-                message=t('progress.startBuildingGraph')
-            )
-            
-            # Validate the complete ingestion payload before the first Cloud
-            # mutation, including this legacy service entry point.
-            chunks = TextProcessor.split_text(text, chunk_size, chunk_overlap)
-            self.validate_batch_chunks(chunks, batch_size=batch_size)
-            total_chunks = len(chunks)
-
-            # 1. Create the graph
-            graph_id = self.create_graph(graph_name)
-            self.task_manager.update_task(
-                task_id,
-                progress=10,
-                message=t('progress.graphCreated', graphId=graph_id)
-            )
-            
-            # 2. Install the ontology
-            self.set_ontology(graph_id, ontology)
-            self.task_manager.update_task(
-                task_id,
-                progress=15,
-                message=t('progress.ontologySet')
-            )
-            
-            # 3. Text chunking already ran and was validated before the Cloud mutation
-            self.task_manager.update_task(
-                task_id,
-                progress=20,
-                message=t('progress.textSplit', count=total_chunks)
-            )
-            
-            # 4. Send the data in batches
-            submission = self.add_text_batches(
-                graph_id, chunks, batch_size,
-                lambda msg, prog: self.task_manager.update_task(
-                    task_id,
-                    progress=20 + int(prog * 0.4),  # 20-60%
-                    message=msg
-                )
-            )
-            
-            # 5. Wait for Zep to finish processing
-            self.task_manager.update_task(
-                task_id,
-                progress=60,
-                message=t('progress.waitingZepProcess')
-            )
-            
-            self._wait_for_batch(
-                submission,
-                lambda msg, prog: self.task_manager.update_task(
-                    task_id,
-                    progress=60 + int(prog * 0.3),  # 60-90%
-                    message=msg
-                )
-            )
-            
-            # 6. Fetch the graph information
-            self.task_manager.update_task(
-                task_id,
-                progress=90,
-                message=t('progress.fetchingGraphInfo')
-            )
-            
-            graph_info = self._get_graph_info(graph_id)
-            
-            # Done
-            self.task_manager.complete_task(task_id, {
-                "graph_id": graph_id,
-                "graph_info": graph_info.to_dict(),
-                "chunks_processed": total_chunks,
-            })
-            
-        except Exception as e:
-            import traceback
-            error_msg = f"{str(e)}\n{traceback.format_exc()}"
-            self.task_manager.fail_task(task_id, error_msg)
-    
     def create_graph(
         self,
         name: str,
@@ -774,29 +610,6 @@ class GraphBuilderService:
         
         if progress_callback:
             progress_callback(t('progress.processingComplete', completed=completed_count, total=total_episodes), 1.0)
-    
-    def _get_graph_info(self, graph_id: str) -> GraphInfo:
-        """Fetch graph information."""
-        # Fetch nodes (paginated)
-        nodes = fetch_all_nodes(self.client, graph_id)
-
-        # Fetch edges (paginated)
-        edges = fetch_all_edges(self.client, graph_id)
-
-        # Tally the entity types
-        entity_types = set()
-        for node in nodes:
-            if node.labels:
-                for label in node.labels:
-                    if label not in ["Entity", "Node"]:
-                        entity_types.add(label)
-
-        return GraphInfo(
-            graph_id=graph_id,
-            node_count=len(nodes),
-            edge_count=len(edges),
-            entity_types=list(entity_types)
-        )
     
     def get_graph_data(self, graph_id: str) -> Dict[str, Any]:
         """

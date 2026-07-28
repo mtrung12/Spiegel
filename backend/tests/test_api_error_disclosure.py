@@ -64,8 +64,16 @@ def test_the_detail_is_logged_server_side(monkeypatch, caplog):
     app = create_app()
     app.config.update(TESTING=True)
 
-    with caplog.at_level(logging.ERROR, logger="spiegel.api.simulation"):
-        app.test_client().get("/api/simulation/list")
+    # setup_logger sets propagate=False so the app does not double-print, which
+    # also keeps records away from caplog's root handler. Attach it to the
+    # handler's own logger instead of relaxing the app's configuration.
+    api_logger = logging.getLogger("spiegel.api.simulation")
+    api_logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.ERROR, logger="spiegel.api.simulation"):
+            app.test_client().get("/api/simulation/list")
+    finally:
+        api_logger.removeHandler(caplog.handler)
 
     assert any(rec.exc_info for rec in caplog.records), (
         "the exception was not logged with its traceback"

@@ -30,7 +30,6 @@ from .zep_graph_memory_updater import (
 )
 from .simulation_ipc import (
     SimulationIPCClient,
-    SimulationIPCServer,
     IPCCommand,
     IPCResponse,
     CommandType,
@@ -64,7 +63,6 @@ __all__ = [
     'ZepGraphMemoryManager',
     'AgentActivity',
     'SimulationIPCClient',
-    'SimulationIPCServer',
     'IPCCommand',
     'IPCResponse',
     'CommandType',

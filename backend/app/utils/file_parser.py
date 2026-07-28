@@ -3,9 +3,8 @@ File parsing helpers.
 Extracts text from PDF, Markdown and TXT files.
 """
 
-import os
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 
 def _read_text_with_fallback(file_path: str) -> str:
@@ -64,20 +63,6 @@ class FileParser:
     SUPPORTED_EXTENSIONS = {'.pdf', '.md', '.markdown', '.txt'}
     
     @classmethod
-    def is_supported(cls, file_path: str) -> bool:
-        """
-        Check whether the file format is supported.
-
-        Args:
-            file_path: Path to the file
-            
-        Returns:
-            True when the file format is supported
-        """
-        suffix = Path(file_path).suffix.lower()
-        return suffix in cls.SUPPORTED_EXTENSIONS
-    
-    @classmethod
     def extract_text(cls, file_path: str) -> str:
         """
         Extract text from a file.
@@ -134,30 +119,6 @@ class FileParser:
         """Extract text from a TXT file, sniffing the encoding when needed."""
         return _read_text_with_fallback(file_path)
     
-    @classmethod
-    def extract_from_multiple(cls, file_paths: List[str]) -> str:
-        """
-        Extract and concatenate text from several files.
-
-        Args:
-            file_paths: Paths to the files
-
-        Returns:
-            The concatenated text
-        """
-        all_texts = []
-        
-        for i, file_path in enumerate(file_paths, 1):
-            try:
-                text = cls.extract_text(file_path)
-                filename = Path(file_path).name
-                all_texts.append(f"=== Document {i}: {filename} ===\n{text}")
-            except Exception as e:
-                all_texts.append(f"=== Document {i}: {file_path} (extraction failed: {str(e)}) ===")
-        
-        return "\n\n".join(all_texts)
-
-
 def split_text_into_chunks(
     text: str, 
     chunk_size: int = 500, 

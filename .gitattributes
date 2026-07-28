@@ -1,0 +1,5 @@
+# Shell scripts are COPYed into the Docker image and executed by the Linux
+# kernel. A CRLF checkout makes the shebang read `#!/bin/bash\r`, which fails to
+# exec. Keep them LF regardless of core.autocrlf.
+*.sh text eol=lf
+Dockerfile text eol=lf

@@ -20,7 +20,7 @@ Action taxonomy (see Config.OASIS_TWITTER_ACTIONS / OASIS_REDDIT_ACTIONS):
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Set
 
 from ..utils.logger import get_logger
 from .simulation_runner import SimulationRunner

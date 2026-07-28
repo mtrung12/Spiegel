@@ -14,7 +14,7 @@ import json
 import time
 import re
 from typing import Dict, Any, List, Optional, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
@@ -120,17 +120,6 @@ class ReportLogger:
             details={"message": t('report.planningStart')}
         )
     
-    def log_planning_context(self, context: Dict[str, Any]):
-        """Log the context gathered during planning."""
-        self.log(
-            action="planning_context",
-            stage="planning",
-            details={
-                "message": t('report.fetchSimContext'),
-                "context": context
-            }
-        )
-    
     def log_planning_complete(self, outline_dict: Dict[str, Any]):
         """Log the completed outline."""
         self.log(
@@ -150,20 +139,6 @@ class ReportLogger:
             section_title=section_title,
             section_index=section_index,
             details={"message": t('report.sectionStart', title=section_title)}
-        )
-    
-    def log_react_thought(self, section_title: str, section_index: int, iteration: int, thought: str):
-        """Log a ReACT reasoning step."""
-        self.log(
-            action="react_thought",
-            stage="generating",
-            section_title=section_title,
-            section_index=section_index,
-            details={
-                "iteration": iteration,
-                "thought": thought,
-                "message": t('report.reactThought', iteration=iteration)
-            }
         )
     
     def log_tool_call(

@@ -11,7 +11,7 @@ import shutil
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from enum import Enum
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from ..config import Config
 
 
@@ -306,16 +306,3 @@ class ProjectManager:
         with open(text_path, 'r', encoding='utf-8') as f:
             return f.read()
     
-    @classmethod
-    def get_project_files(cls, project_id: str) -> List[str]:
-        """Return every file path belonging to the project."""
-        files_dir = cls._get_project_files_dir(project_id)
-        
-        if not os.path.exists(files_dir):
-            return []
-        
-        return [
-            os.path.join(files_dir, f) 
-            for f in os.listdir(files_dir) 
-            if os.path.isfile(os.path.join(files_dir, f))
-        ]

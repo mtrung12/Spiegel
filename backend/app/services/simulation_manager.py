@@ -16,9 +16,9 @@ from enum import Enum
 from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.pipeline_logger import pipeline_log
-from .zep_entity_reader import ZepEntityReader, FilteredEntities
-from .oasis_profile_generator import OasisProfileGenerator, OasisAgentProfile
-from .simulation_config_generator import SimulationConfigGenerator, SimulationParameters
+from .zep_entity_reader import ZepEntityReader
+from .oasis_profile_generator import OasisProfileGenerator
+from .simulation_config_generator import SimulationConfigGenerator
 from ..utils.locale import t
 
 logger = get_logger('spiegel.simulation')
@@ -35,12 +35,6 @@ class SimulationStatus(str, Enum):
     STOPPED = "stopped"      # Simulation stopped by hand
     COMPLETED = "completed"  # Simulation ran to completion
     FAILED = "failed"
-
-
-class PlatformType(str, Enum):
-    """Platform types."""
-    TWITTER = "twitter"
-    REDDIT = "reddit"
 
 
 @dataclass
@@ -346,7 +340,14 @@ class SimulationManager:
         state = self._load_simulation_state(simulation_id)
         if not state:
             raise ValueError(f"simulation does not exist: {simulation_id}")
-        
+
+        # The stages here are sequential rather than nested, so they use the
+        # begin_stage/end_stage pair rather than the `with` form. That pair is
+        # not exception-safe on its own: the handler below closes whichever
+        # stage was open when the failure hit, so a failed run still gets its
+        # stage_end instead of a stage_start with no partner.
+        stage_handle = None
+
         try:
             state.status = SimulationStatus.PREPARING
             state.error = None
@@ -396,6 +397,7 @@ class SimulationManager:
                 entities=filtered.filtered_count,
                 entity_types=len(filtered.entity_types),
             )
+            stage_handle = None
 
             if progress_callback:
                 progress_callback(
@@ -508,6 +510,7 @@ class SimulationManager:
                     total=len(profiles)
                 )
             pipeline_log.end_stage(stage_handle, profiles=len(profiles))
+            stage_handle = None
 
             # ========== Stage 3: generate the simulation config with the LLM ==========
             stage_handle = pipeline_log.begin_stage(
@@ -572,6 +575,7 @@ class SimulationManager:
                     total=3
                 )
             pipeline_log.end_stage(stage_handle)
+            stage_handle = None
 
             # The runner scripts stay in backend/scripts/ and are no longer copied
             # into the simulation directory; simulation_runner launches them from there.
@@ -589,6 +593,13 @@ class SimulationManager:
             logger.error(f"simulation preparation failed: {simulation_id}, error={str(e)}")
             import traceback
             logger.error(traceback.format_exc())
+            if stage_handle is not None:
+                pipeline_log.end_stage(
+                    stage_handle,
+                    status='error',
+                    error=f"{type(e).__name__}: {e}",
+                )
+                stage_handle = None
             pipeline_log.action(
                 'SimulationManager', 'prepare_failed',
                 status='error', target=simulation_id,

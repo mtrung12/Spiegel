@@ -28,7 +28,7 @@ from ..utils.zep import (
     is_retryable_zep_error,
     normalize_zep_search_query,
 )
-from .zep_entity_reader import EntityNode, ZepEntityReader
+from .zep_entity_reader import EntityNode
 
 logger = get_logger('spiegel.oasis_profile')
 
@@ -253,15 +253,6 @@ class OasisProfileGenerator:
         "reviewer", "creator", "prospect",
     ]
 
-    # Group and institutional entity types (get a representative account persona)
-    GROUP_ENTITY_TYPES = [
-        "university", "governmentagency", "organization", "ngo",
-        "mediaoutlet", "company", "institution", "group", "community",
-        # Marketing-side account types
-        "brand", "advertiser", "competitor", "retailer", "agency",
-        "publisher", "association",
-    ]
-    
     def __init__(
         self, 
         api_key: Optional[str] = None,
@@ -572,10 +563,6 @@ class OasisProfileGenerator:
     def _is_individual_entity(self, entity_type: str) -> bool:
         """Whether this entity type represents an individual."""
         return entity_type.lower() in self.INDIVIDUAL_ENTITY_TYPES
-    
-    def _is_group_entity(self, entity_type: str) -> bool:
-        """Whether this entity type represents a group or institution."""
-        return entity_type.lower() in self.GROUP_ENTITY_TYPES
     
     def _generate_profile_with_llm(
         self,
@@ -1001,10 +988,6 @@ Important:
                 "profession": entity_type,
                 "interested_topics": ["General", "Social Issues"],
             }
-    
-    def set_graph_id(self, graph_id: str):
-        """Set the graph ID used for Zep retrieval."""
-        self.graph_id = graph_id
     
     def generate_profiles_from_entities(
         self,

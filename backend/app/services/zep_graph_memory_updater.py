@@ -822,10 +822,3 @@ class ZepGraphMemoryManager:
             raise RuntimeError(f"some graph updaters did not stop cleanly: {details}")
         logger.info("stopped all graph memory updaters")
     
-    @classmethod
-    def get_all_stats(cls) -> Dict[str, Dict[str, Any]]:
-        """Return the statistics for every updater."""
-        return {
-            sim_id: updater.get_stats() 
-            for sim_id, updater in cls._updaters.items()
-        }

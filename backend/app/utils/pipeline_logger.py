@@ -629,16 +629,6 @@ class StepRecorder:
 pipeline_log = PipelineLogger()
 
 
-def current_run_id() -> Optional[str]:
-    """Return the run id of the enclosing run scope, if any."""
-    return _run_id.get()
-
-
-def current_stage() -> Optional[str]:
-    """Return the enclosing stage name, if any."""
-    return _stage.get()
-
-
 @contextmanager
 def llm_caller(component: str, target: Optional[str] = None) -> Iterator[None]:
     """

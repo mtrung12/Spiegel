@@ -19,7 +19,7 @@ import re
 import zlib
 from collections import Counter
 from dataclasses import dataclass, field
-from math import log, sqrt
+from math import log
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .models import CorpusItem, KIND_COMMENT

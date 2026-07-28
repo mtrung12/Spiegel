@@ -8,18 +8,16 @@ import os
 import sys
 import json
 import time
-import asyncio
 import threading
 import subprocess
 import signal
 import atexit
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from queue import Queue
 
-from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.locale import get_locale, set_locale
 from ..utils.pipeline_logger import pipeline_log
@@ -28,7 +26,7 @@ from ..utils.zep import (
     ZEP_INGESTION_WAIT_TIMEOUT_SECONDS,
 )
 from .zep_graph_memory_updater import ZepGraphMemoryManager
-from .simulation_ipc import SimulationIPCClient, CommandType, IPCResponse
+from .simulation_ipc import SimulationIPCClient
 
 logger = get_logger('spiegel.simulation_runner')
 
@@ -1490,7 +1488,6 @@ class SimulationRunner:
         Returns:
             A summary of what was cleaned
         """
-        import shutil
         
         sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
         
@@ -1729,17 +1726,6 @@ class SimulationRunner:
             logger.warning("cannot install signal handlers (not the main thread); relying on atexit")
         
         _cleanup_registered = True
-    
-    @classmethod
-    def get_running_simulations(cls) -> List[str]:
-        """
-        Return the IDs of every running simulation.
-        """
-        running = []
-        for sim_id, process in cls._processes.items():
-            if process.poll() is None:
-                running.append(sim_id)
-        return running
     
     # ============== Interview support ==============
     

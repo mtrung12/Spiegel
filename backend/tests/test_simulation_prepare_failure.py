@@ -13,7 +13,14 @@ from app.services.simulation_manager import (
 from app.services.zep_entity_reader import FilteredEntities
 
 
-def _write_failed_state(root, simulation_id="sim_failed"):
+# The identifier guard rejects anything that does not match the generator shape
+# (sim_ + 12 hex chars) before a handler runs, so the fixtures use real-shaped
+# ids rather than readable ones.
+FAILED_SIMULATION_ID = "sim_0123456789ab"
+EMPTY_SIMULATION_ID = "sim_ba9876543210"
+
+
+def _write_failed_state(root, simulation_id=FAILED_SIMULATION_ID):
     sim_dir = root / simulation_id
     sim_dir.mkdir(parents=True)
     (sim_dir / "state.json").write_text(
@@ -74,7 +81,7 @@ def test_zero_entities_persists_failed_state_and_raises(tmp_path, monkeypatch):
 
     manager = SimulationManager()
     state = SimulationState(
-        simulation_id="sim_empty",
+        simulation_id=EMPTY_SIMULATION_ID,
         project_id="project",
         graph_id="graph",
         status=SimulationStatus.READY,

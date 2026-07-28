@@ -18,7 +18,7 @@ from zep_cloud import NotFoundError
 from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.llm_client import LLMClient
-from ..utils.locale import get_locale, t
+from ..utils.locale import t
 from ..utils.pipeline_logger import llm_caller
 from ..utils.zep_paging import fetch_all_nodes, fetch_all_edges
 from ..utils.zep import (
@@ -544,110 +544,6 @@ class ZepToolsService:
             # transient failures must remain visible to the report workflow.
             logger.error(t("console.zepSearchApiFallback", error=str(e)))
             raise
-    
-    def _local_search(
-        self, 
-        graph_id: str, 
-        query: str, 
-        limit: int = 10,
-        scope: str = "edges"
-    ) -> SearchResult:
-        """
-        Local keyword-matching search, the fallback for the Zep search API.
-
-        Fetches every edge/node and matches keywords locally.
-
-        Args:
-            graph_id: Graph ID
-            query: Search query
-            limit: Number of results
-            scope: Search scope
-
-        Returns:
-            SearchResult: the search result
-        """
-        logger.info(t("console.usingLocalSearch", query=query[:30]))
-        
-        facts = []
-        edges_result = []
-        nodes_result = []
-        
-        # Extract query keywords (naive tokenisation)
-        query_lower = query.lower()
-        keywords = [w.strip() for w in query_lower.replace(',', ' ').replace('，', ' ').split() if len(w.strip()) > 1]
-        
-        def match_score(text: str) -> int:
-            """Score how well the text matches the query."""
-            if not text:
-                return 0
-            text_lower = text.lower()
-            # Whole-query match
-            if query_lower in text_lower:
-                return 100
-            # Keyword matches
-            score = 0
-            for keyword in keywords:
-                if keyword in text_lower:
-                    score += 10
-            return score
-        
-        try:
-            if scope in ["edges", "both"]:
-                # Fetch and match every edge
-                all_edges = self.get_all_edges(graph_id)
-                scored_edges = []
-                for edge in all_edges:
-                    score = match_score(edge.fact) + match_score(edge.name)
-                    if score > 0:
-                        scored_edges.append((score, edge))
-                
-                # Sort by score
-                scored_edges.sort(key=lambda x: x[0], reverse=True)
-                
-                for score, edge in scored_edges[:limit]:
-                    if edge.fact:
-                        facts.append(edge.fact)
-                    edges_result.append({
-                        "uuid": edge.uuid,
-                        "name": edge.name,
-                        "fact": edge.fact,
-                        "source_node_uuid": edge.source_node_uuid,
-                        "target_node_uuid": edge.target_node_uuid,
-                    })
-            
-            if scope in ["nodes", "both"]:
-                # Fetch and match every node
-                all_nodes = self.get_all_nodes(graph_id)
-                scored_nodes = []
-                for node in all_nodes:
-                    score = match_score(node.name) + match_score(node.summary)
-                    if score > 0:
-                        scored_nodes.append((score, node))
-                
-                scored_nodes.sort(key=lambda x: x[0], reverse=True)
-                
-                for score, node in scored_nodes[:limit]:
-                    nodes_result.append({
-                        "uuid": node.uuid,
-                        "name": node.name,
-                        "labels": node.labels,
-                        "summary": node.summary,
-                    })
-                    if node.summary:
-                        facts.append(f"[{node.name}]: {node.summary}")
-            
-            logger.info(t("console.localSearchComplete", count=len(facts)))
-            
-        except Exception as e:
-            logger.error(t("console.localSearchFailed", error=str(e)))
-        
-        return SearchResult(
-            facts=facts,
-            edges=edges_result,
-            nodes=nodes_result,
-            query=query,
-            total_count=len(facts)
-        )
     
     def get_all_nodes(self, graph_id: str) -> List[NodeInfo]:
         """
