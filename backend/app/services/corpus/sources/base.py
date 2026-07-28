@@ -14,7 +14,7 @@ from ....utils.logger import get_logger
 from ..http import PoliteClient
 from ..models import CorpusItem, FetchResult, SourceQuery, pseudonymize_author
 
-logger = get_logger('mirofish.corpus.source')
+logger = get_logger('spiegel.corpus.source')
 
 
 class SourceAdapter(ABC):

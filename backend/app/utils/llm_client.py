@@ -117,11 +117,20 @@ class LLMClient:
         self.model = model or Config.LLM_MODEL_NAME
         
         if not self.api_key:
-            raise ValueError("LLM_API_KEY 未配置")
+            raise ValueError(f"LLM_API_KEY is not configured (base_url={self.base_url})")
         
         self.client = OpenAI(
             api_key=self.api_key,
             base_url=self.base_url
+        )
+
+    @classmethod
+    def for_chatbot(cls) -> "LLMClient":
+        """Client for the interactive chatbot, which may run a different model."""
+        return cls(
+            api_key=Config.CHATBOT_LLM_API_KEY,
+            base_url=Config.CHATBOT_LLM_BASE_URL,
+            model=Config.CHATBOT_LLM_MODEL_NAME,
         )
 
     def _create_completion(

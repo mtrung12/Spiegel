@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-# Capture the caller-supplied key before importing MiroFish modules. app.config
+# Capture the caller-supplied key before importing Spiegel modules. app.config
 # deliberately loads the repository .env with override=True, which must not
 # silently replace the account selected for this explicit validation process.
 _PROCESS_ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "").strip()
@@ -49,62 +49,62 @@ class SourceEpisode:
 BASELINE_EPISODES = [
     SourceEpisode(
         "2026-01-05T09:00:00Z",
-        "澜舟科技（企业稳定标识 LZ-TECH）是一家风电智能运维公司。"
-        "公司总部位于星港市，周岚自 2024 年起担任首席执行官（CEO）。",
+        "Lanzhou Tech (company stable id LZ-TECH) is a wind-power intelligent O&M company. "
+        "Its headquarters is in Xinggang City, and Zhou Lan has been chief executive officer (CEO) since 2024.",
         "baseline",
     ),
     SourceEpisode(
         "2026-01-12T10:00:00Z",
-        "澜舟科技研发了产品智巡平台（产品稳定标识 ZHIXUN-01）。"
-        "智巡平台当前处于试点阶段，用于识别风机叶片异常。",
+        "Lanzhou Tech developed the ZhiXun Platform (product stable id ZHIXUN-01). "
+        "The ZhiXun Platform is currently in the pilot phase, used to detect turbine blade anomalies.",
         "baseline",
     ),
     SourceEpisode(
         "2026-01-20T14:00:00Z",
-        "澜舟科技与海岳能源（企业稳定标识 HY-ENERGY）签署 HY-2026-01 合作协议。"
-        "双方将在东湾风场联合部署智巡平台，协议有效期至 2026 年 12 月 31 日。",
+        "Lanzhou Tech and Haiyue Energy (company stable id HY-ENERGY) signed cooperation agreement HY-2026-01. "
+        "The two parties will jointly deploy the ZhiXun Platform at the East Bay Wind Farm, and the agreement runs until 31 December 2026.",
         "baseline",
     ),
     SourceEpisode(
         "2026-02-02T09:30:00Z",
-        "陈屿担任澜舟科技智巡平台的项目负责人，负责东湾风场部署。"
-        "公司经营仍由首席执行官周岚负责。",
+        "Chen Yu is the project lead for the Lanzhou Tech ZhiXun Platform, responsible for the East Bay Wind Farm deployment. "
+        "Company operations remain led by chief executive officer Zhou Lan.",
         "baseline",
     ),
     SourceEpisode(
         "2026-02-20T18:00:00Z",
-        "东湾风场的智巡平台试点发现了 12 处叶片异常，"
-        "使海岳能源的非计划停机时间降低了 18%。",
+        "The ZhiXun Platform pilot at the East Bay Wind Farm found 12 blade anomalies, "
+        "reducing Haiyue Energy's unplanned downtime by 18%.",
         "baseline",
     ),
     SourceEpisode(
         "2026-03-05T11:00:00Z",
-        "海岳能源确认澜舟科技是智巡平台的开发方，陈屿是实施项目负责人。"
-        "海岳能源计划在试点验收后成为首批商业客户。",
+        "Haiyue Energy confirmed that Lanzhou Tech is the developer of the ZhiXun Platform and that Chen Yu is the implementation project lead. "
+        "Haiyue Energy plans to become one of the first commercial customers after pilot acceptance.",
         "baseline",
     ),
     SourceEpisode(
         "2026-03-15T16:00:00Z",
-        "澜舟科技董事会批准智巡平台在 2026 年 4 月 1 日从试点阶段转为商业发布。"
-        "周岚以首席执行官身份签署了发布决议。",
+        "The Lanzhou Tech board approved moving the ZhiXun Platform from pilot to commercial release on 1 April 2026. "
+        "Zhou Lan signed the release resolution as chief executive officer.",
         "baseline",
     ),
     SourceEpisode(
         "2026-04-01T08:00:00Z",
-        "智巡平台今天正式商业发布，不再处于试点阶段。"
-        "海岳能源成为智巡平台首个商业客户，陈屿继续负责交付。",
+        "The ZhiXun Platform was commercially released today and is no longer in the pilot phase. "
+        "Haiyue Energy became the first commercial customer of the ZhiXun Platform, and Chen Yu continues to lead delivery.",
         "baseline",
     ),
     SourceEpisode(
         "2026-04-18T13:00:00Z",
-        "澜舟科技在星港市总部公布运营数据：智巡平台已覆盖 60 台风机，"
-        "海岳能源仍是 HY-2026-01 协议下的合作伙伴和客户。",
+        "At its Xinggang City headquarters, Lanzhou Tech published operating data: the ZhiXun Platform now covers 60 turbines, "
+        "and Haiyue Energy remains a partner and customer under agreement HY-2026-01.",
         "baseline",
     ),
     SourceEpisode(
         "2026-04-30T17:00:00Z",
-        "截至 2026 年 4 月 30 日，周岚仍担任澜舟科技首席执行官，"
-        "澜舟科技总部仍在星港市；陈屿担任智巡平台项目负责人。",
+        "As of 30 April 2026, Zhou Lan is still chief executive officer of Lanzhou Tech, "
+        "the Lanzhou Tech headquarters is still in Xinggang City, and Chen Yu is the ZhiXun Platform project lead.",
         "baseline",
     ),
 ]
@@ -113,20 +113,20 @@ BASELINE_EPISODES = [
 TEMPORAL_UPDATES = [
     SourceEpisode(
         "2026-05-10T09:00:00Z",
-        "澜舟科技董事会宣布，自 2026 年 5 月 10 日起，周岚不再担任首席执行官。"
-        "陈屿正式接任澜舟科技首席执行官，周岚转任首席战略顾问。",
+        "The Lanzhou Tech board announced that, effective 10 May 2026, Zhou Lan is no longer chief executive officer. "
+        "Chen Yu formally became chief executive officer of Lanzhou Tech, and Zhou Lan moved to chief strategy adviser.",
         "leadership_change",
     ),
     SourceEpisode(
         "2026-06-01T09:00:00Z",
-        "自 2026 年 6 月 1 日起，澜舟科技总部已从星港市迁至海城市。"
-        "星港市原总部不再是公司总部，现改为澜舟科技研发中心。",
+        "Effective 1 June 2026, the Lanzhou Tech headquarters moved from Xinggang City to Haicheng City. "
+        "The former Xinggang City site is no longer the company headquarters; it is now the Lanzhou Tech R&D centre.",
         "headquarters_change",
     ),
     SourceEpisode(
         "2026-06-15T12:00:00Z",
-        "澜舟科技与海岳能源已于 2026 年 6 月 15 日提前终止 HY-2026-01 联合部署协议。"
-        "海岳能源不再是澜舟科技的联合部署合作伙伴，但仍是智巡平台客户。",
+        "Lanzhou Tech and Haiyue Energy terminated joint deployment agreement HY-2026-01 early, on 15 June 2026. "
+        "Haiyue Energy is no longer a joint deployment partner of Lanzhou Tech, but remains a ZhiXun Platform customer.",
         "partnership_change",
     ),
     SourceEpisode(
@@ -136,10 +136,10 @@ TEMPORAL_UPDATES = [
                 "event": "product_metrics_update",
                 "company_id": "LZ-TECH",
                 "product_id": "ZHIXUN-01",
-                "product_name": "智巡平台",
+                "product_name": "ZhiXun Platform",
                 "commercial_status": "commercial",
                 "covered_turbines": 120,
-                "active_customer": "海岳能源",
+                "active_customer": "Haiyue Energy",
                 "as_of": "2026-06-20",
             },
             ensure_ascii=False,
@@ -378,9 +378,9 @@ def _episode_to_batch_item(graph_id: str, item: SourceEpisode, index: int) -> Ba
         data=item.data,
         data_type=item.data_type,
         created_at=item.created_at,
-        source_description="MiroFish deep Zep Cloud validation corpus",
+        source_description="Spiegel deep Zep Cloud validation corpus",
         metadata={
-            "source": "mirofish_zep_deep_validation",
+            "source": "spiegel_zep_deep_validation",
             "phase": item.phase,
             "sequence": index,
         },
@@ -393,8 +393,8 @@ def _add_and_wait(client: Any, graph_id: str, item: SourceEpisode, timeout: int)
         type=item.data_type,
         data=item.data,
         created_at=item.created_at,
-        source_description="MiroFish temporal Zep Cloud validation update",
-        metadata={"source": "mirofish_zep_deep_validation", "phase": item.phase},
+        source_description="Spiegel temporal Zep Cloud validation update",
+        metadata={"source": "spiegel_zep_deep_validation", "phase": item.phase},
     )
     episode_uuid = _uuid(episode)
     if not episode_uuid:
@@ -408,21 +408,21 @@ def _activities() -> Iterable[AgentActivity]:
         AgentActivity(
             platform="twitter",
             agent_id=101,
-            agent_name="陈屿",
+            agent_name="Chen Yu",
             action_type="CREATE_POST",
-            action_args={"content": "海城市新总部今天启用，智巡平台商业服务正常运行。"},
+            action_args={"content": "The new Haicheng City headquarters opened today, and ZhiXun Platform commercial service is running normally."},
             round_num=1,
             timestamp="2026-07-01T09:00:00Z",
         ),
         AgentActivity(
             platform="twitter",
             agent_id=102,
-            agent_name="周岚",
+            agent_name="Zhou Lan",
             action_type="QUOTE_POST",
             action_args={
-                "original_author_name": "陈屿",
-                "original_content": "海城市新总部今天启用，智巡平台商业服务正常运行。",
-                "quote_content": "作为首席战略顾问，我支持陈屿和新的管理团队。",
+                "original_author_name": "Chen Yu",
+                "original_content": "The new Haicheng City headquarters opened today, and ZhiXun Platform commercial service is running normally.",
+                "quote_content": "As chief strategy adviser, I support Chen Yu and the new management team.",
             },
             round_num=1,
             timestamp="2026-07-01T09:05:00Z",
@@ -430,11 +430,11 @@ def _activities() -> Iterable[AgentActivity]:
         AgentActivity(
             platform="twitter",
             agent_id=201,
-            agent_name="海岳能源",
+            agent_name="Haiyue Energy",
             action_type="LIKE_POST",
             action_args={
-                "post_author_name": "陈屿",
-                "post_content": "海城市新总部今天启用，智巡平台商业服务正常运行。",
+                "post_author_name": "Chen Yu",
+                "post_content": "The new Haicheng City headquarters opened today, and ZhiXun Platform commercial service is running normally.",
             },
             round_num=1,
             timestamp="2026-07-01T09:06:00Z",
@@ -442,12 +442,12 @@ def _activities() -> Iterable[AgentActivity]:
         AgentActivity(
             platform="twitter",
             agent_id=201,
-            agent_name="海岳能源",
+            agent_name="Haiyue Energy",
             action_type="CREATE_COMMENT",
             action_args={
-                "post_author_name": "陈屿",
-                "post_content": "海城市新总部今天启用，智巡平台商业服务正常运行。",
-                "content": "联合部署协议虽已终止，但我们仍是智巡平台客户。",
+                "post_author_name": "Chen Yu",
+                "post_content": "The new Haicheng City headquarters opened today, and ZhiXun Platform commercial service is running normally.",
+                "content": "Although the joint deployment agreement has ended, we remain a ZhiXun Platform customer.",
             },
             round_num=2,
             timestamp="2026-07-01T09:10:00Z",
@@ -455,9 +455,9 @@ def _activities() -> Iterable[AgentActivity]:
         AgentActivity(
             platform="twitter",
             agent_id=101,
-            agent_name="陈屿",
+            agent_name="Chen Yu",
             action_type="FOLLOW",
-            action_args={"target_user_name": "海岳能源"},
+            action_args={"target_user_name": "Haiyue Energy"},
             round_num=2,
             timestamp="2026-07-01T09:12:00Z",
         ),
@@ -468,7 +468,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     api_key = _require_process_api_key()
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    graph_id = args.graph_id or f"mirofish_zep_deep_{stamp}"
+    graph_id = args.graph_id or f"spiegel_zep_deep_{stamp}"
     builder = GraphBuilderService(api_key=api_key)
     client = builder.client
     created = False
@@ -484,7 +484,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     print(f"[zep-deep] graph_id={graph_id}", flush=True)
     try:
-        builder.create_graph("MiroFish Zep Cloud Deep Validation", graph_id=graph_id)
+        builder.create_graph("Spiegel Zep Cloud Deep Validation", graph_id=graph_id)
         created = True
         print("[zep-deep] graph created", flush=True)
 
@@ -493,7 +493,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ontology_probe = {"entity_types": [{"name": "ProbeEntity", "attributes": []}], "edge_types": []}
         try:
             builder.set_ontology(graph_id, ontology_probe)
-            result["empty_attribute_ontology_probe"] = "accepted_after_mirofish_normalization"
+            result["empty_attribute_ontology_probe"] = "accepted_after_spiegel_normalization"
         except Exception as error:
             result["empty_attribute_ontology_probe"] = {
                 "error_type": type(error).__name__,
@@ -507,7 +507,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         operation_id = f"deep-validation-{stamp}"
         batch = client.batch.create(
             metadata={
-                "mirofish_operation_id": operation_id,
+                "spiegel_operation_id": operation_id,
                 "graph_id": graph_id,
                 "suite": "zep_deep_validation",
             }
@@ -563,7 +563,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         baseline_names = {_uuid(node): node.name for node in baseline_nodes}
         baseline_ceo = client.graph.search(
             graph_id=graph_id,
-            query="截至2026年4月底，谁担任澜舟科技首席执行官？",
+            query="As of the end of April 2026, who was the chief executive officer of Lanzhou Tech?",
             scope="edges",
             reranker="cross_encoder",
             limit=10,
@@ -602,9 +602,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         updater_drained = True
         updater_stats = updater.get_stats()
         if updater_stats["items_sent"] != 5 or updater_stats["pending_episode_count"] != 0:
-            raise AssertionError(f"unexpected MiroFish updater stats: {updater_stats}")
-        result["mirofish_updater"] = updater_stats
-        print("[zep-deep] MiroFish updater processed 5 mock activities", flush=True)
+            raise AssertionError(f"unexpected Spiegel updater stats: {updater_stats}")
+        result["spiegel_updater"] = updater_stats
+        print("[zep-deep] Spiegel updater processed 5 mock activities", flush=True)
 
         final_nodes = fetch_all_nodes(client, graph_id, page_size=2)
         final_edges = fetch_all_edges(client, graph_id, page_size=2)
@@ -614,14 +614,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
         edge_search = client.graph.search(
             graph_id=graph_id,
-            query="澜舟科技当前首席执行官、当前总部以及与海岳能源的当前合作关系是什么？",
+            query="Who is the current CEO of Lanzhou Tech, where is its current headquarters, and what is its current relationship with Haiyue Energy?",
             scope="edges",
             reranker="cross_encoder",
             limit=20,
         )
         node_search = client.graph.search(
             graph_id=graph_id,
-            query="澜舟科技管理层人物",
+            query="Lanzhou Tech leadership figures",
             scope="nodes",
             reranker="rrf",
             limit=10,
@@ -629,7 +629,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         typed_edge_search = client.graph.search(
             graph_id=graph_id,
-            query="公司管理职位发生了什么变化？",
+            query="What changed in the company leadership positions?",
             scope="edges",
             reranker="rrf",
             limit=10,
@@ -637,14 +637,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         auto_search = client.graph.search(
             graph_id=graph_id,
-            query="总结澜舟科技最新的管理层、总部、产品与海岳能源关系。",
+            query="Summarise the latest Lanzhou Tech leadership, headquarters, product, and relationship with Haiyue Energy.",
             scope="auto",
             max_characters=3000,
             return_raw_results=True,
         )
         episode_search = client.graph.search(
             graph_id=graph_id,
-            query="海岳能源为什么仍是客户但不再是联合部署伙伴？",
+            query="Why is Haiyue Energy still a customer but no longer a joint deployment partner?",
             scope="episodes",
             reranker="rrf",
             limit=10,
@@ -654,7 +654,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             (
                 node
                 for node in final_nodes
-                if node.name == "澜舟科技" and "Company" in (node.labels or [])
+                if node.name == "Lanzhou Tech" and "Company" in (node.labels or [])
             ),
             max(
                 final_nodes,
@@ -715,7 +715,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
         if len(entity_context.related_edges) != len(complete_node_edges):
             raise AssertionError(
-                "MiroFish entity context omitted incoming or outgoing node edges"
+                "Spiegel entity context omitted incoming or outgoing node edges"
             )
 
         result["runtime_assertions"] = {
@@ -846,7 +846,7 @@ def _compact_result(result: dict[str, Any]) -> dict[str, Any]:
         "temporal_update_episode_count": len(
             result.get("temporal_update_episode_uuids", [])
         ),
-        "mirofish_updater": result.get("mirofish_updater"),
+        "spiegel_updater": result.get("spiegel_updater"),
         "final": {
             key: final.get(key)
             for key in (

@@ -34,7 +34,7 @@ from ..utils.openai_chat_compat import is_gpt5_family
 from ..utils.pipeline_logger import llm_caller
 from .simulation_runner import SimulationRunner
 
-logger = get_logger('mirofish.content_sentiment')
+logger = get_logger('spiegel.content_sentiment')
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -227,7 +227,7 @@ class ContentSentimentService:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
         except (json.JSONDecodeError, OSError) as e:
-            logger.warning(f"读取模拟配置失败，种子帖子将不被排除: {e}")
+            logger.warning(f"failed to read simulation config; seed posts will not be excluded: {e}")
             return set()
 
         seeds = set()
@@ -277,7 +277,7 @@ class ContentSentimentService:
                     created_at=row["created_at"],
                 ))
         except sqlite3.OperationalError as e:
-            logger.warning(f"{platform} 帖子表读取失败: {e}")
+            logger.warning(f"{platform}: failed to read the post table: {e}")
 
         try:
             cursor.execute("""
@@ -305,7 +305,7 @@ class ContentSentimentService:
                     created_at=row["created_at"],
                 ))
         except sqlite3.OperationalError as e:
-            logger.warning(f"{platform} 评论表读取失败: {e}")
+            logger.warning(f"{platform}: failed to read the comment table: {e}")
 
         conn.close()
         return posts, comments
@@ -408,7 +408,7 @@ Every index from 0 to {len(batch) - 1} must appear exactly once."""
                     max_attempts=2,
                 )
         except Exception as e:
-            logger.warning(f"情感分类批次失败，该批次记为中性: {type(e).__name__}: {str(e)[:120]}")
+            logger.warning(f"sentiment batch failed; recording it as neutral: {type(e).__name__}: {str(e)[:120]}")
             return
 
         for entry in result.get("items", []) or []:
@@ -445,7 +445,7 @@ Every index from 0 to {len(batch) - 1} must appear exactly once."""
         for batch_idx in range(total_batches):
             start = batch_idx * self.BATCH_SIZE
             batch = items[start:start + self.BATCH_SIZE]
-            logger.info(f"分类批次 {batch_idx + 1}/{total_batches} ({len(batch)} 条)")
+            logger.info(f"classifying batch {batch_idx + 1}/{total_batches} ({len(batch)} items)")
 
             carried = sorted(theme_counts, key=theme_counts.get, reverse=True)
             self._classify_batch(
@@ -550,7 +550,7 @@ Every index from 0 to {len(batch) - 1} must appear exactly once."""
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(digest, f, ensure_ascii=False, indent=2)
         except OSError as e:
-            logger.warning(f"情感摘要缓存写入失败: {e}")
+            logger.warning(f"failed to write the sentiment digest cache: {e}")
 
     def compute(
         self,
@@ -599,7 +599,7 @@ Every index from 0 to {len(batch) - 1} must appear exactly once."""
         if not force:
             cached = self._load_cache(simulation_id, fingerprint)
             if cached:
-                logger.info(f"命中情感摘要缓存: {simulation_id}")
+                logger.info(f"sentiment digest cache hit: {simulation_id}")
                 return cached
 
         context = (
@@ -608,7 +608,7 @@ Every index from 0 to {len(batch) - 1} must appear exactly once."""
             else "## Campaign under test\n(no brief supplied - judge sentiment toward the product or brand being discussed)\n"
         )
 
-        logger.info(f"开始分类 {len(items)} 条内容 ({len(posts)} 帖 / {len(comments)} 评论)")
+        logger.info(f"classifying {len(items)} items ({len(posts)} posts / {len(comments)} comments)")
         self._classify(items, context)
 
         post_split = SentimentSplit()

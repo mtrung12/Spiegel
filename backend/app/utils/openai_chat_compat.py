@@ -7,7 +7,46 @@ gracefully adapting request parameters for GPT-5 family models.
 
 from __future__ import annotations
 
+import threading
 from typing import Any, Dict, List, Optional
+
+from .logger import get_logger
+
+
+logger = get_logger(__name__)
+
+# Process-wide token totals. ponytail: one lock over a 3-key dict; split per
+# model/request only if the aggregate stops being enough.
+_usage_lock = threading.Lock()
+_usage_totals = {"prompt": 0, "completion": 0, "total": 0}
+
+
+def get_token_usage_totals() -> Dict[str, int]:
+    """Return a snapshot of the process-wide token totals."""
+    with _usage_lock:
+        return dict(_usage_totals)
+
+
+def _log_token_usage(model: str, response: Any) -> None:
+    """Log the token usage of one completion plus the running process total."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return
+
+    prompt = getattr(usage, "prompt_tokens", 0) or 0
+    completion = getattr(usage, "completion_tokens", 0) or 0
+    total = getattr(usage, "total_tokens", 0) or (prompt + completion)
+
+    with _usage_lock:
+        _usage_totals["prompt"] += prompt
+        _usage_totals["completion"] += completion
+        _usage_totals["total"] += total
+        running = _usage_totals["total"]
+
+    logger.info(
+        "LLM tokens model=%s prompt=%d completion=%d total=%d (session total=%d)",
+        model, prompt, completion, total, running,
+    )
 
 
 def is_gpt5_family(model: Optional[str]) -> bool:
@@ -54,7 +93,9 @@ def create_chat_completion(
         else:
             kwargs["max_tokens"] = max_tokens
 
-    return client.chat.completions.create(**kwargs)
+    response = client.chat.completions.create(**kwargs)
+    _log_token_usage(model, response)
+    return response
 
 
 def extract_chat_completion_text(response: Any) -> str:

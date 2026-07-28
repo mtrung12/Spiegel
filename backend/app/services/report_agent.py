@@ -31,7 +31,7 @@ from .zep_tools import (
     InterviewResult
 )
 
-logger = get_logger('mirofish.report_agent')
+logger = get_logger('spiegel.report_agent')
 
 
 class ReportLogger:
@@ -356,8 +356,8 @@ class ReportConsoleLogger:
         
         # Attach to the report_agent loggers
         loggers_to_attach = [
-            'mirofish.report_agent',
-            'mirofish.zep_tools',
+            'spiegel.report_agent',
+            'spiegel.zep_tools',
         ]
         
         for logger_name in loggers_to_attach:
@@ -372,8 +372,8 @@ class ReportConsoleLogger:
         
         if self._file_handler:
             loggers_to_detach = [
-                'mirofish.report_agent',
-                'mirofish.zep_tools',
+                'spiegel.report_agent',
+                'spiegel.zep_tools',
             ]
             
             for logger_name in loggers_to_detach:
@@ -583,6 +583,29 @@ Purchase intent and specific objections are not countable from the action log.
 Get those from interview_agents and from what the agents actually wrote.
 
 [Parameters] None required."""
+
+TOOL_DESC_SEARCH_CONTENT = """\
+[Verbatim audience content - semantic search over what they actually wrote]
+Searches the raw posts and comments the audience authored, by meaning rather
+than by keyword. Every other search tool returns the knowledge graph's
+*summary* of the simulation; this one returns the audience's own words.
+
+[When to use it]
+- You want a direct quote for the report
+- You need to know how the audience phrased something, not just that they did
+- You want to check what people said about a specific topic, objection or feature
+- A graph fact looks interesting and you want the underlying text behind it
+
+[What it returns]
+- The verbatim post or comment, with its author and platform
+- For a comment: the post it was replying to
+- Like/dislike counts, so you can tell what resonated
+
+[Parameters]
+- query: what to look for, phrased naturally ("complaints about the price")
+- limit: number of results (optional, default 10)
+- kind: "post" or "comment" (optional, omit for both)
+- platform: "twitter" or "reddit" (optional, omit for both)"""
 
 # -- Outline planning prompts --
 
@@ -1082,6 +1105,16 @@ class ReportAgent:
                     "interview_topic": "the interview topic or brief, e.g. 'find out whether the young-professional segment would actually buy after seeing this campaign, and what is holding them back'",
                     "max_agents": "maximum number of agents to interview (optional, default 5, max 10)"
                 }
+            },
+            "search_content": {
+                "name": "search_content",
+                "description": TOOL_DESC_SEARCH_CONTENT,
+                "parameters": {
+                    "query": "what to look for, phrased naturally",
+                    "limit": "number of results (optional, default 10)",
+                    "kind": "'post' or 'comment' (optional)",
+                    "platform": "'twitter' or 'reddit' (optional)"
+                }
             }
         }
     
@@ -1169,7 +1202,23 @@ class ReportAgent:
                     max_agents=max_agents
                 )
                 return result.to_text()
-            
+
+            elif tool_name == "search_content":
+                # Verbatim audience text, semantic search over the vector index
+                from .content_index import ContentIndexService
+                limit = parameters.get("limit", 10)
+                if isinstance(limit, str):
+                    limit = int(limit)
+                kind = parameters.get("kind") or None
+                platform = parameters.get("platform") or None
+                return ContentIndexService().search_as_text(
+                    simulation_id=self.simulation_id,
+                    query=parameters.get("query", ""),
+                    limit=min(limit, 25),
+                    kind=kind if kind in ("post", "comment") else None,
+                    platform=platform if platform in ("twitter", "reddit") else None,
+                )
+
             # ========== Legacy tool names, redirected to the current tools ==========
             
             elif tool_name == "search_graph":
@@ -1207,7 +1256,8 @@ class ReportAgent:
             else:
                 return (
                     f"Unknown tool: {tool_name}. Use one of: campaign_metrics, "
-                    "insight_forge, panorama_search, quick_search, interview_agents"
+                    "insight_forge, panorama_search, quick_search, interview_agents, "
+                    "search_content"
                 )
                 
         except Exception as e:
@@ -1222,7 +1272,7 @@ class ReportAgent:
     # Valid tool names, used to validate the bare-JSON fallback parse
     VALID_TOOL_NAMES = {
         "campaign_metrics", "insight_forge", "panorama_search",
-        "quick_search", "interview_agents",
+        "quick_search", "interview_agents", "search_content",
     }
 
     def _parse_tool_calls(self, response: str) -> List[Dict[str, Any]]:
@@ -1685,7 +1735,7 @@ class ReportAgent:
                 unused_tools = all_tools - used_tools
                 unused_hint = ""
                 if unused_tools and tool_calls_count < self.MAX_TOOL_CALLS_PER_SECTION:
-                    unused_hint = REACT_UNUSED_TOOLS_HINT.format(unused_list="、".join(unused_tools))
+                    unused_hint = REACT_UNUSED_TOOLS_HINT.format(unused_list=", ".join(unused_tools))
 
                 cleaned_response = ReportAgent._strip_fake_tool_results(response)
                 messages.append({"role": "assistant", "content": cleaned_response})
@@ -2790,7 +2840,7 @@ reports/
         return None
     
     @classmethod
-    def list_reports(cls, simulation_id: Optional[str] = None, limit: int = 50) -> List[Report]:
+    def list_reports(cls, simulation_id: Optional[str] = None, limit: Optional[int] = 50) -> List[Report]:
         """List the reports."""
         cls._ensure_reports_dir()
         
@@ -2813,8 +2863,8 @@ reports/
         
         # Newest first
         reports.sort(key=lambda r: r.created_at, reverse=True)
-        
-        return reports[:limit]
+
+        return reports if limit is None else reports[:limit]
     
     @classmethod
     def delete_report(cls, report_id: str) -> bool:

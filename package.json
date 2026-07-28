@@ -1,7 +1,7 @@
 {
-  "name": "mirofish",
+  "name": "spiegel",
   "version": "0.1.0",
-  "description": "MiroFish - a simple, general-purpose collective intelligence engine that predicts anything",
+  "description": "Spiegel - simulates how an audience reacts to a marketing campaign",
   "scripts": {
     "setup": "npm install && cd frontend && npm install",
     "setup:backend": "cd backend && uv sync",

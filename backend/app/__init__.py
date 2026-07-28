@@ -1,5 +1,5 @@
 """
-MiroFish Backend - Flask application factory
+Spiegel Backend - Flask application factory
 """
 
 import os
@@ -27,7 +27,7 @@ def create_app(config_class=Config):
         app.json.ensure_ascii = False
     
     # Set up logging
-    logger = setup_logger('mirofish')
+    logger = setup_logger('spiegel')
     
     # Only log startup info from the reloader child process (avoids double logging in debug mode)
     is_reloader_process = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
@@ -36,7 +36,7 @@ def create_app(config_class=Config):
     
     if should_log_startup:
         logger.info("=" * 50)
-        logger.info("MiroFish Backend 启动中...")
+        logger.info("Spiegel Backend starting...")
         logger.info("=" * 50)
     
     # Enable CORS
@@ -46,20 +46,20 @@ def create_app(config_class=Config):
     from .services.simulation_runner import SimulationRunner
     SimulationRunner.register_cleanup()
     if should_log_startup:
-        logger.info("已注册模拟进程清理函数")
+        logger.info("Registered the simulation-process cleanup hook")
     
     # Request logging middleware
     @app.before_request
     def log_request():
-        logger = get_logger('mirofish.request')
-        logger.debug(f"请求: {request.method} {request.path}")
+        logger = get_logger('spiegel.request')
+        logger.debug(f"request: {request.method} {request.path}")
         if request.content_type and 'json' in request.content_type:
-            logger.debug(f"请求体: {request.get_json(silent=True)}")
+            logger.debug(f"request body: {request.get_json(silent=True)}")
     
     @app.after_request
     def log_response(response):
-        logger = get_logger('mirofish.request')
-        logger.debug(f"响应: {response.status_code}")
+        logger = get_logger('spiegel.request')
+        logger.debug(f"response: {response.status_code}")
         return response
     
     # Register blueprints
@@ -71,10 +71,10 @@ def create_app(config_class=Config):
     # Health check
     @app.route('/health')
     def health():
-        return {'status': 'ok', 'service': 'MiroFish Backend'}
+        return {'status': 'ok', 'service': 'Spiegel Backend'}
     
     if should_log_startup:
-        logger.info("MiroFish Backend 启动完成")
+        logger.info("Spiegel Backend started")
     
     return app
 

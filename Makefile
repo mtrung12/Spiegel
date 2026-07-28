@@ -1,4 +1,4 @@
-# Campaign-Reaction / MiroFish
+# Campaign-Reaction / Spiegel
 #
 # make run       - build (if needed) and start the stack in Docker
 # make rebuild   - rebuild the image from scratch and restart
@@ -57,10 +57,19 @@ ps:
 	$(COMPOSE) ps
 
 shell:
-	$(COMPOSE) exec mirofish bash
+	$(COMPOSE) exec spiegel bash
 
-dev:
+# Node deps are prerequisites, not part of the recipe: they install once, on the
+# first run or after a wipe, instead of on every `make dev`. Backend deps need no
+# rule - `uv run` syncs them itself.
+dev: node_modules frontend/node_modules
 	npm run dev
+
+node_modules:
+	npm install
+
+frontend/node_modules:
+	npm --prefix frontend install
 
 setup:
 	npm run setup:all

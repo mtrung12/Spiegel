@@ -1,10 +1,13 @@
 """
 Public-discussion corpus.
 
-Fetches real posts, comments and reviews from official APIs and reduces them to
-the small set that is actually worth spending tokens on. Everything here is
+Fetches real posts and comments from official APIs and reduces them to the
+small set that is actually worth spending tokens on. Everything here is
 LLM-free and dependency-free beyond httpx, so it can run over a large corpus
 cheaply.
+
+Which sources run is decided by config/corpus.yml; passing ``sources`` here
+overrides the file.
 
 Typical use::
 
@@ -17,7 +20,7 @@ Typical use::
         max_items=2000,
         since_days=365,
     )
-    result = CorpusHarvester(sources=['reddit', 'apple_reviews']).harvest(query)
+    result = CorpusHarvester().harvest(query)
     print(result.summary_line())
 """
 
@@ -35,10 +38,8 @@ from .filters import (
 from .harvester import CorpusHarvester, HarvestResult
 from .http import PoliteClient, RateLimitedError
 from .models import (
-    KIND_ARTICLE,
     KIND_COMMENT,
     KIND_POST,
-    KIND_REVIEW,
     CorpusItem,
     FetchResult,
     SourceQuery,
@@ -47,7 +48,6 @@ from .models import (
 from .sources import (
     CREDENTIALED_SOURCES,
     DEFAULT_SOURCES,
-    KEYLESS_SOURCES,
     SOURCE_REGISTRY,
     SourceAdapter,
     describe_sources,
@@ -74,11 +74,8 @@ __all__ = [
     'pseudonymize_author',
     'KIND_POST',
     'KIND_COMMENT',
-    'KIND_REVIEW',
-    'KIND_ARTICLE',
     'SourceAdapter',
     'SOURCE_REGISTRY',
-    'KEYLESS_SOURCES',
     'CREDENTIALED_SOURCES',
     'DEFAULT_SOURCES',
     'get_source',

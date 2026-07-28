@@ -30,7 +30,7 @@ from ..utils.zep import (
 )
 from .zep_entity_reader import EntityNode, ZepEntityReader
 
-logger = get_logger('mirofish.oasis_profile')
+logger = get_logger('spiegel.oasis_profile')
 
 
 def _usage_dict(response: Any) -> Dict[str, Any]:
@@ -275,7 +275,7 @@ class OasisProfileGenerator:
         self.model_name = model_name or Config.LLM_MODEL_NAME
         
         if not self.api_key:
-            raise ValueError("LLM_API_KEY 未配置")
+            raise ValueError("LLM_API_KEY is not configured")
         
         self.client = OpenAI(
             api_key=self.api_key,
@@ -291,7 +291,7 @@ class OasisProfileGenerator:
             try:
                 self.zep_client = get_zep_client(self.zep_api_key)
             except Exception as e:
-                logger.warning(f"Zep客户端初始化失败: {e}")
+                logger.warning(f"Zep client failed to initialise: {e}")
     
     def generate_profile_from_entity(
         self, 
@@ -485,10 +485,10 @@ class OasisProfileGenerator:
                 context_parts.append("Related entities:\n" + "\n".join(f"- {s}" for s in results["node_summaries"][:10]))
             results["context"] = "\n\n".join(context_parts)
             
-            logger.info(f"Zep混合检索完成: {entity_name}, 获取 {len(results['facts'])} 条事实, {len(results['node_summaries'])} 个相关节点")
+            logger.info(f"Zep hybrid retrieval complete: {entity_name}, {len(results['facts'])} facts, {len(results['node_summaries'])} related nodes")
             
         except Exception as e:
-            logger.warning(f"Zep检索失败 ({entity_name}): {e}")
+            logger.warning(f"Zep retrieval failed ({entity_name}): {e}")
             if not is_retryable_zep_error(e):
                 raise
         
@@ -647,7 +647,7 @@ class OasisProfileGenerator:
                 )
 
                 if finish_reason == 'length':
-                    logger.warning(f"LLM输出被截断 (attempt {attempt+1}), 尝试修复...")
+                    logger.warning(f"LLM output was truncated (attempt {attempt+1}), attempting repair...")
                     content = self._fix_truncated_json(content)
                 
                 # Try to parse the JSON
@@ -663,8 +663,8 @@ class OasisProfileGenerator:
                     return result
                     
                 except json.JSONDecodeError as je:
-                    logger.warning(f"JSON解析失败 (attempt {attempt+1}): {str(je)[:80]}")
-
+                    logger.warning(f"JSON parse failed (attempt {attempt+1}): {str(je)[:80]}")
+                    
                     # Try to repair the JSON
                     result = self._try_fix_json(content, entity_name, entity_type, entity_summary)
                     repaired = bool(result.get("_fixed"))
@@ -682,25 +682,11 @@ class OasisProfileGenerator:
                     last_error = je
                     
             except Exception as e:
-                logger.warning(f"LLM调用失败 (attempt {attempt+1}): {str(e)[:80]}")
-                pipeline_log.action(
-                    'OasisProfileGenerator', 'llm.persona',
-                    status='error',
-                    target=f"{entity_type}:{entity_name}",
-                    metrics={'attempt': attempt + 1, 'model': self.model_name},
-                    error=f"{type(e).__name__}: {e}",
-                )
+                logger.warning(f"LLM call failed (attempt {attempt+1}): {str(e)[:80]}")
                 last_error = e
                 time.sleep(1 * (attempt + 1))  # Exponential backoff
-
-        logger.warning(f"LLM生成人设失败（{max_attempts}次尝试）: {last_error}, 使用规则生成")
-        pipeline_log.action(
-            'OasisProfileGenerator', 'persona_fallback_rule_based',
-            status='warn',
-            target=f"{entity_type}:{entity_name}",
-            metrics={'attempts': max_attempts},
-            error=str(last_error) if last_error else None,
-        )
+        
+        logger.warning(f"LLM profile generation failed after {max_attempts} attempts: {last_error}; falling back to rules")
         return self._generate_profile_rule_based(
             entity_name, entity_type, entity_summary, entity_attributes
         )
@@ -1088,7 +1074,7 @@ Important:
                                 writer.writeheader()
                                 writer.writerows(profiles_data)
                 except Exception as e:
-                    logger.warning(f"实时保存 profiles 失败: {e}")
+                    logger.warning(f"failed to save profiles incrementally: {e}")
         
         # Capture locale before spawning thread pool workers
         current_locale = get_locale()
@@ -1111,7 +1097,7 @@ Important:
                 return idx, profile, None
                 
             except Exception as e:
-                logger.error(f"生成实体 {entity.name} 的人设失败: {str(e)}")
+                logger.error(f"failed to generate a profile for entity {entity.name}: {str(e)}")
                 # Fall back to a basic profile
                 fallback_profile = OasisAgentProfile(
                     user_id=idx,
@@ -1124,9 +1110,9 @@ Important:
                 )
                 return idx, fallback_profile, str(e)
         
-        logger.info(f"开始并行生成 {total} 个Agent人设（并行数: {parallel_count}）...")
+        logger.info(f"generating {total} agent profiles in parallel (concurrency: {parallel_count})...")
         print(f"\n{'='*60}")
-        print(f"开始生成Agent人设 - 共 {total} 个实体，并行数: {parallel_count}")
+        print(f"generating agent profiles - {total} entities, concurrency: {parallel_count}")
         print(f"{'='*60}\n")
         
         # Run on a thread pool
@@ -1159,16 +1145,16 @@ Important:
                         progress_callback(
                             current, 
                             total, 
-                            f"已完成 {current}/{total}: {entity.name}（{entity_type}）"
+                            f"completed {current}/{total}: {entity.name} ({entity_type})"
                         )
                     
                     if error:
-                        logger.warning(f"[{current}/{total}] {entity.name} 使用备用人设: {error}")
+                        logger.warning(f"[{current}/{total}] {entity.name} using a fallback profile: {error}")
                     else:
-                        logger.info(f"[{current}/{total}] 成功生成人设: {entity.name} ({entity_type})")
+                        logger.info(f"[{current}/{total}] generated profile: {entity.name} ({entity_type})")
                         
                 except Exception as e:
-                    logger.error(f"处理实体 {entity.name} 时发生异常: {str(e)}")
+                    logger.error(f"error while processing entity {entity.name}: {str(e)}")
                     with lock:
                         completed_count[0] += 1
                     profiles[idx] = OasisAgentProfile(
@@ -1184,7 +1170,7 @@ Important:
                     save_profiles_realtime()
         
         print(f"\n{'='*60}")
-        print(f"人设生成完成！共生成 {len([p for p in profiles if p])} 个Agent")
+        print(f"profile generation complete: {len([p for p in profiles if p])} agents")
         print(f"{'='*60}\n")
         
         return profiles
@@ -1294,7 +1280,7 @@ Important:
                 ]
                 writer.writerow(row)
         
-        logger.info(f"已保存 {len(profiles)} 个Twitter Profile到 {file_path} (OASIS CSV格式)")
+        logger.info(f"saved {len(profiles)} Twitter profiles to {file_path} (OASIS CSV format)")
     
     def _normalize_gender(self, gender: Optional[str]) -> str:
         """
@@ -1371,7 +1357,7 @@ Important:
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         
-        logger.info(f"已保存 {len(profiles)} 个Reddit Profile到 {file_path} (JSON格式，包含user_id字段)")
+        logger.info(f"saved {len(profiles)} Reddit profiles to {file_path} (JSON format, includes user_id)")
     
     # Old method name kept as an alias for backwards compatibility
     def save_profiles_to_json(

@@ -35,6 +35,15 @@
       </div>
     </header>
 
+    <!-- Failure banner: without it a failed project is a dead end on screen -->
+    <div v-if="error" class="error-banner">
+      <span class="error-text">{{ error }}</span>
+      <button v-if="canRetry" class="error-retry" :disabled="retrying" @click="retryProject">
+        {{ retrying ? $t('common.loading') : $t('main.retryBuild') }}
+      </button>
+      <button class="error-back" @click="router.push('/')">{{ $t('main.backToProjects') }}</button>
+    </div>
+
     <!-- Main Content Area -->
     <main class="content-area">
       <!-- Left Panel: Graph -->
@@ -83,7 +92,7 @@ import { useI18n } from 'vue-i18n'
 import GraphPanel from '../components/GraphPanel.vue'
 import Step1GraphBuild from '../components/Step1GraphBuild.vue'
 import Step2EnvSetup from '../components/Step2EnvSetup.vue'
-import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData } from '../api/graph'
+import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData, resetProject } from '../api/graph'
 import { getPendingUpload, clearPendingUpload } from '../store/pendingUpload'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 
@@ -103,6 +112,7 @@ const currentProjectId = ref(route.params.projectId)
 const loading = ref(false)
 const graphLoading = ref(false)
 const error = ref('')
+const retrying = ref(false)
 const projectData = ref(null)
 const graphData = ref(null)
 const currentPhase = ref(-1) // -1: Upload, 0: Ontology, 1: Build, 2: Complete
@@ -268,7 +278,29 @@ const updatePhaseByStatus = (status) => {
     case 'ontology_generated': currentPhase.value = 0; break;
     case 'graph_building': currentPhase.value = 1; break;
     case 'graph_completed': currentPhase.value = 2; break;
-    case 'failed': error.value = 'Project failed'; break;
+    case 'failed': error.value = projectData.value?.error || t('main.projectFailed'); break;
+  }
+}
+
+// Reset only rewinds to the last good state, so it can only replay the graph
+// build. A project that never produced an ontology has nothing to rebuild from.
+const canRetry = computed(() =>
+  currentProjectId.value !== 'new' && !!projectData.value?.ontology
+)
+
+const retryProject = async () => {
+  if (retrying.value) return
+  retrying.value = true
+  try {
+    addLog(`Resetting project ${currentProjectId.value}...`)
+    await resetProject(currentProjectId.value)
+    error.value = ''
+    await loadProject()
+  } catch (err) {
+    error.value = err.message
+    addLog(`Reset failed: ${err.message}`)
+  } finally {
+    retrying.value = false
   }
 }
 
@@ -533,6 +565,49 @@ onUnmounted(() => {
 .status-indicator.error .dot { background: #F44336; }
 
 @keyframes pulse { 50% { opacity: 0.5; } }
+
+/* Failure banner */
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+  background: #FEF2F2;
+  border-bottom: 1px solid #FECACA;
+  color: #B91C1C;
+  font-size: 0.9rem;
+}
+
+.error-text {
+  flex: 1;
+}
+
+.error-retry,
+.error-back {
+  flex-shrink: 0;
+  border: 1px solid currentColor;
+  background: none;
+  padding: 7px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: inherit;
+}
+
+.error-retry {
+  background: #B91C1C;
+  color: #FFFFFF;
+}
+
+.error-retry:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error-back {
+  color: #666666;
+  border-color: #E5E5E5;
+}
 
 /* Content */
 .content-area {

@@ -16,7 +16,7 @@ import httpx
 from ...config import Config
 from ...utils.logger import get_logger
 
-logger = get_logger('mirofish.corpus.http')
+logger = get_logger('spiegel.corpus.http')
 
 # Statuses worth retrying. 429 is handled separately so Retry-After is honoured.
 RETRYABLE_STATUSES = {429, 500, 502, 503, 504}

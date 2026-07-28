@@ -25,11 +25,12 @@ from ..models.task import TaskManager, TaskStatus
 from ..models.project import ProjectManager, ProjectStatus
 from ..services.simulation_manager import SimulationManager
 from ..services.simulation_runner import SimulationRunner, RunnerStatus
+from ..services.report_agent import ReportManager
 from ..services.zep_graph_memory_updater import ZepGraphMemoryManager
 from ..utils.llm_client import LLMResponseError
 
 # Logger
-logger = get_logger('mirofish.api')
+logger = get_logger('spiegel.api')
 _build_locks: dict[str, threading.Lock] = {}
 _build_locks_guard = threading.Lock()
 
@@ -108,6 +109,96 @@ def _project_build_lock(project_id: str) -> threading.Lock:
         return _build_locks.setdefault(project_id, threading.Lock())
 
 
+_ACTIVE_RUNNER_STATUSES = {
+    RunnerStatus.STARTING,
+    RunnerStatus.RUNNING,
+    RunnerStatus.PAUSED,
+    RunnerStatus.STOPPING,
+}
+
+
+def _latest_report_ids() -> dict[str, str]:
+    """Map simulation_id to its newest report_id in one pass over the reports."""
+
+    # list_reports already sorts newest first, so the first hit per simulation
+    # wins. One scan for the whole page beats one scan per project.
+    latest: dict[str, str] = {}
+    for report in ReportManager.list_reports(limit=None):
+        if report.simulation_id:
+            latest.setdefault(report.simulation_id, report.report_id)
+    return latest
+
+
+def _project_stage(project, simulation, run_state, report_id: str | None) -> str:
+    """Where the project left off, as the step the user should return to."""
+
+    if project.status == ProjectStatus.FAILED:
+        return "failed"
+    if report_id:
+        return "report"
+    if simulation is not None:
+        started = run_state is not None and (
+            run_state.current_round > 0
+            or run_state.runner_status != RunnerStatus.IDLE
+        )
+        return "run" if started or simulation.config_generated else "simulation"
+    if project.status == ProjectStatus.GRAPH_COMPLETED:
+        return "simulation"
+    if project.ontology:
+        return "graph"
+    return "upload"
+
+
+def _project_overview(project, simulations: list, report_ids: dict[str, str]) -> dict:
+    """Project row for the home page: metadata plus its latest run and report."""
+
+    # Newest run wins: that is the one "continue" should resume.
+    simulation = max(simulations, key=lambda s: s.created_at, default=None)
+    overview = project.to_dict()
+
+    if simulation is None:
+        overview.update({
+            "simulation_id": None,
+            "simulation_status": None,
+            "runner_status": "idle",
+            "current_round": 0,
+            "total_rounds": 0,
+            "report_id": None,
+            "simulation_count": 0,
+        })
+        overview["stage"] = _project_stage(project, None, None, None)
+        return overview
+
+    run_state = SimulationRunner.get_run_state(simulation.simulation_id)
+    report_id = report_ids.get(simulation.simulation_id)
+
+    # Without a user-set round count, fall back to what the config recommends.
+    config = SimulationManager().get_simulation_config(simulation.simulation_id) or {}
+    time_config = config.get("time_config", {})
+    recommended_rounds = int(
+        time_config.get("total_simulation_hours", 0) * 60
+        / max(time_config.get("minutes_per_round", 60), 1)
+    )
+    total_rounds = run_state.total_rounds if run_state and run_state.total_rounds > 0 else recommended_rounds
+
+    overview.update({
+        "simulation_id": simulation.simulation_id,
+        "simulation_status": simulation.status.value,
+        "simulation_requirement": (
+            config.get("simulation_requirement")
+            or project.simulation_requirement
+            or ""
+        ),
+        "runner_status": run_state.runner_status.value if run_state else "idle",
+        "current_round": run_state.current_round if run_state else 0,
+        "total_rounds": total_rounds,
+        "report_id": report_id,
+        "simulation_count": len(simulations),
+    })
+    overview["stage"] = _project_stage(project, simulation, run_state, report_id)
+    return overview
+
+
 def _project_has_active_build(project) -> bool:
     if project.status != ProjectStatus.GRAPH_BUILDING:
         return False
@@ -152,14 +243,31 @@ def get_project(project_id: str):
 @graph_bp.route('/project/list', methods=['GET'])
 def list_projects():
     """
-    List every project.
+    List every project, enriched with its latest run and report.
+
+    This powers the home page, so each row carries what "continue" needs:
+    the newest simulation, its progress, the report it produced, and the
+    stage the project stopped at (upload/graph/simulation/run/report/failed).
     """
     limit = request.args.get('limit', 50, type=int)
     projects = ProjectManager.list_projects(limit=limit)
-    
+
+    # Group the simulations by project once, rather than per project.
+    simulations_by_project: dict[str, list] = {}
+    for simulation in SimulationManager().list_simulations():
+        simulations_by_project.setdefault(simulation.project_id, []).append(simulation)
+    report_ids = _latest_report_ids()
+
     return jsonify({
         "success": True,
-        "data": [p.to_dict() for p in projects],
+        "data": [
+            _project_overview(
+                project,
+                simulations_by_project.get(project.project_id, []),
+                report_ids,
+            )
+            for project in projects
+        ],
         "count": len(projects)
     })
 
@@ -186,6 +294,22 @@ def _delete_project_impl(project_id: str):
             "error": t('api.graphBuilding')
         }), 409
 
+    # The simulations belong to the project, so they go with it. A running one
+    # is not safe to delete underneath its subprocess: refuse instead.
+    manager = SimulationManager()
+    simulations = manager.list_simulations(project_id=project_id)
+    running = [
+        simulation.simulation_id
+        for simulation in simulations
+        if (run_state := SimulationRunner.get_run_state(simulation.simulation_id))
+        and run_state.runner_status in _ACTIVE_RUNNER_STATUSES
+    ]
+    if running:
+        return jsonify({
+            "success": False,
+            "error": t('api.simulationRunning', id=', '.join(running))
+        }), 409
+
     graph_id = project.graph_id
     graph_guard = (
         graph_lifecycle_lock(graph_id) if graph_id else nullcontext()
@@ -198,7 +322,13 @@ def _delete_project_impl(project_id: str):
         # The local reference remains protected until it is removed, so a new
         # simulation cannot claim the just-deleted graph in between.
         success = ProjectManager.delete_project(project_id)
-    
+
+    if success:
+        # ponytail: reports are left alone on purpose - they are the output the
+        # user came for, and orphaned report rows are already tolerated.
+        for simulation in simulations:
+            manager.delete_simulation(simulation.simulation_id)
+
     if not success:
         return jsonify({
             "success": False,
@@ -296,15 +426,15 @@ def generate_ontology():
     # is what correlates these records with the later graph build.
     log_scope = ExitStack()
     try:
-        logger.info("=== 开始生成本体定义 ===")
+        logger.info("=== generating ontology definition ===")
         
         # Read the parameters
         simulation_requirement = request.form.get('simulation_requirement', '')
         project_name = request.form.get('project_name', 'Unnamed Project')
         additional_context = request.form.get('additional_context', '')
         
-        logger.debug(f"项目名称: {project_name}")
-        logger.debug(f"模拟需求: {simulation_requirement[:100]}...")
+        logger.debug(f"project name: {project_name}")
+        logger.debug(f"simulation requirement: {simulation_requirement[:100]}...")
         
         if not simulation_requirement:
             return jsonify({
@@ -323,15 +453,8 @@ def generate_ontology():
         # Create the project
         project = ProjectManager.create_project(name=project_name)
         project.simulation_requirement = simulation_requirement
-        logger.info(f"创建项目: {project.project_id}")
-
-        log_scope.enter_context(pipeline_log.run(
-            run_id=project.project_id,
-            kind='ontology_generate',
-            project_name=project_name,
-            files=len(uploaded_files),
-        ))
-
+        logger.info(f"created project: {project.project_id}")
+        
         # Save the files and extract their text
         document_texts = []
         all_text = ""
@@ -372,10 +495,10 @@ def generate_ontology():
         # Persist the extracted text
         project.total_text_length = len(all_text)
         ProjectManager.save_extracted_text(project.project_id, all_text)
-        logger.info(f"文本提取完成，共 {len(all_text)} 字符")
+        logger.info(f"text extraction complete, {len(all_text)} characters")
         
         # Generate the ontology
-        logger.info("调用 LLM 生成本体定义...")
+        logger.info("calling the LLM to generate the ontology definition...")
         generator = OntologyGenerator()
         ontology = generator.generate(
             document_texts=document_texts,
@@ -386,7 +509,7 @@ def generate_ontology():
         # Persist the ontology on the project
         entity_count = len(ontology.get("entity_types", []))
         edge_count = len(ontology.get("edge_types", []))
-        logger.info(f"本体生成完成: {entity_count} 个实体类型, {edge_count} 个关系类型")
+        logger.info(f"ontology generated: {entity_count} entity types, {edge_count} edge types")
         
         project.ontology = {
             "entity_types": ontology.get("entity_types", []),
@@ -395,7 +518,7 @@ def generate_ontology():
         project.analysis_summary = ontology.get("analysis_summary", "")
         project.status = ProjectStatus.ONTOLOGY_GENERATED
         ProjectManager.save_project(project)
-        logger.info(f"=== 本体生成完成 === 项目ID: {project.project_id}")
+        logger.info(f"=== ontology generated === project_id: {project.project_id}")
         
         return jsonify({
             "success": True,
@@ -509,14 +632,14 @@ def _build_graph_impl():
         }
     """
     try:
-        logger.info("=== 开始构建图谱 ===")
+        logger.info("=== building graph ===")
         
         # Validate the configuration
         errors = []
         if not Config.ZEP_API_KEY:
             errors.append(t('api.zepApiKeyMissing'))
         if errors:
-            logger.error(f"配置错误: {errors}")
+            logger.error(f"configuration errors: {errors}")
             return jsonify({
                 "success": False,
                 "error": t('api.configError', details="; ".join(errors))
@@ -525,7 +648,7 @@ def _build_graph_impl():
         # Parse the request
         data = request.get_json() or {}
         project_id = data.get('project_id')
-        logger.debug(f"请求参数: project_id={project_id}")
+        logger.debug(f"request parameters: project_id={project_id}")
         
         if not project_id:
             return jsonify({
@@ -612,7 +735,7 @@ def _build_graph_impl():
             })
         
         # Read the settings
-        graph_name = data.get('graph_name', project.name or 'MiroFish Graph')
+        graph_name = data.get('graph_name', project.name or 'Spiegel Graph')
         chunk_size = data.get('chunk_size', project.chunk_size or Config.DEFAULT_CHUNK_SIZE)
         chunk_overlap = data.get('chunk_overlap', project.chunk_overlap or Config.DEFAULT_CHUNK_OVERLAP)
         if not isinstance(chunk_size, int) or chunk_size <= 0:
@@ -665,8 +788,8 @@ def _build_graph_impl():
         
         # Create the background task
         task_manager = TaskManager()
-        task_id = task_manager.create_task(f"构建图谱: {graph_name}")
-        logger.info(f"创建图谱构建任务: task_id={task_id}, project_id={project_id}")
+        task_id = task_manager.create_task(f"building graph: {graph_name}")
+        logger.info(f"created graph build task: task_id={task_id}, project_id={project_id}")
         
         # Update the project status
         project.status = ProjectStatus.GRAPH_BUILDING
@@ -681,22 +804,9 @@ def _build_graph_impl():
             # A background thread starts with an empty logging context, so the
             # run scope is opened here rather than inherited from the request.
             set_locale(current_locale)
-            with pipeline_log.run(
-                run_id=project_id,
-                kind='graph_build',
-                task_id=task_id,
-                graph_name=graph_name,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-                text_chars=len(text),
-                resumed=resume_existing_batch,
-            ):
-                _build_task_body()
-
-        def _build_task_body():
-            build_logger = get_logger('mirofish.build')
+            build_logger = get_logger('spiegel.build')
             try:
-                build_logger.info(f"[{task_id}] 开始构建图谱...")
+                build_logger.info(f"[{task_id}] building graph...")
                 task_manager.update_task(
                     task_id, 
                     status=TaskStatus.PROCESSING,
@@ -845,15 +955,11 @@ def _build_graph_impl():
                     message=t('progress.fetchingGraphData'),
                     progress=95
                 )
-                with pipeline_log.step(
-                    'GraphBuilderService', 'get_graph_data', target=graph_id,
-                ) as step:
-                    graph_data = builder.get_graph_data(graph_id)
-
-                    node_count = graph_data.get("node_count", 0)
-                    edge_count = graph_data.get("edge_count", 0)
-                    step.metric(nodes=node_count, edges=edge_count)
-                build_logger.info(f"[{task_id}] 图谱构建完成: graph_id={graph_id}, 节点={node_count}, 边={edge_count}")
+                graph_data = builder.get_graph_data(graph_id)
+                
+                node_count = graph_data.get("node_count", 0)
+                edge_count = graph_data.get("edge_count", 0)
+                build_logger.info(f"[{task_id}] graph build complete: graph_id={graph_id}, nodes={node_count}, edges={edge_count}")
 
                 # Publish local project/task terminal state under the same
                 # lifecycle lock used by reset/delete/build claims. This
@@ -879,7 +985,7 @@ def _build_graph_impl():
                 
             except Exception as e:
                 # Mark the project as failed
-                build_logger.error(f"[{task_id}] 图谱构建失败: {str(e)}")
+                build_logger.error(f"[{task_id}] graph build failed: {str(e)}")
                 build_logger.debug(traceback.format_exc())
                 
                 with _project_build_lock(project_id):
@@ -911,10 +1017,10 @@ def _build_graph_impl():
     except GraphInUseError as e:
         return jsonify({"success": False, "error": str(e)}), 409
     except Exception as e:
+        logger.exception("request failed")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": t('api.internalError')
         }), 500
 
 
@@ -976,10 +1082,10 @@ def get_graph_data(graph_id: str):
         })
         
     except Exception as e:
+        logger.exception("request failed")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": t('api.internalError')
         }), 500
 
 
@@ -1035,8 +1141,8 @@ def delete_graph(graph_id: str):
     except GraphInUseError as e:
         return jsonify({"success": False, "error": str(e)}), 409
     except Exception as e:
+        logger.exception("request failed")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": t('api.internalError')
         }), 500

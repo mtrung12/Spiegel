@@ -20,7 +20,7 @@ from ....utils.logger import get_logger
 from ..models import KIND_COMMENT, KIND_POST, CorpusItem, FetchResult, SourceQuery
 from .base import SourceAdapter
 
-logger = get_logger('mirofish.corpus.reddit')
+logger = get_logger('spiegel.corpus.reddit')
 
 TOKEN_URL = 'https://www.reddit.com/api/v1/access_token'
 API_BASE = 'https://oauth.reddit.com'

@@ -67,7 +67,7 @@ class GraphBuilderService:
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or Config.ZEP_API_KEY
         if not self.api_key:
-            raise ValueError("ZEP_API_KEY 未配置")
+            raise ValueError("ZEP_API_KEY is not configured")
         
         self.client = get_zep_client(self.api_key)
         self.task_manager = TaskManager()
@@ -76,7 +76,7 @@ class GraphBuilderService:
         self,
         text: str,
         ontology: Dict[str, Any],
-        graph_name: str = "MiroFish Graph",
+        graph_name: str = "Spiegel Graph",
         chunk_size: int = 500,
         chunk_overlap: int = 50,
         batch_size: int = 350
@@ -224,7 +224,7 @@ class GraphBuilderService:
     ) -> str:
         """Create a graph with a caller-durable ID and reconcile lost replies."""
 
-        graph_id = graph_id or f"mirofish_{uuid.uuid4().hex[:16]}"
+        graph_id = graph_id or f"spiegel_{uuid.uuid4().hex[:16]}"
         # Persist the client-generated ID before the non-idempotent POST so a
         # later reset can clean up a graph whose successful response was lost.
         if graph_id_callback:
@@ -234,7 +234,7 @@ class GraphBuilderService:
             self.client.graph.create(
                 graph_id=graph_id,
                 name=name,
-                description="MiroFish Social Simulation Graph"
+                description="Spiegel Social Simulation Graph"
             )
         except Exception as error:
             if not is_retryable_zep_error(error):
@@ -288,7 +288,7 @@ class GraphBuilderService:
                 for batch in getattr(page, "batches", None) or []:
                     metadata = getattr(batch, "metadata", None) or {}
                     if (
-                        metadata.get("mirofish_operation_id") == operation_id
+                        metadata.get("spiegel_operation_id") == operation_id
                         and metadata.get("graph_id") == graph_id
                     ):
                         matches.append(batch)
@@ -436,7 +436,7 @@ class GraphBuilderService:
         try:
             batch = self.client.batch.create(
                 metadata={
-                    "mirofish_operation_id": operation_id,
+                    "spiegel_operation_id": operation_id,
                     "graph_id": graph_id,
                     "chunk_count": total_chunks,
                 }
@@ -474,9 +474,9 @@ class GraphBuilderService:
                     graph_id=graph_id,
                     data=chunk,
                     data_type="text",
-                    source_description="MiroFish source document chunk",
+                    source_description="Spiegel source document chunk",
                     metadata={
-                        "mirofish_operation_id": operation_id,
+                        "spiegel_operation_id": operation_id,
                         "chunk_index": i + offset,
                         "chunk_sha256": hashlib.sha256(
                             chunk.encode("utf-8")

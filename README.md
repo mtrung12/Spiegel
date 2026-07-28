@@ -54,6 +54,24 @@ ZEP_API_KEY=your_zep_api_key
 
 Never commit `.env`.
 
+Running a local model instead (LM Studio, Ollama, vLLM, llama.cpp)? Point
+`LLM_BASE_URL` at it — `LLM_API_KEY` is then optional:
+
+```env
+LLM_BASE_URL=http://192.168.1.10:1234/v1   # LM Studio on another machine
+LLM_MODEL_NAME=qwen2.5-7b-instruct
+```
+
+In LM Studio, load the model, start the server from the Developer tab, and turn
+on "Serve on Local Network" if the backend runs elsewhere. The key is skipped
+only for loopback, private-range IPs, and `*.local` hosts — a public URL still
+needs one.
+
+The chatbot (`CHATBOT_LLM_*`) is configured separately from the agents and can
+sit on the other kind of endpoint — e.g. chat on a local model, agents on the
+cloud. It inherits `LLM_API_KEY` only when both base URLs match; on different
+endpoints each needs its own key, and a local base URL supplies its own.
+
 > Simulations consume a lot of tokens. Start with fewer than 40 rounds.
 
 ### 2. Install

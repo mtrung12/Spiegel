@@ -95,13 +95,13 @@ from dotenv import load_dotenv
 _env_file = os.path.join(_project_root, '.env')
 if os.path.exists(_env_file):
     load_dotenv(_env_file)
-    print(f"已加载环境配置: {_env_file}")
+    print(f"Loaded environment config: {_env_file}")
 else:
     # Try backend/.env
     _backend_env = os.path.join(_backend_dir, '.env')
     if os.path.exists(_backend_env):
         load_dotenv(_backend_env)
-        print(f"已加载环境配置: {_backend_env}")
+        print(f"Loaded environment config: {_backend_env}")
 
 
 class MaxTokensWarningFilter(logging.Filter):
@@ -136,7 +136,7 @@ def disable_oasis_logging():
     
     for logger_name in oasis_loggers:
         logger = logging.getLogger(logger_name)
-        logger.setLevel(logging.CRITICAL)  # 只记录严重错误
+        logger.setLevel(logging.CRITICAL)  # only record critical errors
         logger.handlers.clear()
         logger.propagate = False
 
@@ -172,8 +172,8 @@ try:
         generate_reddit_agent_graph
     )
 except ImportError as e:
-    print(f"错误: 缺少依赖 {e}")
-    print("请先安装: pip install oasis-ai camel-ai")
+    print(f"Error: missing dependency {e}")
+    print("Install it first: pip install oasis-ai camel-ai")
     sys.exit(1)
 
 
@@ -369,11 +369,11 @@ class ParallelIPCHandler:
             
             if "error" in result:
                 self.send_response(command_id, "failed", error=result["error"])
-                print(f"  Interview失败: agent_id={agent_id}, platform={platform}, error={result['error']}")
+                print(f"  Interview failed: agent_id={agent_id}, platform={platform}, error={result['error']}")
                 return False
             else:
                 self.send_response(command_id, "completed", result=result)
-                print(f"  Interview完成: agent_id={agent_id}, platform={platform}")
+                print(f"  Interview complete: agent_id={agent_id}, platform={platform}")
                 return True
         
         # No platform given: interview both
@@ -410,12 +410,12 @@ class ParallelIPCHandler:
         
         if success_count > 0:
             self.send_response(command_id, "completed", result=results)
-            print(f"  Interview完成: agent_id={agent_id}, 成功平台数={success_count}/{len(platforms_to_interview)}")
+            print(f"  Interview complete: agent_id={agent_id}, platforms succeeded={success_count}/{len(platforms_to_interview)}")
             return True
         else:
             errors = [f"{p}: {r.get('error', 'unknown error')}" for p, r in results["platforms"].items()]
             self.send_response(command_id, "failed", error="; ".join(errors))
-            print(f"  Interview失败: agent_id={agent_id}, 所有平台都失败")
+            print(f"  Interview failed: agent_id={agent_id}, every platform failed")
             return False
     
     async def handle_batch_interview(self, command_id: str, interviews: List[Dict], platform: str = None) -> bool:
@@ -468,7 +468,7 @@ class ParallelIPCHandler:
                             action_args={"prompt": prompt}
                         )
                     except Exception as e:
-                        print(f"  警告: 无法获取Twitter Agent {agent_id}: {e}")
+                        print(f"  Warning: cannot fetch Twitter agent {agent_id}: {e}")
                 
                 if twitter_actions:
                     await self.twitter_env.step(twitter_actions)
@@ -479,7 +479,7 @@ class ParallelIPCHandler:
                         result["platform"] = "twitter"
                         results[f"twitter_{agent_id}"] = result
             except Exception as e:
-                print(f"  Twitter批量Interview失败: {e}")
+                print(f"  Twitter batch interview failed: {e}")
         
         # Run the Reddit interviews
         if reddit_interviews and self.reddit_env:
@@ -495,7 +495,7 @@ class ParallelIPCHandler:
                             action_args={"prompt": prompt}
                         )
                     except Exception as e:
-                        print(f"  警告: 无法获取Reddit Agent {agent_id}: {e}")
+                        print(f"  Warning: cannot fetch Reddit agent {agent_id}: {e}")
                 
                 if reddit_actions:
                     await self.reddit_env.step(reddit_actions)
@@ -506,14 +506,14 @@ class ParallelIPCHandler:
                         result["platform"] = "reddit"
                         results[f"reddit_{agent_id}"] = result
             except Exception as e:
-                print(f"  Reddit批量Interview失败: {e}")
+                print(f"  Reddit batch interview failed: {e}")
         
         if results:
             self.send_response(command_id, "completed", result={
                 "interviews_count": len(results),
                 "results": results
             })
-            print(f"  批量Interview完成: {len(results)} 个Agent")
+            print(f"  Batch interview complete: {len(results)} agents")
             return True
         else:
             self.send_response(command_id, "failed", error="no interview succeeded")
@@ -558,7 +558,7 @@ class ParallelIPCHandler:
             conn.close()
             
         except Exception as e:
-            print(f"  读取Interview结果失败: {e}")
+            print(f"  Failed to read interview results: {e}")
         
         return result
     
@@ -577,7 +577,7 @@ class ParallelIPCHandler:
         command_type = command.get("command_type")
         args = command.get("args", {})
         
-        print(f"\n收到IPC命令: {command_type}, id={command_id}")
+        print(f"\nReceived IPC command: {command_type}, id={command_id}")
         
         if command_type == CommandType.INTERVIEW:
             await self.handle_interview(
@@ -597,7 +597,7 @@ class ParallelIPCHandler:
             return True
             
         elif command_type == CommandType.CLOSE_ENV:
-            print("收到关闭环境命令")
+            print("Received close-environment command")
             self.send_response(command_id, "completed", result={"message": "environment is shutting down"})
             return False
         
@@ -750,7 +750,7 @@ def fetch_new_actions_from_db(
         
         conn.close()
     except Exception as e:
-        print(f"读取数据库动作失败: {e}")
+        print(f"Failed to read actions from the database: {e}")
     
     return actions, new_last_rowid
 
@@ -860,7 +860,7 @@ def _enrich_action_context(
     
     except Exception as e:
         # A failure to fill in the context must not break the main flow
-        print(f"补充动作上下文失败: {e}")
+        print(f"Failed to enrich action context: {e}")
 
 
 def _get_post_info(
@@ -1005,12 +1005,14 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
         config: The simulation config
         use_boost: Use the boost LLM configuration when it is available
     """
+    from app.config import resolve_llm_api_key
+
     # Is a boost configuration present?
-    boost_api_key = os.environ.get("LLM_BOOST_API_KEY", "")
     boost_base_url = os.environ.get("LLM_BOOST_BASE_URL", "")
+    boost_api_key = resolve_llm_api_key(os.environ.get("LLM_BOOST_API_KEY"), boost_base_url) or ""
     boost_model = os.environ.get("LLM_BOOST_MODEL_NAME", "")
     has_boost_config = bool(boost_api_key)
-    
+
     # Pick the LLM from the argument and what is configured
     if use_boost and has_boost_config:
         # Use the boost configuration
@@ -1020,8 +1022,8 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
         config_label = "[boost LLM]"
     else:
         # Use the general configuration
-        llm_api_key = os.environ.get("LLM_API_KEY", "")
         llm_base_url = os.environ.get("LLM_BASE_URL", "")
+        llm_api_key = resolve_llm_api_key(os.environ.get("LLM_API_KEY"), llm_base_url) or ""
         llm_model = os.environ.get("LLM_MODEL_NAME", "")
         config_label = "[general LLM]"
     
@@ -1034,12 +1036,15 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
         os.environ["OPENAI_API_KEY"] = llm_api_key
     
     if not os.environ.get("OPENAI_API_KEY"):
-        raise ValueError("No API key configured. Set LLM_API_KEY in the .env file at the project root.")
+        raise ValueError(
+            "No API key configured. Set LLM_API_KEY in the .env file at the project root "
+            "(not needed when LLM_BASE_URL points at a local server)."
+        )
     
     if llm_base_url:
         os.environ["OPENAI_API_BASE_URL"] = llm_base_url
     
-    print(f"{config_label} model={llm_model}, base_url={llm_base_url[:40] if llm_base_url else '默认'}...")
+    print(f"{config_label} model={llm_model}, base_url={llm_base_url[:40] if llm_base_url else 'default'}...")
     
     return ModelFactory.create(
         model_platform=ModelPlatformType.OPENAI,
@@ -1134,7 +1139,7 @@ async def run_twitter_simulation(
             main_logger.info(f"[Twitter] {msg}")
         print(f"[Twitter] {msg}")
     
-    log_info("初始化...")
+    log_info("Initialising...")
     
     # Twitter uses the general LLM configuration
     model = create_model(config, use_boost=False)
@@ -1142,7 +1147,7 @@ async def run_twitter_simulation(
     # OASIS Twitter wants CSV
     profile_path = os.path.join(simulation_dir, "twitter_profiles.csv")
     if not os.path.exists(profile_path):
-        log_info(f"错误: Profile文件不存在: {profile_path}")
+        log_info(f"Error: profile file does not exist: {profile_path}")
         return result
     
     result.agent_graph = await generate_twitter_agent_graph(
@@ -1170,7 +1175,7 @@ async def run_twitter_simulation(
     )
     
     await result.env.reset()
-    log_info("环境已启动")
+    log_info("Environment started")
     
     if action_logger:
         action_logger.log_simulation_start(config)
@@ -1214,7 +1219,7 @@ async def run_twitter_simulation(
         
         if initial_actions:
             await result.env.step(initial_actions)
-            log_info(f"已发布 {len(initial_actions)} 条初始帖子")
+            log_info(f"Published {len(initial_actions)} initial posts")
     
     # Log the end of round 0
     if action_logger:
@@ -1231,7 +1236,7 @@ async def run_twitter_simulation(
         original_rounds = total_rounds
         total_rounds = min(total_rounds, max_rounds)
         if total_rounds < original_rounds:
-            log_info(f"轮数已截断: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})")
+            log_info(f"Round count truncated: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})")
     
     start_time = datetime.now()
     
@@ -1239,7 +1244,7 @@ async def run_twitter_simulation(
         # Has a shutdown signal arrived?
         if _shutdown_event and _shutdown_event.is_set():
             if main_logger:
-                main_logger.info(f"收到退出信号，在第 {round_num + 1} 轮停止模拟")
+                main_logger.info(f"Received a shutdown signal; stopping at round {round_num + 1}")
             break
         
         simulated_minutes = round_num * minutes_per_round
@@ -1295,7 +1300,7 @@ async def run_twitter_simulation(
     
     result.total_actions = total_actions
     elapsed = (datetime.now() - start_time).total_seconds()
-    log_info(f"模拟循环完成! 耗时: {elapsed:.1f}秒, 总动作: {total_actions}")
+    log_info(f"Simulation loop complete. Elapsed: {elapsed:.1f}s, total actions: {total_actions}")
     
     return result
 
@@ -1326,14 +1331,14 @@ async def run_reddit_simulation(
             main_logger.info(f"[Reddit] {msg}")
         print(f"[Reddit] {msg}")
     
-    log_info("初始化...")
+    log_info("Initialising...")
     
     # Reddit uses the boost LLM configuration when available, else the general one
     model = create_model(config, use_boost=True)
     
     profile_path = os.path.join(simulation_dir, "reddit_profiles.json")
     if not os.path.exists(profile_path):
-        log_info(f"错误: Profile文件不存在: {profile_path}")
+        log_info(f"Error: profile file does not exist: {profile_path}")
         return result
     
     result.agent_graph = await generate_reddit_agent_graph(
@@ -1361,7 +1366,7 @@ async def run_reddit_simulation(
     )
     
     await result.env.reset()
-    log_info("环境已启动")
+    log_info("Environment started")
     
     if action_logger:
         action_logger.log_simulation_start(config)
@@ -1413,7 +1418,7 @@ async def run_reddit_simulation(
         
         if initial_actions:
             await result.env.step(initial_actions)
-            log_info(f"已发布 {len(initial_actions)} 条初始帖子")
+            log_info(f"Published {len(initial_actions)} initial posts")
     
     # Log the end of round 0
     if action_logger:
@@ -1430,7 +1435,7 @@ async def run_reddit_simulation(
         original_rounds = total_rounds
         total_rounds = min(total_rounds, max_rounds)
         if total_rounds < original_rounds:
-            log_info(f"轮数已截断: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})")
+            log_info(f"Round count truncated: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})")
     
     start_time = datetime.now()
     
@@ -1438,7 +1443,7 @@ async def run_reddit_simulation(
         # Has a shutdown signal arrived?
         if _shutdown_event and _shutdown_event.is_set():
             if main_logger:
-                main_logger.info(f"收到退出信号，在第 {round_num + 1} 轮停止模拟")
+                main_logger.info(f"Received a shutdown signal; stopping at round {round_num + 1}")
             break
         
         simulated_minutes = round_num * minutes_per_round
@@ -1494,7 +1499,7 @@ async def run_reddit_simulation(
     
     result.total_actions = total_actions
     elapsed = (datetime.now() - start_time).total_seconds()
-    log_info(f"模拟循环完成! 耗时: {elapsed:.1f}秒, 总动作: {total_actions}")
+    log_info(f"Simulation loop complete. Elapsed: {elapsed:.1f}s, total actions: {total_actions}")
     
     return result
 
@@ -1538,7 +1543,7 @@ async def main():
     _shutdown_event = asyncio.Event()
     
     if not os.path.exists(args.config):
-        print(f"错误: 配置文件不存在: {args.config}")
+        print(f"Error: config file does not exist: {args.config}")
         sys.exit(1)
     
     config = load_config(args.config)
@@ -1554,10 +1559,10 @@ async def main():
     reddit_logger = log_manager.get_reddit_logger()
     
     log_manager.info("=" * 60)
-    log_manager.info("OASIS 双平台并行模拟")
-    log_manager.info(f"配置文件: {args.config}")
-    log_manager.info(f"模拟ID: {config.get('simulation_id', 'unknown')}")
-    log_manager.info(f"等待命令模式: {'启用' if wait_for_commands else '禁用'}")
+    log_manager.info("OASIS dual-platform parallel simulation")
+    log_manager.info(f"Config file: {args.config}")
+    log_manager.info(f"Simulation id: {config.get('simulation_id', 'unknown')}")
+    log_manager.info(f"Wait-for-command mode: {'enabled' if wait_for_commands else 'disabled'}")
     log_manager.info("=" * 60)
     
     time_config = config.get("time_config", {})
@@ -1565,20 +1570,20 @@ async def main():
     minutes_per_round = time_config.get('minutes_per_round', 30)
     config_total_rounds = (total_hours * 60) // minutes_per_round
     
-    log_manager.info(f"模拟参数:")
-    log_manager.info(f"  - 总模拟时长: {total_hours}小时")
-    log_manager.info(f"  - 每轮时间: {minutes_per_round}分钟")
-    log_manager.info(f"  - 配置总轮数: {config_total_rounds}")
+    log_manager.info(f"Simulation parameters:")
+    log_manager.info(f"  - Total simulated duration: {total_hours}h")
+    log_manager.info(f"  - Minutes per round: {minutes_per_round}")
+    log_manager.info(f"  - Configured total rounds: {config_total_rounds}")
     if args.max_rounds:
-        log_manager.info(f"  - 最大轮数限制: {args.max_rounds}")
+        log_manager.info(f"  - Max rounds: {args.max_rounds}")
         if args.max_rounds < config_total_rounds:
-            log_manager.info(f"  - 实际执行轮数: {args.max_rounds} (已截断)")
-    log_manager.info(f"  - Agent数量: {len(config.get('agent_configs', []))}")
+            log_manager.info(f"  - Rounds actually run: {args.max_rounds} (truncated)")
+    log_manager.info(f"  - Agent count: {len(config.get('agent_configs', []))}")
     
-    log_manager.info("日志结构:")
-    log_manager.info(f"  - 主日志: simulation.log")
-    log_manager.info(f"  - Twitter动作: twitter/actions.jsonl")
-    log_manager.info(f"  - Reddit动作: reddit/actions.jsonl")
+    log_manager.info("Log layout:")
+    log_manager.info(f"  - Main log: simulation.log")
+    log_manager.info(f"  - Twitter actions: twitter/actions.jsonl")
+    log_manager.info(f"  - Reddit actions: reddit/actions.jsonl")
     log_manager.info("=" * 60)
     
     start_time = datetime.now()
@@ -1601,14 +1606,14 @@ async def main():
     
     total_elapsed = (datetime.now() - start_time).total_seconds()
     log_manager.info("=" * 60)
-    log_manager.info(f"模拟循环完成! 总耗时: {total_elapsed:.1f}秒")
+    log_manager.info(f"Simulation loop complete. Total elapsed: {total_elapsed:.1f}s")
     
     # Enter command-wait mode?
     if wait_for_commands:
         log_manager.info("")
         log_manager.info("=" * 60)
-        log_manager.info("进入等待命令模式 - 环境保持运行")
-        log_manager.info("支持的命令: interview, batch_interview, close_env")
+        log_manager.info("Entering wait-for-command mode - the environment stays up")
+        log_manager.info("Supported commands: interview, batch_interview, close_env")
         log_manager.info("=" * 60)
         
         # Create the IPC handler
@@ -1634,27 +1639,27 @@ async def main():
                 except asyncio.TimeoutError:
                     pass  # Timed out; keep looping
         except KeyboardInterrupt:
-            print("\n收到中断信号")
+            print("\nReceived interrupt")
         except asyncio.CancelledError:
-            print("\n任务被取消")
+            print("\nTask cancelled")
         except Exception as e:
-            print(f"\n命令处理出错: {e}")
+            print(f"\nCommand handling failed: {e}")
         
-        log_manager.info("\n关闭环境...")
+        log_manager.info("\nClosing the environment...")
         ipc_handler.update_status("stopped")
     
     # Shut the environments down
     if twitter_result and twitter_result.env:
         await twitter_result.env.close()
-        log_manager.info("[Twitter] 环境已关闭")
+        log_manager.info("[Twitter] Environment closed")
     
     if reddit_result and reddit_result.env:
         await reddit_result.env.close()
-        log_manager.info("[Reddit] 环境已关闭")
+        log_manager.info("[Reddit] Environment closed")
     
     log_manager.info("=" * 60)
-    log_manager.info(f"全部完成!")
-    log_manager.info(f"日志文件:")
+    log_manager.info(f"All done.")
+    log_manager.info(f"Log files:")
     log_manager.info(f"  - {os.path.join(simulation_dir, 'simulation.log')}")
     log_manager.info(f"  - {os.path.join(simulation_dir, 'twitter', 'actions.jsonl')}")
     log_manager.info(f"  - {os.path.join(simulation_dir, 'reddit', 'actions.jsonl')}")
@@ -1674,7 +1679,7 @@ def setup_signal_handlers(loop=None):
     def signal_handler(signum, frame):
         global _cleanup_done
         sig_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
-        print(f"\n收到 {sig_name} 信号，正在退出...")
+        print(f"\nReceived {sig_name}, exiting...")
         
         if not _cleanup_done:
             _cleanup_done = True
@@ -1685,7 +1690,7 @@ def setup_signal_handlers(loop=None):
         # Do not call sys.exit() here: let the asyncio loop exit and clean up.
         # Only a repeat signal forces an exit
         else:
-            print("强制退出...")
+            print("Forcing exit...")
             sys.exit(1)
     
     signal.signal(signal.SIGTERM, signal_handler)
@@ -1697,7 +1702,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n程序被中断")
+        print("\nInterrupted")
     except SystemExit:
         pass
     finally:
@@ -1707,4 +1712,4 @@ if __name__ == "__main__":
             resource_tracker._resource_tracker._stop()
         except Exception:
             pass
-        print("模拟进程已退出")
+        print("Simulation process exited")

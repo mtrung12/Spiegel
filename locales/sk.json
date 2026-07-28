@@ -59,16 +59,16 @@
     "metricHighAvail": "Simulovaní zákazníci",
     "metricHighAvailDesc": "Persóny vytvorené z vášho zadania",
     "workflowSequence": "Ako to funguje",
-    "step01Title": "Tvorba grafu",
-    "step01Desc": "Zadanie a kreatíva (PDF/MD/TXT) sa spracujú do znalostného grafu GraphRAG v Zep Cloud",
-    "step02Title": "Príprava zákazníkov",
-    "step02Desc": "Z entít vzniknú persóny zákazníkov: demografia, potreby, postoj k značke, nákupné správanie, mediálne návyky",
-    "step03Title": "Simulácia",
-    "step03Desc": "Kreatíva sa vloží do simulovaných kanálov Twitter a Reddit; zákazníci reagujú počas N kôl",
-    "step04Title": "KPI a správa",
-    "step04Desc": "Každá akcia sa započíta do marketingových KPI, potom ReportAgent napíše vyhodnotenie",
-    "step05Title": "Rozhovory",
-    "step05Desc": "Chatujte s ReportAgentom alebo veďte rozhovory s jednotlivými zákazníkmi",
+    "step01Title": "Načítanie kampane",
+    "step01Desc": "Vaše zadanie a kreatíva (PDF/MD/TXT) sa načítajú do znalostného grafu produktov, posolstiev a zákazníckych entít",
+    "step02Title": "Tvorba zákazníkov",
+    "step02Desc": "Z entít vzniknú persóny zákazníkov — demografia, potreby, postoj k značke, nákupné správanie, mediálne návyky — a vložia sa do oboch simulovaných kanálov",
+    "step03Title": "Spustenie kampane",
+    "step03Desc": "Kreatíva sa vloží do dvoch simulovaných kanálov — Info Plaza a Topic Community; zákazníci reagujú počas N kôl",
+    "step04Title": "Meranie a správa",
+    "step04Desc": "Každá akcia sa započíta do marketingových KPI — dosah, zapojenie, virálnosť, sentiment — potom report agent napíše vyhodnotenie",
+    "step05Title": "Doplňujúce otázky",
+    "step05Desc": "Chatujte s report agentom, veďte rozhovory s jednotlivými zákazníkmi alebo položte jednu otázku celej skupine",
     "realitySeed": "01 / Podklady kampane",
     "supportedFormats": "PDF · MD · TXT",
     "dragToUpload": "Presuňte sem zadanie a kreatívu",
@@ -78,10 +78,13 @@
     "promptPlaceholder": "Kto sú, čo nakupujú a na akú otázku má táto kampaň odpovedať?",
     "engineBadge": "Engine: Campaign-Reaction V1",
     "startEngine": "Spustiť simuláciu kampane",
-    "initializing": "Inicializuje sa..."
+    "initializing": "Inicializuje sa...",
+    "projectsTitle": "Vaše testy kampaní",
+    "projectsSub": "Otvorte predchádzajúci test, prečítajte si jeho správu a pýtajte sa doplňujúce otázky, alebo spustite nový."
   },
   "main": {
     "layoutGraph": "Graf",
+    "layoutHideGraph": "Skryť graf",
     "layoutSplit": "Rozdelené",
     "layoutWorkbench": "Pracovná plocha",
     "stepNames": [
@@ -90,7 +93,10 @@
       "Spustenie kampane",
       "KPI a správa",
       "Rozhovory"
-    ]
+    ],
+    "retryBuild": "Skúsiť zostavenie znova",
+    "backToProjects": "Späť na projekty",
+    "projectFailed": "Tento projekt zlyhal pred dokončením zostavenia."
   },
   "step1": {
     "ontologyGeneration": "Generovanie ontológie",
@@ -222,7 +228,9 @@
     "startGenerateReportBtn": "Zmerať KPI a vytvoriť správu",
     "generatingReportBtn": "Spúšťa sa...",
     "viewStream": "Tok akcií",
-    "viewBoard": "Tabuľa príspevkov"
+    "viewBoard": "Tabuľa príspevkov",
+    "summaryRound": "Kolo",
+    "summaryEvents": "udalostí"
   },
   "feedBoard": {
     "postCount": "Príspevky",
@@ -394,7 +402,26 @@
     "notStarted": "Nespustené",
     "roundsProgress": "{current}/{total} kôl",
     "untitledSimulation": "Test kampane bez názvu",
-    "unknownFile": "Neznámy súbor"
+    "unknownFile": "Neznámy súbor",
+    "workspaceButton": "Pracovný priestor",
+    "emptyTitle": "Zatiaľ žiadne testy kampaní",
+    "emptyHint": "Nahrajte zadanie kampane a popíšte cieľových zákazníkov, aby ste spustili prvý test.",
+    "emptyAction": "Spustiť prvý test",
+    "emptyErrorTitle": "Backend je nedostupný",
+    "emptyErrorHint": "API na porte 5001 neodpovedalo, takže predchádzajúce testy sa nepodarilo načítať.",
+    "retry": "Skúsiť znova",
+    "continueButton": "Pokračovať tam, kde ste skončili",
+    "stage": {
+      "upload": "Nahrávanie",
+      "graph": "Budovanie grafu",
+      "simulation": "Nastavenie zákazníkov",
+      "run": "Beh kampane",
+      "report": "Správa",
+      "failed": "Zlyhalo"
+    },
+    "deleteButton": "Zmazať projekt",
+    "deleteConfirm": "Zmazať \"{name}\"? Jeho graf a behy simulácie sa zmažú tiež. Správy zostanú.",
+    "deleteFailed": "Mazanie zlyhalo"
   },
   "sentiment": {
     "panelTitle": "Čo publikum napísalo",
@@ -428,5 +455,31 @@
     "classifiedBy": "Klasifikoval {model}",
     "seedsExcluded": "{count} úvodných kampaňových príspevkov vylúčených",
     "fromCache": "uložený výsledok"
+  },
+  "workspace": {
+    "title": "Pracovný priestor",
+    "openWorkspace": "Pracovný priestor",
+    "openGraph": "Graf",
+    "project": "Projekt",
+    "noRequirement": "Pre tento projekt nie je zaznamenaný popis cieľových zákazníkov.",
+    "simulations": "Simulácie",
+    "noSimulations": "Zatiaľ žiadne simulácie.",
+    "noReports": "Zatiaľ žiadne správy.",
+    "selectReport": "Vyberte správu vľavo, prečítajte si ju a pýtajte sa doplňujúce otázky.",
+    "reportTag": "Správa o kampani",
+    "untitledReport": "Správa bez názvu",
+    "emptyReport": "Táto správa zatiaľ nemá žiadne sekcie.",
+    "loadingReport": "Načítavam správu...",
+    "sectionPending": "Zatiaľ nevygenerované.",
+    "loading": "Načítava sa",
+    "ready": "Pripravené",
+    "chatTitle": "Opýtajte sa Report Agenta",
+    "chatNoTarget": "nie je vybraná žiadna správa",
+    "chatEmpty": "Pýtajte sa na čokoľvek o simulácii: prečo publikum reagovalo tak, ako reagovalo, aké námietky sa objavili, čo zmeniť pred spustením.",
+    "chatPlaceholder": "Zadajte doplňujúcu otázku...",
+    "clearChat": "Vymazať",
+    "chatError": "Požiadavka zlyhala: {error}",
+    "noResponse": "Agent nevrátil žiadnu odpoveď.",
+    "requestFailed": "Požiadavka zlyhala"
   }
 }

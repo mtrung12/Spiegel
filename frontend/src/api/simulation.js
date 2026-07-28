@@ -33,16 +33,6 @@ export const getSimulation = (simulationId) => {
 }
 
 /**
- * Get the simulation's agent profiles.
- * @param {string} simulationId
- * @param {string} [platform] - 'reddit' | 'twitter'; omitted, the backend picks from the simulation config
- */
-export const getSimulationProfiles = (simulationId, platform) => {
-  const params = platform ? { platform } : {}
-  return service.get(`/api/simulation/${simulationId}/profiles`, { params })
-}
-
-/**
  * Get the agent profiles live, while they are being generated.
  * @param {string} simulationId
  * @param {string} [platform] - 'reddit' | 'twitter'; omitted, the backend picks from the simulation config
@@ -148,37 +138,6 @@ export const getSimulationComments = (simulationId, postId = null, platform = nu
 }
 
 /**
- * Get the simulation timeline, aggregated per round.
- * @param {string} simulationId
- * @param {number} startRound - first round
- * @param {number} endRound - last round
- */
-export const getSimulationTimeline = (simulationId, startRound = 0, endRound = null) => {
-  const params = { start_round: startRound }
-  if (endRound !== null) {
-    params.end_round = endRound
-  }
-  return service.get(`/api/simulation/${simulationId}/timeline`, { params })
-}
-
-/**
- * Get the per-agent statistics.
- * @param {string} simulationId
- */
-export const getAgentStats = (simulationId) => {
-  return service.get(`/api/simulation/${simulationId}/agent-stats`)
-}
-
-/**
- * Get the action history.
- * @param {string} simulationId
- * @param {Object} params - { limit, offset, platform, agent_id, round_num }
- */
-export const getSimulationActions = (simulationId, params = {}) => {
-  return service.get(`/api/simulation/${simulationId}/actions`, { params })
-}
-
-/**
  * Shut the simulation environment down gracefully.
  * @param {Object} data - { simulation_id, timeout? }
  */
@@ -224,13 +183,4 @@ export const getSentimentDigest = (simulationId, force = false) => {
   return service.get(`/api/simulation/${simulationId}/sentiment-digest`, {
     params: force ? { force: true } : {}
   })
-}
-
-/**
- * List past simulations, enriched with project detail.
- * Powers the history list on the home page.
- * @param {number} limit - page size
- */
-export const getSimulationHistory = (limit = 20) => {
-  return service.get('/api/simulation/history', { params: { limit } })
 }

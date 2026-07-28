@@ -28,7 +28,7 @@ from ..utils.zep import (
     normalize_zep_search_query,
 )
 
-logger = get_logger('mirofish.zep_tools')
+logger = get_logger('spiegel.zep_tools')
 
 
 @dataclass
@@ -436,7 +436,7 @@ class ZepToolsService:
     def __init__(self, api_key: Optional[str] = None, llm_client: Optional[LLMClient] = None):
         self.api_key = api_key or Config.ZEP_API_KEY
         if not self.api_key:
-            raise ValueError("ZEP_API_KEY 未配置")
+            raise ValueError("ZEP_API_KEY is not configured")
         
         self.client = get_zep_client(self.api_key)
         # LLM client, used by InsightForge to generate sub-questions
@@ -1443,7 +1443,7 @@ Return the sub-questions as JSON."""
                 clean_text = re.sub(r'[*_`|>~\-]{2,}', '', clean_text)
                 # A zh-locale agent answers with the Chinese question marker,
                 # so both spellings are stripped.
-                clean_text = re.sub(r'(?:问题|Question)\s*\d+[：:]\s*', '', clean_text)
+                clean_text = re.sub(r'Question\s*\d+[:]\s*', '', clean_text)
                 clean_text = re.sub(r'【[^】]+】', '', clean_text)
 
                 # Strategy 1 (primary): pull out complete, substantive sentences.
@@ -1454,7 +1454,7 @@ Return the sub-questions as JSON."""
                     s.strip() for s in sentences
                     if 20 <= len(s.strip()) <= 150
                     and not re.match(r'^[\s\W，,；;：:、]+', s.strip())
-                    and not s.strip().startswith(('{', '问题', 'Question'))
+                    and not s.strip().startswith(('{', 'Question'))
                 ]
                 meaningful.sort(key=len, reverse=True)
                 key_quotes = list(meaningful[:3])
@@ -1715,7 +1715,7 @@ Write 3-5 interview questions."""
         for interview in interviews:
             interview_texts.append(f"[{interview.agent_name} ({interview.agent_role})]\n{interview.response[:500]}")
         
-        quote_instruction = "引用受访者原话时使用中文引号「」" if get_locale() == 'zh' else 'Use quotation marks "" when quoting interviewees'
+        quote_instruction = 'Use quotation marks "" when quoting interviewees'
         system_prompt = f"""You are a professional news editor. Write an interview summary from the answers given by several interviewees.
 
 Requirements:

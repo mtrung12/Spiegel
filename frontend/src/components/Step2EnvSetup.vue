@@ -677,16 +677,16 @@ const customMaxRounds = ref(40)   // 40 rounds is the recommended default
 
 // Watch stage to update phase
 watch(currentStage, (newStage) => {
-  if (newStage === '生成Agent人设' || newStage === 'generating_profiles') {
+  if (newStage === 'generating_profiles') {
     phase.value = 1
-  } else if (newStage === '生成模拟配置' || newStage === 'generating_config') {
+  } else if (newStage === 'generating_config') {
     phase.value = 2
     // Entering the config stage: start polling for it
     if (!configTimer) {
       addLog(t('log.startGeneratingConfig'))
       startConfigPolling()
     }
-  } else if (newStage === '准备模拟脚本' || newStage === 'copying_scripts') {
+  } else if (newStage === 'copying_scripts') {
     phase.value = 2 // Still part of the config stage
   }
 })
