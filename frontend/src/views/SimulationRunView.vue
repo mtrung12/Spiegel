@@ -7,17 +7,11 @@
       </div>
       
       <div class="header-center">
-        <div class="view-switcher">
-          <button 
-            v-for="mode in ['graph', 'split', 'workbench']" 
-            :key="mode"
-            class="switch-btn"
-            :class="{ active: viewMode === mode }"
-            @click="viewMode = mode"
-          >
-            {{ { graph: $t('main.layoutGraph'), split: $t('main.layoutSplit'), workbench: $t('main.layoutWorkbench') }[mode] }}
-          </button>
-        </div>
+        <select class="view-select" v-model="viewMode">
+          <option value="workbench">{{ $t('main.layoutHideGraph') }}</option>
+          <option value="split">{{ $t('main.layoutSplit') }}</option>
+          <option value="graph">{{ $t('main.layoutGraph') }}</option>
+        </select>
       </div>
 
       <div class="header-right">
@@ -88,7 +82,8 @@ const props = defineProps({
 })
 
 // Layout State
-const viewMode = ref('split')
+// Graph hidden by default: the run screen is busy enough without it
+const viewMode = ref('workbench')
 
 // Data State
 const currentSimulationId = ref(route.params.simulationId)
@@ -353,30 +348,16 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.view-switcher {
-  display: flex;
+.view-select {
+  border: 1px solid #E5E5E5;
   background: #F5F5F5;
-  padding: 4px;
-  border-radius: 6px;
-  gap: 4px;
-}
-
-.switch-btn {
-  border: none;
-  background: transparent;
-  padding: 6px 16px;
+  padding: 6px 12px;
+  font-family: inherit;
   font-size: 12px;
   font-weight: 600;
-  color: #666666;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.switch-btn.active {
-  background: #FFF;
   color: #111111;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+  border-radius: 6px;
+  cursor: pointer;
 }
 
 .header-right {

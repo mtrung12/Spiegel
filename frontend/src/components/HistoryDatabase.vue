@@ -238,7 +238,7 @@ const router = useRouter()
 const route = useRoute()
 const { t } = useI18n()
 
-const emit = defineEmits(['create-new'])
+const emit = defineEmits(['create-new', 'loaded'])
 
 // State
 const projects = ref([])
@@ -571,6 +571,7 @@ const loadHistory = async () => {
     loadFailed.value = true
   } finally {
     loading.value = false
+    emit('loaded', projects.value.length)
   }
 }
 

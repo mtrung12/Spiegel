@@ -2,7 +2,19 @@
   <div class="simulation-panel">
     <!-- Top Control Bar -->
     <div class="control-bar">
-      <div class="status-group">
+      <!-- One compact progress line; the per-platform detail is behind the chevron -->
+      <div class="status-summary">
+        <button class="detail-toggle" @click="showPlatformDetail = !showPlatformDetail">
+          {{ showPlatformDetail ? '▾' : '▸' }}
+        </button>
+        <span class="summary-round mono">
+          {{ $t('step3.summaryRound') }}
+          {{ Math.max(runStatus.twitter_current_round || 0, runStatus.reddit_current_round || 0) }}<span class="stat-total">/{{ runStatus.total_rounds || maxRounds || '-' }}</span>
+        </span>
+        <span class="summary-acts mono">{{ allActions.length }} {{ $t('step3.summaryEvents') }}</span>
+      </div>
+
+      <div class="status-group" v-show="showPlatformDetail">
         <!-- Twitter progress -->
         <div class="platform-status twitter" :class="{ active: runStatus.twitter_running, completed: runStatus.twitter_completed }">
           <div class="platform-header">
@@ -296,11 +308,11 @@
 
     <!-- Bottom Info / Logs -->
     <div class="system-logs">
-      <div class="log-header">
-        <span class="log-title">SIMULATION MONITOR</span>
+      <div class="log-header" @click="showLogs = !showLogs">
+        <span class="log-title">{{ showLogs ? '▾' : '▸' }} SIMULATION MONITOR</span>
         <span class="log-id">{{ simulationId || 'NO_SIMULATION' }}</span>
       </div>
-      <div class="log-content" ref="logContent">
+      <div v-show="showLogs" class="log-content" ref="logContent">
         <div class="log-line" v-for="(log, idx) in systemLogs" :key="idx">
           <span class="log-time">{{ log.time }}</span>
           <span class="log-msg">{{ log.msg }}</span>
@@ -345,6 +357,9 @@ const router = useRouter()
 // Which view the main area shows: 'stream' is the live action timeline,
 // 'board' is the feed read back out of the simulation database.
 const activeView = ref('stream')
+// Both collapsed by default: the run screen showed too much at once
+const showPlatformDetail = ref(false)
+const showLogs = ref(false)
 const isGeneratingReport = ref(false)
 const phase = ref(0) // 0: not started, 1: running, 2: finished
 const isStarting = ref(false)
@@ -709,7 +724,7 @@ const handleNextStep = async () => {
 
 // Scroll log to bottom
 const logContent = ref(null)
-watch(() => props.systemLogs?.length, () => {
+watch([() => props.systemLogs?.length, showLogs], () => {
   nextTick(() => {
     if (logContent.value) {
       logContent.value.scrollTop = logContent.value.scrollHeight
@@ -749,11 +764,44 @@ onUnmounted(() => {
   border-bottom: 1px solid #EAEAEA;
   z-index: 10;
   height: 64px;
+  position: relative;
 }
 
+.status-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: #333;
+}
+
+.detail-toggle {
+  border: 1px solid #EAEAEA;
+  background: #FFF;
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  color: #666;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.summary-acts { color: #888; }
+
+/* Detail drops below the bar so the 64px control bar keeps its height */
 .status-group {
   display: flex;
   gap: 12px;
+  position: absolute;
+  top: 64px;
+  left: 24px;
+  background: #FFF;
+  border: 1px solid #EAEAEA;
+  border-radius: 4px;
+  padding: 8px;
+  z-index: 20;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
 }
 
 /* Platform Status Cards */
@@ -1299,6 +1347,8 @@ onUnmounted(() => {
   margin-bottom: 8px;
   font-size: 10px;
   color: #999999;
+  cursor: pointer;
+  user-select: none;
 }
 
 .log-content {

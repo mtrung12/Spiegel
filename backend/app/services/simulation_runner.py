@@ -534,7 +534,13 @@ class SimulationRunner:
             env = os.environ.copy()
             env['PYTHONUTF8'] = '1'  # Python 3.7+: makes every open() default to UTF-8
             env['PYTHONIOENCODING'] = 'utf-8'  # Force stdout/stderr to UTF-8
-            
+
+            # OASIS passes `database_path` around, but agent_environment.py calls the
+            # bare get_db_path(), which defaults to a `data/` directory inside the
+            # installed package. That path is read-only in the container image, and
+            # sharing it across runs would be wrong even where it is writable.
+            env['OASIS_DB_PATH'] = os.path.join(sim_dir, "oasis_social_media.db")
+
             # Run inside the simulation directory (the database and friends land there).
             # start_new_session=True puts the child in its own process group so
             # os.killpg can take down every descendant.

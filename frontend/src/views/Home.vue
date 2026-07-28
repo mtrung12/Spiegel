@@ -13,17 +13,18 @@
         <h1 class="page-title">{{ $t('home.projectsTitle') }}</h1>
         <p class="page-sub">{{ $t('home.projectsSub') }}</p>
       </div>
-      <button class="cta" @click="scrollToConsole">
+      <button v-if="projectCount > 0" class="cta" @click="openConsole">
         {{ $t('home.ctaPrimary') }}
         <span class="cta-arrow">→</span>
       </button>
     </section>
 
     <!-- Existing projects -->
-    <HistoryDatabase @create-new="scrollToConsole" />
+    <HistoryDatabase @create-new="openConsole" @loaded="projectCount = $event" />
 
-    <!-- Console: create a new test -->
-    <section class="console" ref="consoleRef">
+    <!-- Console: create a new test. Hidden until the user asks for a new one,
+         so the landing page is just the project list. -->
+    <section v-if="showConsole" class="console" ref="consoleRef">
       <span class="section-label">{{ $t('home.consoleEyebrow') }}</span>
 
       <div class="console-box">
@@ -87,12 +88,13 @@
     </section>
 
     <!-- What the engine does, kept below the working surface -->
-    <section class="workflow">
+    <section v-if="showConsole" class="workflow">
       <span class="section-label">{{ $t('home.workflowSequence') }}</span>
       <ol class="workflow-strip">
-        <li v-for="(step, i) in workflowSteps" :key="step" class="workflow-step">
+        <li v-for="(step, i) in workflowSteps" :key="step.title" class="workflow-step">
           <span class="workflow-num">{{ String(i + 1).padStart(2, '0') }}</span>
-          <span class="workflow-title">{{ $t(step) }}</span>
+          <span class="workflow-title">{{ $t(step.title) }}</span>
+          <span class="workflow-desc">{{ $t(step.desc) }}</span>
         </li>
       </ol>
     </section>
@@ -100,22 +102,18 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import HistoryDatabase from '../components/HistoryDatabase.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 
 const router = useRouter()
 
-// The workflow strip shows titles only; the long descriptions stay in the
-// locale file for the in-run step headers.
-const workflowSteps = [
-  'home.step01Title',
-  'home.step02Title',
-  'home.step03Title',
-  'home.step04Title',
-  'home.step05Title'
-]
+// One entry per pipeline stage, matching the five in-run steps
+const workflowSteps = [1, 2, 3, 4, 5].map(n => ({
+  title: `home.step0${n}Title`,
+  desc: `home.step0${n}Desc`
+}))
 
 // Form data
 const formData = ref({
@@ -129,6 +127,9 @@ const files = ref([])
 const loading = ref(false)
 const error = ref('')
 const isDragOver = ref(false)
+const showConsole = ref(false)
+// -1 until the history list reports back, so the CTA does not flash before then
+const projectCount = ref(-1)
 
 // Refs
 const fileInput = ref(null)
@@ -185,8 +186,10 @@ const removeFile = (index) => {
   files.value.splice(index, 1)
 }
 
-// The hero CTA hands off to the console rather than acting on its own
-const scrollToConsole = () => {
+// The console only appears once the user asks to start a new test
+const openConsole = async () => {
+  showConsole.value = true
+  await nextTick()
   consoleRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
@@ -329,14 +332,14 @@ const startSimulation = () => {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   border-top: 1px solid var(--border);
 }
 
 .workflow-step {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
   padding: 32px 28px 40px 0;
 }
 
@@ -348,10 +351,17 @@ const startSimulation = () => {
 }
 
 .workflow-title {
-  font-size: 1.35rem;
+  font-size: 1.15rem;
   font-weight: 500;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.3px;
   line-height: 1.25;
+}
+
+.workflow-desc {
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--muted);
+  padding-right: 12px;
 }
 
 /* ---------- Console ---------- */
