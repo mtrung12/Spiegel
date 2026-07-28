@@ -79,6 +79,49 @@ docker compose up -d
 
 Reads `.env` from the project root, maps ports 3000 and 5001.
 
+## Pipeline logs
+
+Every pipeline run writes to `local-doc/logs/` (gitignored), split so the two
+debugging questions do not fight for the same file:
+
+| File | Holds |
+|------|-------|
+| `actions.jsonl` | What each step *did*: component, action, target, duration, status, counts. No agent prose, so it reads as a timeline. |
+| `debug.jsonl` | Why it did that: full inputs, the input text, the prompts, intermediate notes, and the raw model output. Joined to the action stream on `action_id` / `debug_id`. |
+| `pipeline.log` | Human-readable mirror of the action stream. |
+| `runs/<run_id>/` | The same three files scoped to one run — one project id, simulation id, or report id. |
+
+Covered stages: ontology generation, graph build, entity read, persona
+generation, simulation config, the running simulation (one line per agent
+action, with post bodies going to the debug stream only), and report
+generation including every ReACT iteration and tool call.
+
+Tuning, all optional:
+
+```env
+PIPELINE_LOG_DIR=local-doc/logs   # where the logs go
+PIPELINE_LOG_ENABLED=true         # false disables all pipeline logging
+PIPELINE_LOG_PAYLOADS=true        # false keeps actions.jsonl, drops debug.jsonl
+PIPELINE_LOG_MAX_TEXT=20000       # per-field character cap in debug.jsonl
+PIPELINE_LOG_MAX_BYTES=52428800   # rotate a log file past this size
+```
+
+Credentials are scrubbed from every record before it is written.
+
+Inspect a run:
+
+```bash
+# the timeline
+cat local-doc/logs/runs/<run_id>/pipeline.log
+
+# slowest steps
+jq -s 'sort_by(-.duration_ms)[:10] | .[] | "\(.duration_ms)ms \(.component).\(.action)"' \
+  local-doc/logs/actions.jsonl
+
+# the prompt and reply behind one action
+jq 'select(.action_id == "act_xxxxxxxx")' local-doc/logs/debug.jsonl
+```
+
 ## Acknowledgments
 
 Forked from [MiroFish](https://github.com/666ghj/MiroFish) and retargeted from general-purpose prediction to marketing campaign assessment. The simulation engine is [OASIS](https://github.com/camel-ai/oasis) by the CAMEL-AI team. Memory and retrieval are powered by [Zep](https://www.getzep.com/).

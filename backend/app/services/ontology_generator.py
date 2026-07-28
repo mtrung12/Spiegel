@@ -10,6 +10,7 @@ import re
 from typing import Dict, Any, List, Optional
 from ..utils.llm_client import LLMClient
 from ..utils.locale import get_language_instruction
+from ..utils.pipeline_logger import llm_caller, pipeline_log
 from ..utils.file_parser import split_text_into_chunks
 from ..utils.ontology import (
     MAX_ONTOLOGY_TYPES,
@@ -218,13 +219,36 @@ class OntologyGenerator:
         Returns:
             The ontology definition (entity_types, edge_types, ...)
         """
+        with pipeline_log.step(
+            'OntologyGenerator', 'generate_ontology',
+            documents=len(document_texts),
+            document_chars=sum(len(text or '') for text in document_texts),
+            has_additional_context=bool(additional_context),
+        ) as step:
+            return self._generate(
+                step,
+                document_texts,
+                simulation_requirement,
+                additional_context,
+            )
+
+    def _generate(
+        self,
+        step,
+        document_texts: List[str],
+        simulation_requirement: str,
+        additional_context: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Generate the ontology, recording each phase on the pipeline step."""
         # Build the user message
         user_message = self._build_user_message(
-            document_texts, 
+            document_texts,
             simulation_requirement,
             additional_context
         )
-        
+        step.input_text(user_message)
+        step.note('user message built', chars=len(user_message))
+
         lang_instruction = get_language_instruction()
         system_prompt = f"{ONTOLOGY_SYSTEM_PROMPT}\n\n{lang_instruction}\nIMPORTANT: Entity type names MUST be in English PascalCase (e.g., 'PersonEntity', 'MediaOrganization'). Relationship type names MUST be in English UPPER_SNAKE_CASE (e.g., 'WORKS_FOR'). Attribute names MUST be in English snake_case. Only description fields and analysis_summary should use the specified language above."
         messages = [
@@ -233,19 +257,35 @@ class OntologyGenerator:
         ]
         
         # Call the LLM
-        result = self.llm_client.chat_json(
-            messages=messages,
-            temperature=0.3,
-            # Structured ontology responses can exceed 4096 completion tokens,
-            # especially when a compatible provider counts hidden reasoning in
-            # the same budget. Let the provider use its model-specific limit.
-            max_tokens=None,
-            max_attempts=2,
+        with llm_caller('OntologyGenerator'):
+            result = self.llm_client.chat_json(
+                messages=messages,
+                temperature=0.3,
+                # Structured ontology responses can exceed 4096 completion tokens,
+                # especially when a compatible provider counts hidden reasoning in
+                # the same budget. Let the provider use its model-specific limit.
+                max_tokens=None,
+                max_attempts=2,
+            )
+
+        step.note(
+            'raw ontology received',
+            entity_types=len(result.get('entity_types') or []),
+            edge_types=len(result.get('edge_types') or []),
         )
-        
+
         # Validate and post-process
         result = self._validate_and_process(result)
-        
+
+        step.output(
+            entity_type_names=[t.get('name') for t in result.get('entity_types') or []],
+            edge_type_names=[t.get('name') for t in result.get('edge_types') or []],
+        )
+        step.metric(
+            entity_types=len(result.get('entity_types') or []),
+            edge_types=len(result.get('edge_types') or []),
+        )
+
         return result
     
     # Maximum text length handed to the LLM (50k characters)

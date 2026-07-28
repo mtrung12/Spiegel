@@ -23,9 +23,22 @@ from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, t
 from ..utils.openai_chat_compat import create_chat_completion, extract_chat_completion_text
+from ..utils.pipeline_logger import pipeline_log
 from .zep_entity_reader import EntityNode, ZepEntityReader
 
 logger = get_logger('mirofish.simulation_config')
+
+
+def _usage_dict(response: Any) -> Dict[str, Any]:
+    """Pull the token counts off a completion, when the provider reports them."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return {}
+    return {
+        key: getattr(usage, key, None)
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+        if getattr(usage, key, None) is not None
+    }
 
 # Daily-rhythm reference for China (Beijing time)
 CHINA_TIMEZONE_CONFIG = {
@@ -297,14 +310,30 @@ class SimulationConfigGenerator:
         # ========== Step 1: time configuration ==========
         report_progress(1, t('progress.generatingTimeConfig'))
         num_entities = len(entities)
-        time_config_result = self._generate_time_config(context, num_entities)
-        time_config = self._parse_time_config(time_config_result, num_entities)
+        with pipeline_log.step(
+            'SimulationConfigGenerator', 'generate_time_config',
+            target=simulation_id, entities=num_entities,
+        ) as step:
+            step.input_text(context)
+            time_config_result = self._generate_time_config(context, num_entities)
+            time_config = self._parse_time_config(time_config_result, num_entities)
+            step.output(time_config=time_config)
+            step.metric(
+                simulation_hours=getattr(time_config, 'total_simulation_hours', None),
+            )
         reasoning_parts.append(f"{t('progress.timeConfigLabel')}: {time_config_result.get('reasoning', t('common.success'))}")
         
         # ========== Step 2: event configuration ==========
         report_progress(2, t('progress.generatingEventConfig'))
-        event_config_result = self._generate_event_config(context, simulation_requirement, entities)
-        event_config = self._parse_event_config(event_config_result)
+        with pipeline_log.step(
+            'SimulationConfigGenerator', 'generate_event_config',
+            target=simulation_id, entities=num_entities,
+        ) as step:
+            step.input_text(simulation_requirement)
+            event_config_result = self._generate_event_config(context, simulation_requirement, entities)
+            event_config = self._parse_event_config(event_config_result)
+            step.output(event_config=event_config)
+            step.metric(initial_posts=len(getattr(event_config, 'initial_posts', []) or []))
         reasoning_parts.append(f"{t('progress.eventConfigLabel')}: {event_config_result.get('reasoning', t('common.success'))}")
         
         # ========== Steps 3-N: agent configuration, in batches ==========
@@ -319,12 +348,18 @@ class SimulationConfigGenerator:
                 t('progress.generatingAgentConfig', start=start_idx + 1, end=end_idx, total=len(entities))
             )
             
-            batch_configs = self._generate_agent_configs_batch(
-                context=context,
-                entities=batch_entities,
-                start_idx=start_idx,
-                simulation_requirement=simulation_requirement
-            )
+            with pipeline_log.step(
+                'SimulationConfigGenerator', 'generate_agent_configs_batch',
+                target=f"batch {batch_idx + 1}/{num_batches}",
+                start_idx=start_idx, end_idx=end_idx,
+            ) as step:
+                batch_configs = self._generate_agent_configs_batch(
+                    context=context,
+                    entities=batch_entities,
+                    start_idx=start_idx,
+                    simulation_requirement=simulation_requirement
+                )
+                step.metric(agents=len(batch_configs))
             all_agent_configs.extend(batch_configs)
         
         reasoning_parts.append(t('progress.agentConfigResult', count=len(all_agent_configs)))
@@ -435,54 +470,86 @@ class SimulationConfigGenerator:
         
         return "\n".join(lines)
     
-    def _call_llm_with_retry(self, prompt: str, system_prompt: str) -> Dict[str, Any]:
+    def _call_llm_with_retry(
+        self,
+        prompt: str,
+        system_prompt: str,
+        call_name: str = "config",
+    ) -> Dict[str, Any]:
         """Call the LLM with retries, repairing malformed JSON along the way."""
         import re
-        
+        import time
+
         max_attempts = 3
         last_error = None
-        
+
         for attempt in range(max_attempts):
             try:
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ]
+                temperature = 0.7 - (attempt * 0.1)  # Lower the temperature on each retry
+                call_started = time.perf_counter()
                 response = create_chat_completion(
                     self.client,
                     model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt}
-                    ],
+                    messages=messages,
                     response_format={"type": "json_object"},
-                    temperature=0.7 - (attempt * 0.1),  # Lower the temperature on each retry
+                    temperature=temperature,
                     # No max_tokens: let the model use its own limit
                 )
-                
+
                 content = extract_chat_completion_text(response)
                 finish_reason = response.choices[0].finish_reason
-                
+
+                pipeline_log.llm_call(
+                    'SimulationConfigGenerator', f'llm.{call_name}',
+                    model=self.model_name,
+                    messages=messages,
+                    params={'temperature': temperature, 'response_format': 'json_object'},
+                    response_text=content,
+                    duration_ms=(time.perf_counter() - call_started) * 1000,
+                    usage=_usage_dict(response),
+                    attempts=attempt + 1,
+                    extra_metrics={'finish_reason': finish_reason},
+                )
+
                 # Detect a truncated response
                 if finish_reason == 'length':
                     logger.warning(f"LLM输出被截断 (attempt {attempt+1})")
                     content = self._fix_truncated_json(content)
-                
+
                 # Try to parse the JSON
                 try:
                     return json.loads(content)
                 except json.JSONDecodeError as e:
                     logger.warning(f"JSON解析失败 (attempt {attempt+1}): {str(e)[:80]}")
-                    
+
                     # Try to repair the JSON
                     fixed = self._try_fix_config_json(content)
+                    pipeline_log.action(
+                        'SimulationConfigGenerator', f'{call_name}_json_repair',
+                        status='ok' if fixed else 'error',
+                        metrics={'attempt': attempt + 1, 'repaired': bool(fixed)},
+                        error=str(e),
+                    )
                     if fixed:
                         return fixed
-                    
+
                     last_error = e
-                    
+
             except Exception as e:
                 logger.warning(f"LLM调用失败 (attempt {attempt+1}): {str(e)[:80]}")
+                pipeline_log.action(
+                    'SimulationConfigGenerator', f'llm.{call_name}',
+                    status='error',
+                    metrics={'attempt': attempt + 1, 'model': self.model_name},
+                    error=f"{type(e).__name__}: {e}",
+                )
                 last_error = e
-                import time
                 time.sleep(2 * (attempt + 1))
-        
+
         raise last_error or Exception("LLM调用失败")
     
     def _fix_truncated_json(self, content: str) -> str:
@@ -614,9 +681,13 @@ Field reference:
         system_prompt = f"{system_prompt}\n\n{get_language_instruction()}"
 
         try:
-            return self._call_llm_with_retry(prompt, system_prompt)
+            return self._call_llm_with_retry(prompt, system_prompt, call_name='time_config')
         except Exception as e:
             logger.warning(f"时间配置LLM生成失败: {e}, 使用默认配置")
+            pipeline_log.action(
+                'SimulationConfigGenerator', 'time_config_fallback_default',
+                status='warn', error=f"{type(e).__name__}: {e}",
+            )
             return self._get_default_time_config(num_entities)
     
     def _get_default_time_config(self, num_entities: int) -> Dict[str, Any]:
@@ -763,9 +834,13 @@ Return JSON (no markdown):
         system_prompt = f"{system_prompt}\n\n{get_language_instruction()}\nIMPORTANT: The 'poster_type' field value MUST be in English PascalCase exactly matching the available entity types. Only 'content', 'narrative_direction', 'hot_topics' and 'reasoning' fields should use the specified language."
 
         try:
-            return self._call_llm_with_retry(prompt, system_prompt)
+            return self._call_llm_with_retry(prompt, system_prompt, call_name='event_config')
         except Exception as e:
             logger.warning(f"事件配置LLM生成失败: {e}, 使用默认配置")
+            pipeline_log.action(
+                'SimulationConfigGenerator', 'event_config_fallback_default',
+                status='warn', error=f"{type(e).__name__}: {e}",
+            )
             return {
                 "hot_topics": [],
                 "narrative_direction": "",
@@ -960,10 +1035,16 @@ Return JSON (no markdown):
         system_prompt = f"{system_prompt}\n\n{get_language_instruction()}\nIMPORTANT: The 'stance' field value MUST be one of the English strings: 'supportive', 'opposing', 'neutral', 'observer'. All JSON field names and numeric values must remain unchanged. Only natural language text fields should use the specified language."
 
         try:
-            result = self._call_llm_with_retry(prompt, system_prompt)
+            result = self._call_llm_with_retry(prompt, system_prompt, call_name='agent_configs')
             llm_configs = {cfg["agent_id"]: cfg for cfg in result.get("agent_configs", [])}
         except Exception as e:
             logger.warning(f"Agent配置批次LLM生成失败: {e}, 使用规则生成")
+            pipeline_log.action(
+                'SimulationConfigGenerator', 'agent_configs_fallback_rule_based',
+                status='warn',
+                metrics={'start_idx': start_idx, 'entities': len(entities)},
+                error=f"{type(e).__name__}: {e}",
+            )
             llm_configs = {}
         
         # Build the AgentActivityConfig objects

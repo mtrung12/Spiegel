@@ -13,6 +13,7 @@ from queue import Queue, Empty
 from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.locale import get_locale, set_locale
+from ..utils.pipeline_logger import pipeline_log
 from ..utils.zep import (
     ZEP_INGESTION_WAIT_TIMEOUT_SECONDS,
     call_zep_read_with_retry,
@@ -412,6 +413,17 @@ class ZepGraphMemoryUpdater:
     
     def _worker_loop(self, locale: str = 'zh'):
         """Background worker loop - flushes activity to Zep per platform."""
+        # Own thread, own run scope, so these writes file under the simulation
+        # they belong to rather than landing without a run id.
+        with pipeline_log.run(
+            run_id=self.simulation_id,
+            kind='simulation_run',
+            graph_id=self.graph_id,
+        ), pipeline_log.stage('graph_memory_update'):
+            self._worker_loop_body(locale)
+
+    def _worker_loop_body(self, locale: str = 'zh'):
+        """Drain the activity queue until the updater is stopped."""
         set_locale(locale)
         while self._running or not self._activity_queue.empty():
             try:
@@ -532,11 +544,46 @@ class ZepGraphMemoryUpdater:
                 logger.info(f"成功批量发送 {len(payload_activities)} 条{display_name}活动到图谱 {self.graph_id}")
                 logger.debug(f"批量内容预览: {combined_text[:200]}...")
 
+                # The episode body is agent prose, so it goes to the debug
+                # stream and the action line carries only the batch shape.
+                debug_id = pipeline_log.debug(
+                    'ZepGraphMemoryUpdater', 'graph_episode_added',
+                    target=self.graph_id,
+                    inputs={
+                        'platform': platform,
+                        'simulation_id': self.simulation_id,
+                        'episode_uuid': str(episode_uuid),
+                    },
+                    output_text=combined_text,
+                )
+                pipeline_log.action(
+                    'ZepGraphMemoryUpdater', 'graph_episode_added',
+                    target=self.graph_id,
+                    metrics={
+                        'platform': platform,
+                        'activities': len(payload_activities),
+                        'episode_chars': len(combined_text),
+                        'first_round': min(a.round_num for a in payload_activities),
+                        'last_round': max(a.round_num for a in payload_activities),
+                    },
+                    debug_id=debug_id,
+                )
+
             except Exception as e:
                 # graph.add has no idempotency key. Replaying an ambiguous
                 # response can duplicate extracted facts, so fail closed and
                 # surface the incomplete batch to SimulationRunner.
                 logger.error(f"批量发送到Zep失败，未自动重放非幂等写入: {e}")
+                pipeline_log.action(
+                    'ZepGraphMemoryUpdater', 'graph_episode_failed',
+                    status='error',
+                    target=self.graph_id,
+                    metrics={
+                        'platform': platform,
+                        'activities': len(payload_activities),
+                    },
+                    error=f"{type(e).__name__}: {e}",
+                )
                 self._failed_count += 1
                 self._failed_batches.append({
                     "platform": platform,

@@ -31,6 +31,7 @@ from ..config import Config
 from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from ..utils.openai_chat_compat import is_gpt5_family
+from ..utils.pipeline_logger import llm_caller
 from .simulation_runner import SimulationRunner
 
 logger = get_logger('mirofish.content_sentiment')
@@ -389,22 +390,23 @@ Every index from 0 to {len(batch) - 1} must appear exactly once."""
         max_tokens = 8192 if is_gpt5_family(Config.LLM_MODEL_NAME) else 2048
 
         try:
-            result = self.llm.chat_json(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a market research analyst coding open-ended survey "
-                            "responses. Return pure JSON. Be consistent: identical themes "
-                            "must get identical tags."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.0,
-                max_tokens=max_tokens,
-                max_attempts=2,
-            )
+            with llm_caller('ContentSentiment', f"batch of {len(batch)}"):
+                result = self.llm.chat_json(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are a market research analyst coding open-ended survey "
+                                "responses. Return pure JSON. Be consistent: identical themes "
+                                "must get identical tags."
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.0,
+                    max_tokens=max_tokens,
+                    max_attempts=2,
+                )
         except Exception as e:
             logger.warning(f"情感分类批次失败，该批次记为中性: {type(e).__name__}: {str(e)[:120]}")
             return
