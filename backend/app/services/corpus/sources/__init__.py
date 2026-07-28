@@ -9,16 +9,13 @@ deliberately absent.
 
 from typing import Any, Dict, List, Type
 
-from .apple_reviews import AppleReviewsSource
 from .base import SourceAdapter
 from .hackernews import HackerNewsSource
 from .reddit import RedditSource
 from .rss import RssSource
-from .youtube import YouTubeSource
 
 #: Adapters that need no credentials at all.
 KEYLESS_SOURCES: Dict[str, Type[SourceAdapter]] = {
-    AppleReviewsSource.name: AppleReviewsSource,
     HackerNewsSource.name: HackerNewsSource,
     RssSource.name: RssSource,
 }
@@ -26,7 +23,6 @@ KEYLESS_SOURCES: Dict[str, Type[SourceAdapter]] = {
 #: Adapters on official APIs that need a free key.
 CREDENTIALED_SOURCES: Dict[str, Type[SourceAdapter]] = {
     RedditSource.name: RedditSource,
-    YouTubeSource.name: YouTubeSource,
 }
 
 SOURCE_REGISTRY: Dict[str, Type[SourceAdapter]] = {
@@ -34,9 +30,11 @@ SOURCE_REGISTRY: Dict[str, Type[SourceAdapter]] = {
     **CREDENTIALED_SOURCES,
 }
 
-#: Sensible default when the caller does not name any sources: everything that
-#: works without setup.
-DEFAULT_SOURCES: List[str] = list(KEYLESS_SOURCES)
+#: Sensible default when the caller does not name any sources: everything
+#: registered. A credentialed source without its keys reports itself
+#: unavailable and is skipped with a reason, so the effective default is still
+#: "whatever works right now" - but keys you did configure actually get used.
+DEFAULT_SOURCES: List[str] = list(SOURCE_REGISTRY)
 
 
 def get_source(name: str, **kwargs: Any) -> SourceAdapter:
@@ -79,11 +77,9 @@ def describe_sources() -> List[Dict[str, Any]]:
 
 __all__ = [
     'SourceAdapter',
-    'AppleReviewsSource',
     'HackerNewsSource',
     'RssSource',
     'RedditSource',
-    'YouTubeSource',
     'SOURCE_REGISTRY',
     'KEYLESS_SOURCES',
     'CREDENTIALED_SOURCES',

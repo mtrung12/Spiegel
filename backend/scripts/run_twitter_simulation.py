@@ -432,13 +432,15 @@ class TwitterSimulationRunner:
         Create the LLM model.
         
         Settings come from the .env file in the project root, which wins:
-        - LLM_API_KEY: the API key
+        - LLM_API_KEY: the API key (optional for a local LLM_BASE_URL)
         - LLM_BASE_URL: the API base URL
         - LLM_MODEL_NAME: the model name
         """
+        from app.config import resolve_llm_api_key
+
         # Read from .env first
-        llm_api_key = os.environ.get("LLM_API_KEY", "")
         llm_base_url = os.environ.get("LLM_BASE_URL", "")
+        llm_api_key = resolve_llm_api_key(os.environ.get("LLM_API_KEY"), llm_base_url) or ""
         llm_model = os.environ.get("LLM_MODEL_NAME", "")
         
         # Fall back to the config file when .env has nothing
@@ -450,7 +452,10 @@ class TwitterSimulationRunner:
             os.environ["OPENAI_API_KEY"] = llm_api_key
         
         if not os.environ.get("OPENAI_API_KEY"):
-            raise ValueError("No API key configured. Set LLM_API_KEY in the .env file at the project root.")
+            raise ValueError(
+                "No API key configured. Set LLM_API_KEY in the .env file at the project root "
+                "(not needed when LLM_BASE_URL points at a local server)."
+            )
         
         if llm_base_url:
             os.environ["OPENAI_API_BASE_URL"] = llm_base_url

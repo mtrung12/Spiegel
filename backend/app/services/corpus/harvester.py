@@ -70,7 +70,12 @@ class CorpusHarvester:
         dedupe_distance: int = 3,
         max_workers: int = 4,
     ):
-        self.source_names = list(sources or DEFAULT_SOURCES)
+        # Explicit argument wins, then config/corpus.yml, then every registered
+        # source. An empty list is honoured rather than treated as "unset" - a
+        # config that switches every source off must harvest nothing.
+        if sources is None:
+            sources = DEFAULT_SOURCES if Config.CORPUS_SOURCES is None else Config.CORPUS_SOURCES
+        self.source_names = list(sources)
         self.quality_config = quality_config
         self.min_relevance = min_relevance
         self.dedupe_distance = dedupe_distance
@@ -91,8 +96,8 @@ class CorpusHarvester:
         started = time.monotonic()
         result = HarvestResult()
 
-        if not query.terms and not query.feed_urls and not query.app_ids:
-            result.errors.append('query has no terms, feed_urls or app_ids')
+        if not query.terms and not query.feed_urls:
+            result.errors.append('query has no terms or feed_urls')
             return result
 
         fetched = self._fetch_all(query, result)

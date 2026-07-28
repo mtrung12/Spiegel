@@ -9,14 +9,6 @@ export const generateReport = (data) => {
 }
 
 /**
- * Get the report generation status.
- * @param {string} reportId
- */
-export const getReportStatus = (reportId) => {
-  return service.get(`/api/report/generate/status`, { params: { report_id: reportId } })
-}
-
-/**
  * Get the agent log, incrementally.
  * @param {string} reportId
  * @param {number} fromLine - line to start from
@@ -40,6 +32,25 @@ export const getConsoleLog = (reportId, fromLine = 0) => {
  */
 export const getReport = (reportId) => {
   return service.get(`/api/report/${reportId}`)
+}
+
+/**
+ * List reports, newest first.
+ * @param {string} [simulationId] - optional, filter by simulation
+ * @param {number} limit - page size
+ */
+export const listReports = (simulationId = null, limit = 50) => {
+  const params = { limit }
+  if (simulationId) params.simulation_id = simulationId
+  return service.get('/api/report/list', { params })
+}
+
+/**
+ * Get the sections generated so far, complete report or not.
+ * @param {string} reportId
+ */
+export const getReportSections = (reportId) => {
+  return service.get(`/api/report/${reportId}/sections`)
 }
 
 /**

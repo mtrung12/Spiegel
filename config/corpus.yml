@@ -1,0 +1,28 @@
+# Public-discussion corpus: which sources run and how politely.
+#
+# Behaviour lives here; secrets stay in .env (REDDIT_CLIENT_ID,
+# REDDIT_CLIENT_SECRET, CORPUS_AUTHOR_SALT).
+#
+# Point CORPUS_CONFIG_FILE at another path to use a different file. Every value
+# below can also be overridden by its CORPUS_* environment variable, which is
+# what deployments without a writable config directory should use.
+
+# Turn a crawler on or off here. false (or deleting the line) disables it; all
+# false harvests nothing. Deleting the whole `sources:` block re-enables every
+# registered source, which is not the same thing.
+#
+# A source needing credentials that are not in .env skips itself anyway, with
+# the missing key named in the harvest errors - so leaving it true is harmless.
+sources:
+  reddit: true          # official OAuth API, needs REDDIT_CLIENT_ID/SECRET
+  hackernews: false     # Algolia HN search API, keyless
+  rss: false            # any feed URL passed in the query, keyless
+
+limits:
+  # Requests per second per host. Raise only if the source documents a higher
+  # limit - this is the setting that keeps the traffic defensible.
+  rate_per_second: 1.0
+  http_timeout: 30
+  max_response_bytes: 16777216   # 16 MiB
+  # Identify the client honestly; several APIs reject generic user agents.
+  user_agent: "CampaignReaction/0.1 (research; +https://github.com/666ghj/MiroFish)"

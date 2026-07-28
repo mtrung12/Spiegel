@@ -64,3 +64,40 @@ export function getProject(projectId) {
     method: 'get'
   })
 }
+
+/**
+ * List the projects for the home page, each with its latest run, report and stage.
+ * @param {Number} limit - page size
+ * @returns {Promise}
+ */
+export function listProjects(limit = 20) {
+  return service({
+    url: '/api/graph/project/list',
+    method: 'get',
+    params: { limit }
+  })
+}
+
+/**
+ * Delete a project, its Zep graph and its simulations.
+ * @param {String} projectId - the project ID
+ * @returns {Promise}
+ */
+export function deleteProject(projectId) {
+  return service({
+    url: `/api/graph/project/${projectId}`,
+    method: 'delete'
+  })
+}
+
+/**
+ * Reset a failed project back to its last good state so the graph can be rebuilt.
+ * @param {String} projectId - the project ID
+ * @returns {Promise}
+ */
+export function resetProject(projectId) {
+  return service({
+    url: `/api/graph/project/${projectId}/reset`,
+    method: 'post'
+  })
+}

@@ -78,7 +78,9 @@
     "promptPlaceholder": "Kto sú, čo nakupujú a na akú otázku má táto kampaň odpovedať?",
     "engineBadge": "Engine: Campaign-Reaction V1",
     "startEngine": "Spustiť simuláciu kampane",
-    "initializing": "Inicializuje sa..."
+    "initializing": "Inicializuje sa...",
+    "projectsTitle": "Vaše testy kampaní",
+    "projectsSub": "Otvorte predchádzajúci test, prečítajte si jeho správu a pýtajte sa doplňujúce otázky, alebo spustite nový."
   },
   "main": {
     "layoutGraph": "Graf",
@@ -90,7 +92,10 @@
       "Spustenie kampane",
       "KPI a správa",
       "Rozhovory"
-    ]
+    ],
+    "retryBuild": "Skúsiť zostavenie znova",
+    "backToProjects": "Späť na projekty",
+    "projectFailed": "Tento projekt zlyhal pred dokončením zostavenia."
   },
   "step1": {
     "ontologyGeneration": "Generovanie ontológie",
@@ -394,7 +399,26 @@
     "notStarted": "Nespustené",
     "roundsProgress": "{current}/{total} kôl",
     "untitledSimulation": "Test kampane bez názvu",
-    "unknownFile": "Neznámy súbor"
+    "unknownFile": "Neznámy súbor",
+    "workspaceButton": "Pracovný priestor",
+    "emptyTitle": "Zatiaľ žiadne testy kampaní",
+    "emptyHint": "Nahrajte zadanie kampane a popíšte cieľových zákazníkov, aby ste spustili prvý test.",
+    "emptyAction": "Spustiť prvý test",
+    "emptyErrorTitle": "Backend je nedostupný",
+    "emptyErrorHint": "API na porte 5001 neodpovedalo, takže predchádzajúce testy sa nepodarilo načítať.",
+    "retry": "Skúsiť znova",
+    "continueButton": "Pokračovať tam, kde ste skončili",
+    "stage": {
+      "upload": "Nahrávanie",
+      "graph": "Budovanie grafu",
+      "simulation": "Nastavenie zákazníkov",
+      "run": "Beh kampane",
+      "report": "Správa",
+      "failed": "Zlyhalo"
+    },
+    "deleteButton": "Zmazať projekt",
+    "deleteConfirm": "Zmazať \"{name}\"? Jeho graf a behy simulácie sa zmažú tiež. Správy zostanú.",
+    "deleteFailed": "Mazanie zlyhalo"
   },
   "sentiment": {
     "panelTitle": "Čo publikum napísalo",
@@ -428,5 +452,31 @@
     "classifiedBy": "Klasifikoval {model}",
     "seedsExcluded": "{count} úvodných kampaňových príspevkov vylúčených",
     "fromCache": "uložený výsledok"
+  },
+  "workspace": {
+    "title": "Pracovný priestor",
+    "openWorkspace": "Pracovný priestor",
+    "openGraph": "Graf",
+    "project": "Projekt",
+    "noRequirement": "Pre tento projekt nie je zaznamenaný popis cieľových zákazníkov.",
+    "simulations": "Simulácie",
+    "noSimulations": "Zatiaľ žiadne simulácie.",
+    "noReports": "Zatiaľ žiadne správy.",
+    "selectReport": "Vyberte správu vľavo, prečítajte si ju a pýtajte sa doplňujúce otázky.",
+    "reportTag": "Správa o kampani",
+    "untitledReport": "Správa bez názvu",
+    "emptyReport": "Táto správa zatiaľ nemá žiadne sekcie.",
+    "loadingReport": "Načítavam správu...",
+    "sectionPending": "Zatiaľ nevygenerované.",
+    "loading": "Načítava sa",
+    "ready": "Pripravené",
+    "chatTitle": "Opýtajte sa Report Agenta",
+    "chatNoTarget": "nie je vybraná žiadna správa",
+    "chatEmpty": "Pýtajte sa na čokoľvek o simulácii: prečo publikum reagovalo tak, ako reagovalo, aké námietky sa objavili, čo zmeniť pred spustením.",
+    "chatPlaceholder": "Zadajte doplňujúcu otázku...",
+    "clearChat": "Vymazať",
+    "chatError": "Požiadavka zlyhala: {error}",
+    "noResponse": "Agent nevrátil žiadnu odpoveď.",
+    "requestFailed": "Požiadavka zlyhala"
   }
 }

@@ -23,6 +23,10 @@
       <div class="header-right">
         <LanguageSwitcher />
         <div class="step-divider"></div>
+        <button class="workspace-btn" :disabled="!projectData?.project_id" @click="goToWorkspace">
+          {{ $t('workspace.openWorkspace') }}
+        </button>
+        <div class="step-divider"></div>
         <div class="workflow-step">
           <span class="step-num">Step 5/5</span>
           <span class="step-name">{{ $tm('main.stepNames')[4] }}</span>
@@ -131,6 +135,12 @@ const addLog = (msg) => {
 
 const updateStatus = (status) => {
   currentStatus.value = status
+}
+
+const goToWorkspace = () => {
+  if (projectData.value?.project_id) {
+    router.push({ name: 'Workspace', params: { projectId: projectData.value.project_id } })
+  }
 }
 
 // --- Layout Methods ---
@@ -310,6 +320,28 @@ onMounted(() => {
   width: 1px;
   height: 14px;
   background-color: #E5E5E5;
+}
+
+.workspace-btn {
+  border: 1px solid #E5E5E5;
+  background: #FFF;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #333333;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.workspace-btn:hover:not(:disabled) {
+  background: #FAFAFA;
+  border-color: #D4D4D4;
+}
+
+.workspace-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .status-indicator {

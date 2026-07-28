@@ -20,8 +20,8 @@
     <!-- Card container, shown only when projects exist -->
     <div v-if="projects.length > 0" class="cards-container" :class="{ expanded: isExpanded }" :style="containerStyle">
       <div 
-        v-for="(project, index) in projects" 
-        :key="project.simulation_id"
+        v-for="(project, index) in projects"
+        :key="project.project_id"
         class="project-card"
         :class="{ expanded: isExpanded, hovering: hoveringCard === index }"
         :style="getCardStyle(index)"
@@ -29,17 +29,18 @@
         @mouseleave="hoveringCard = null"
         @click="navigateToProject(project)"
       >
-        <!-- Card header: simulation_id and which features are available -->
+        <!-- Card header: project id and which stages the project reached -->
         <div class="card-header">
-          <span class="card-id">{{ formatSimulationId(project.simulation_id) }}</span>
+          <span class="card-id">{{ formatProjectId(project.project_id) }}</span>
           <div class="card-status-icons">
-            <span 
-              class="status-icon" 
-              :class="{ available: project.project_id, unavailable: !project.project_id }"
+            <span
+              class="status-icon"
+              :class="{ available: project.graph_id, unavailable: !project.graph_id }"
               :title="$t('history.graphBuild')"
             >◇</span>
-            <span 
-              class="status-icon available" 
+            <span
+              class="status-icon"
+              :class="{ available: project.simulation_id, unavailable: !project.simulation_id }"
               :title="$t('history.envSetup')"
             >◈</span>
             <span 
@@ -77,8 +78,8 @@
           </div>
         </div>
 
-        <!-- Card title: the first stretch of the simulation requirement -->
-        <h3 class="card-title">{{ getSimulationTitle(project.simulation_requirement) }}</h3>
+        <!-- Card title: the project name, falling back to its requirement -->
+        <h3 class="card-title">{{ getProjectTitle(project) }}</h3>
 
         <!-- Card description: the full simulation requirement -->
         <p class="card-desc">{{ truncateText(project.simulation_requirement, 55) }}</p>
@@ -105,6 +106,23 @@
       <span class="loading-text">{{ $t('history.loadingText') }}</span>
     </div>
 
+    <!-- Nothing to show: say why, and offer the way forward -->
+    <div v-else-if="projects.length === 0" class="empty-state">
+      <span class="empty-icon">◇</span>
+      <p class="empty-title">
+        {{ loadFailed ? $t('history.emptyErrorTitle') : $t('history.emptyTitle') }}
+      </p>
+      <p class="empty-hint">
+        {{ loadFailed ? $t('history.emptyErrorHint') : $t('history.emptyHint') }}
+      </p>
+      <button v-if="loadFailed" class="empty-action" @click="loadHistory">
+        {{ $t('history.retry') }}
+      </button>
+      <button v-else class="empty-action" @click="emit('create-new')">
+        {{ $t('history.emptyAction') }}
+      </button>
+    </div>
+
     <!-- Replay detail dialog -->
     <Teleport to="body">
       <Transition name="modal">
@@ -113,7 +131,7 @@
             <!-- Dialog header -->
             <div class="modal-header">
               <div class="modal-title-section">
-                <span class="modal-id">{{ formatSimulationId(selectedProject.simulation_id) }}</span>
+                <span class="modal-id">{{ formatProjectId(selectedProject.project_id) }}</span>
                 <span class="modal-progress" :class="getProgressClass(selectedProject)">
                   <span class="status-dot">●</span> {{ formatRounds(selectedProject) }}
                 </span>
@@ -143,6 +161,12 @@
               </div>
             </div>
 
+            <!-- Primary action: pick the project up where it stopped -->
+            <button class="modal-continue" @click="goToContinue">
+              <span class="continue-text">{{ $t('history.continueButton') }}</span>
+              <span class="continue-stage">{{ $t(`history.stage.${selectedProject.stage || 'upload'}`) }}</span>
+            </button>
+
             <!-- Replay divider -->
             <div class="modal-divider">
               <span class="divider-line"></span>
@@ -161,9 +185,10 @@
                 <span class="btn-icon">◇</span>
                 <span class="btn-text">{{ $t('history.step1Button') }}</span>
               </button>
-              <button 
-                class="modal-btn btn-simulation" 
+              <button
+                class="modal-btn btn-simulation"
                 @click="goToSimulation"
+                :disabled="!selectedProject.simulation_id"
               >
                 <span class="btn-step">Step2</span>
                 <span class="btn-icon">◈</span>
@@ -178,11 +203,24 @@
                 <span class="btn-icon">◆</span>
                 <span class="btn-text">{{ $t('history.step4Button') }}</span>
               </button>
+              <button
+                class="modal-btn btn-workspace"
+                @click="goToWorkspace"
+                :disabled="!selectedProject.project_id"
+              >
+                <span class="btn-step">All</span>
+                <span class="btn-icon">▣</span>
+                <span class="btn-text">{{ $t('history.workspaceButton') }}</span>
+              </button>
             </div>
             <!-- Notice when replay is unavailable -->
             <div class="modal-playback-hint">
               <span class="hint-text">{{ $t('history.replayHint') }}</span>
+              <button class="delete-btn" :disabled="deleting" @click="handleDelete">
+                {{ deleting ? $t('common.loading') : $t('history.deleteButton') }}
+              </button>
             </div>
+            <p v-if="deleteError" class="modal-delete-error">{{ deleteError }}</p>
           </div>
         </div>
       </Transition>
@@ -194,19 +232,24 @@
 import { ref, computed, onMounted, onUnmounted, onActivated, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { getSimulationHistory } from '../api/simulation'
+import { listProjects, deleteProject } from '../api/graph'
 
 const router = useRouter()
 const route = useRoute()
 const { t } = useI18n()
 
+const emit = defineEmits(['create-new'])
+
 // State
 const projects = ref([])
 const loading = ref(true)
+const loadFailed = ref(false)
 const isExpanded = ref(false)
 const hoveringCard = ref(null)
 const historyContainer = ref(null)
 const selectedProject = ref(null)  // The project the dialog is showing
+const deleting = ref(false)
+const deleteError = ref('')
 let observer = null
 let isAnimating = false  // Animation lock, which stops the flicker
 let expandDebounceTimer = null  // Debounce timer
@@ -343,18 +386,20 @@ const truncateText = (text, maxLength) => {
   return text.length > maxLength ? text.slice(0, maxLength) + '...' : text
 }
 
-// Derive a title from the simulation requirement
-const getSimulationTitle = (requirement) => {
+// Card title: the project name, or its requirement when the name is a placeholder
+const getProjectTitle = (project) => {
+  const name = (project.name || '').trim()
+  if (name && name !== 'Unnamed Project') return truncateText(name, 24)
+  const requirement = project.simulation_requirement || ''
   if (!requirement) return t('history.untitledSimulation')
-  const title = requirement.slice(0, 20)
-  return requirement.length > 20 ? title + '...' : title
+  return truncateText(requirement, 20)
 }
 
-// Format simulation_id for display, first six characters
-const formatSimulationId = (simulationId) => {
-  if (!simulationId) return 'SIM_UNKNOWN'
-  const prefix = simulationId.replace('sim_', '').slice(0, 6)
-  return `SIM_${prefix.toUpperCase()}`
+// Format project_id for display, first six characters
+const formatProjectId = (projectId) => {
+  if (!projectId) return 'PROJ_UNKNOWN'
+  const prefix = projectId.replace('proj_', '').slice(0, 6)
+  return `PROJ_${prefix.toUpperCase()}`
 }
 
 // Format the round display as current/total
@@ -400,13 +445,35 @@ const truncateFilename = (filename, maxLength) => {
 }
 
 // Open the project detail dialog
-const navigateToProject = (simulation) => {
-  selectedProject.value = simulation
+const navigateToProject = (project) => {
+  selectedProject.value = project
+  deleteError.value = ''
 }
 
 // Close the dialog
 const closeModal = () => {
   selectedProject.value = null
+  deleteError.value = ''
+}
+
+// Delete the project, its graph and its simulations. The backend refuses with
+// 409 while a simulation is still running, so surface that instead of hiding it.
+const handleDelete = async () => {
+  const project = selectedProject.value
+  if (!project || deleting.value) return
+  if (!window.confirm(t('history.deleteConfirm', { name: getProjectTitle(project) }))) return
+
+  deleting.value = true
+  deleteError.value = ''
+  try {
+    await deleteProject(project.project_id)
+    closeModal()
+    await loadHistory()
+  } catch (error) {
+    deleteError.value = error.message || t('history.deleteFailed')
+  } finally {
+    deleting.value = false
+  }
 }
 
 // Navigate to the graph build page (Project)
@@ -442,17 +509,66 @@ const goToReport = () => {
   }
 }
 
-// Load the past projects
+// Where the project stopped, as a route. The backend hands us the stage so the
+// resume point is decided in one place instead of re-derived from loose fields.
+const continueRoute = (project) => {
+  if (!project) return null
+  const toProcess = { name: 'Process', params: { projectId: project.project_id } }
+
+  switch (project.stage) {
+    case 'report':
+      return project.report_id
+        ? { name: 'Report', params: { reportId: project.report_id } }
+        : toProcess
+    case 'run':
+      return project.simulation_id
+        ? { name: 'SimulationRun', params: { simulationId: project.simulation_id } }
+        : toProcess
+    case 'simulation':
+      return project.simulation_id
+        ? { name: 'Simulation', params: { simulationId: project.simulation_id } }
+        : toProcess
+    default:
+      // upload, graph, failed: the project page owns all three
+      return toProcess
+  }
+}
+
+const goToContinue = () => {
+  const target = continueRoute(selectedProject.value)
+  if (target) {
+    router.push(target)
+    closeModal()
+  }
+}
+
+// Navigate to the project workspace: reports plus follow-up chat in one place
+const goToWorkspace = () => {
+  if (selectedProject.value?.project_id) {
+    router.push({
+      name: 'Workspace',
+      params: { projectId: selectedProject.value.project_id }
+    })
+    closeModal()
+  }
+}
+
+// Load the past projects. An empty list and an unreachable backend look the
+// same on screen otherwise, so track which one happened.
 const loadHistory = async () => {
   try {
     loading.value = true
-    const response = await getSimulationHistory(20)
+    loadFailed.value = false
+    const response = await listProjects(20)
     if (response.success) {
       projects.value = response.data || []
+    } else {
+      loadFailed.value = true
     }
   } catch (error) {
     console.error('failed to load the past projects:', error)
     projects.value = []
+    loadFailed.value = true
   } finally {
     loading.value = false
   }
@@ -986,6 +1102,46 @@ onUnmounted(() => {
 }
 
 .empty-icon {
+  font-size: 28px;
+  color: #D4D4D4;
+}
+
+.empty-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #333333;
+}
+
+.empty-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #999999;
+  text-align: center;
+  max-width: 420px;
+}
+
+.empty-action {
+  margin-top: 4px;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  border-radius: 6px;
+  padding: 9px 20px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #333333;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.empty-action:hover {
+  background: #FAFAFA;
+  border-color: #D4D4D4;
+}
+
+.empty-icon {
   font-size: 2rem;
   opacity: 0.5;
 }
@@ -1238,6 +1394,38 @@ onUnmounted(() => {
 }
 
 /* Replay divider */
+.modal-continue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: calc(100% - 64px);
+  margin: 16px 32px 0;
+  padding: 16px 20px;
+  border: none;
+  background: #F97316;
+  color: #FFFFFF;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.modal-continue:hover {
+  background: #EA580C;
+}
+
+.continue-text {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.continue-stage {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
 .modal-divider {
   display: flex;
   align-items: center;
@@ -1323,6 +1511,7 @@ onUnmounted(() => {
 .modal-btn.btn-project .btn-icon { color: #111111; }
 .modal-btn.btn-simulation .btn-icon { color: #F59E0B; }
 .modal-btn.btn-report .btn-icon { color: #10B981; }
+.modal-btn.btn-workspace .btn-icon { color: #6366F1; }
 
 .modal-btn:hover:not(:disabled) .btn-text {
   color: #000000;
@@ -1332,9 +1521,41 @@ onUnmounted(() => {
 .modal-playback-hint {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 16px;
   padding: 0 32px 20px;
   background: #FFFFFF;
+}
+
+.delete-btn {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid #E5E5E5;
+  padding: 8px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.5px;
+  color: #999999;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.delete-btn:hover:not(:disabled) {
+  color: #DC2626;
+  border-color: #DC2626;
+}
+
+.delete-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.modal-delete-error {
+  margin: 0;
+  padding: 0 32px 20px;
+  background: #FFFFFF;
+  color: #DC2626;
+  font-size: 0.8rem;
 }
 
 .hint-text {

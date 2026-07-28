@@ -5,6 +5,7 @@ import pytest
 from app.utils.openai_chat_compat import (
     create_chat_completion,
     extract_chat_completion_text,
+    get_token_usage_totals,
     is_gpt5_family,
 )
 
@@ -88,6 +89,27 @@ def test_provider_error_is_propagated_without_guessing_or_retrying():
 
     assert captured.value is provider_error
     assert len(recorder.calls) == 1
+
+
+def test_token_usage_is_accumulated_and_missing_usage_is_tolerated():
+    usage = SimpleNamespace(prompt_tokens=10, completion_tokens=4, total_tokens=14)
+    before = get_token_usage_totals()
+
+    create_chat_completion(
+        client_for(CompletionRecorder(result=SimpleNamespace(usage=usage))),
+        model="legacy-model",
+        messages=[],
+    )
+    create_chat_completion(
+        client_for(CompletionRecorder(result=SimpleNamespace(usage=None))),
+        model="legacy-model",
+        messages=[],
+    )
+
+    after = get_token_usage_totals()
+    assert after["prompt"] - before["prompt"] == 10
+    assert after["completion"] - before["completion"] == 4
+    assert after["total"] - before["total"] == 14
 
 
 @pytest.mark.parametrize(

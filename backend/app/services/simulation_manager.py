@@ -501,6 +501,19 @@ class SimulationManager:
         
         return simulations
     
+    def delete_simulation(self, simulation_id: str) -> bool:
+        """Delete a simulation directory and its cached state."""
+        # Not _get_simulation_dir: that one creates the directory it returns.
+        sim_dir = os.path.join(self.SIMULATION_DATA_DIR, simulation_id)
+        self._simulations.pop(simulation_id, None)
+
+        if not os.path.isdir(sim_dir):
+            return False
+
+        shutil.rmtree(sim_dir)
+        logger.info(f"删除模拟: {simulation_id}")
+        return True
+
     def get_profiles(self, simulation_id: str, platform: str = None) -> List[Dict[str, Any]]:
         """Return the agent profiles for a simulation."""
         state = self._load_simulation_state(simulation_id)

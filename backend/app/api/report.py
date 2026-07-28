@@ -16,6 +16,7 @@ from ..services.simulation_runner import SimulationRunner, RunnerStatus
 from ..services.zep_graph_memory_updater import ZepGraphMemoryManager
 from ..models.project import ProjectManager, ProjectStatus
 from ..models.task import TaskManager, TaskStatus
+from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
 from ..utils.zep_lifecycle import (
@@ -660,11 +661,13 @@ def chat_with_report_agent():
         
         simulation_requirement = project.simulation_requirement or ""
         
-        # Create the agent and run the chat
+        # Create the agent and run the chat. Chat is interactive, so it uses the
+        # chatbot LLM config, which may differ from the one the agents run on.
         agent = ReportAgent(
             graph_id=graph_id,
             simulation_id=simulation_id,
-            simulation_requirement=simulation_requirement
+            simulation_requirement=simulation_requirement,
+            llm_client=LLMClient.for_chatbot()
         )
         
         result = agent.chat(message=message, chat_history=chat_history)

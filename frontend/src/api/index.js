@@ -1,9 +1,13 @@
 import axios from 'axios'
 import i18n from '../i18n'
 
-// Create the axios instance
+// Create the axios instance.
+// Default to same-origin relative URLs: in dev that goes through the Vite proxy
+// (vite.config.js sends /api to port 5001), in production it hits whatever
+// serves the built files. Set VITE_API_BASE_URL only when the API lives on a
+// different host - hardcoding localhost breaks every non-local deployment.
 const service = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '',
   timeout: 300000, // 5 minute timeout - ontology generation can be slow
   headers: {
     'Content-Type': 'application/json'

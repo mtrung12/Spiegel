@@ -15,7 +15,6 @@ from typing import Any, Dict, List, Optional
 # far more aggressively - most of the noise lives in comment threads.
 KIND_POST = 'post'
 KIND_COMMENT = 'comment'
-KIND_REVIEW = 'review'
 KIND_ARTICLE = 'article'
 
 
@@ -159,10 +158,7 @@ class SourceQuery:
 
     # Per-source scoping. Adapters ignore keys they do not understand.
     subreddits: List[str] = field(default_factory=list)
-    app_ids: List[str] = field(default_factory=list)
-    video_ids: List[str] = field(default_factory=list)
     feed_urls: List[str] = field(default_factory=list)
-    countries: List[str] = field(default_factory=lambda: ['us'])
 
     # Limits
     max_items: int = 500

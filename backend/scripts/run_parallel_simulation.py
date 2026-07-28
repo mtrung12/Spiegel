@@ -1005,12 +1005,14 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
         config: The simulation config
         use_boost: Use the boost LLM configuration when it is available
     """
+    from app.config import resolve_llm_api_key
+
     # Is a boost configuration present?
-    boost_api_key = os.environ.get("LLM_BOOST_API_KEY", "")
     boost_base_url = os.environ.get("LLM_BOOST_BASE_URL", "")
+    boost_api_key = resolve_llm_api_key(os.environ.get("LLM_BOOST_API_KEY"), boost_base_url) or ""
     boost_model = os.environ.get("LLM_BOOST_MODEL_NAME", "")
     has_boost_config = bool(boost_api_key)
-    
+
     # Pick the LLM from the argument and what is configured
     if use_boost and has_boost_config:
         # Use the boost configuration
@@ -1020,8 +1022,8 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
         config_label = "[boost LLM]"
     else:
         # Use the general configuration
-        llm_api_key = os.environ.get("LLM_API_KEY", "")
         llm_base_url = os.environ.get("LLM_BASE_URL", "")
+        llm_api_key = resolve_llm_api_key(os.environ.get("LLM_API_KEY"), llm_base_url) or ""
         llm_model = os.environ.get("LLM_MODEL_NAME", "")
         config_label = "[general LLM]"
     
@@ -1034,7 +1036,10 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
         os.environ["OPENAI_API_KEY"] = llm_api_key
     
     if not os.environ.get("OPENAI_API_KEY"):
-        raise ValueError("No API key configured. Set LLM_API_KEY in the .env file at the project root.")
+        raise ValueError(
+            "No API key configured. Set LLM_API_KEY in the .env file at the project root "
+            "(not needed when LLM_BASE_URL points at a local server)."
+        )
     
     if llm_base_url:
         os.environ["OPENAI_API_BASE_URL"] = llm_base_url

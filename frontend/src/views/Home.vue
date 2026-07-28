@@ -1,58 +1,28 @@
 <template>
   <div class="home-container">
-    <!-- Hero: centered, deliberately sparse -->
-    <section class="hero">
-      <nav class="navbar">
-        <div class="nav-brand">CAMPAIGN REACTION</div>
-        <div class="nav-links">
-          <LanguageSwitcher />
-        </div>
-      </nav>
-
-      <div class="hero-body">
-        <span class="eyebrow">{{ $t('home.tagline') }}</span>
-
-        <h1 class="hero-title">
-          {{ $t('home.heroTitle1') }}<br />
-          <span class="hero-title-accent">{{ $t('home.heroTitle2') }}</span>
-        </h1>
-
-        <p class="hero-sub">{{ $t('home.heroSub') }}</p>
-
-        <button class="cta" @click="scrollToConsole">
-          {{ $t('home.ctaPrimary') }}
-          <span class="cta-arrow">→</span>
-        </button>
-
-        <div class="stat-row">
-          <div class="stat">
-            <span class="stat-value">{{ $t('home.statCostValue') }}</span>
-            <span class="stat-label">{{ $t('home.statCostLabel') }}</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value">{{ $t('home.statFeedsValue') }}</span>
-            <span class="stat-label">{{ $t('home.statFeedsLabel') }}</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value">{{ $t('home.statKpiValue') }}</span>
-            <span class="stat-label">{{ $t('home.statKpiLabel') }}</span>
-          </div>
-        </div>
+    <nav class="navbar">
+      <div class="nav-brand">CAMPAIGN REACTION</div>
+      <div class="nav-links">
+        <LanguageSwitcher />
       </div>
+    </nav>
+
+    <!-- Landing on the project list: pick up existing work, or start new -->
+    <section class="page-head">
+      <div class="page-head-text">
+        <h1 class="page-title">{{ $t('home.projectsTitle') }}</h1>
+        <p class="page-sub">{{ $t('home.projectsSub') }}</p>
+      </div>
+      <button class="cta" @click="scrollToConsole">
+        {{ $t('home.ctaPrimary') }}
+        <span class="cta-arrow">→</span>
+      </button>
     </section>
 
-    <!-- Workflow: titles only, no descriptions -->
-    <section class="workflow">
-      <span class="section-label">{{ $t('home.workflowSequence') }}</span>
-      <ol class="workflow-strip">
-        <li v-for="(step, i) in workflowSteps" :key="step" class="workflow-step">
-          <span class="workflow-num">{{ String(i + 1).padStart(2, '0') }}</span>
-          <span class="workflow-title">{{ $t(step) }}</span>
-        </li>
-      </ol>
-    </section>
+    <!-- Existing projects -->
+    <HistoryDatabase @create-new="scrollToConsole" />
 
-    <!-- Console: the product surface -->
+    <!-- Console: create a new test -->
     <section class="console" ref="consoleRef">
       <span class="section-label">{{ $t('home.consoleEyebrow') }}</span>
 
@@ -116,8 +86,16 @@
       </div>
     </section>
 
-    <!-- Past project database -->
-    <HistoryDatabase />
+    <!-- What the engine does, kept below the working surface -->
+    <section class="workflow">
+      <span class="section-label">{{ $t('home.workflowSequence') }}</span>
+      <ol class="workflow-strip">
+        <li v-for="(step, i) in workflowSteps" :key="step" class="workflow-step">
+          <span class="workflow-num">{{ String(i + 1).padStart(2, '0') }}</span>
+          <span class="workflow-title">{{ $t(step) }}</span>
+        </li>
+      </ol>
+    </section>
   </div>
 </template>
 
@@ -249,14 +227,7 @@ const startSimulation = () => {
   color: var(--ink);
 }
 
-/* ---------- Hero ---------- */
-.hero {
-  background: var(--white);
-  color: var(--ink);
-  padding-bottom: 88px;
-  border-bottom: 1px solid var(--border);
-}
-
+/* ---------- Header ---------- */
 .navbar {
   height: 72px;
   display: flex;
@@ -265,6 +236,7 @@ const startSimulation = () => {
   padding: 0 40px;
   max-width: 1200px;
   margin: 0 auto;
+  border-bottom: 1px solid var(--border);
 }
 
 .nav-brand {
@@ -280,57 +252,47 @@ const startSimulation = () => {
   gap: 16px;
 }
 
-.hero-body {
-  max-width: 940px;
+/* ---------- Page head: title plus the "start new" action ---------- */
+.page-head {
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 88px 40px 0;
-  text-align: center;
+  padding: 56px 40px 8px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  flex-wrap: wrap;
 }
 
-.eyebrow {
-  font-family: var(--font-mono);
-  font-size: 0.82rem;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.hero-title {
-  /* Sized so the longer of the two lines holds on one line down to ~900px */
-  font-size: clamp(2.1rem, 5vw, 3.9rem);
-  line-height: 1.08;
-  letter-spacing: -1.8px;
+.page-title {
+  font-size: clamp(1.8rem, 3.4vw, 2.6rem);
+  line-height: 1.1;
+  letter-spacing: -1px;
   font-weight: 500;
-  margin: 24px 0 0;
-  color: var(--ink);
-  text-wrap: balance;
+  margin: 0;
 }
 
-.hero-title-accent {
-  color: var(--accent);
-}
-
-.hero-sub {
-  font-size: 1.25rem;
+.page-sub {
+  font-size: 1.02rem;
   line-height: 1.55;
   color: var(--muted);
-  max-width: 560px;
-  margin: 26px auto 0;
+  margin: 12px 0 0;
+  max-width: 520px;
 }
 
 .cta {
-  margin-top: 42px;
   background: var(--accent);
   color: var(--white);
   border: none;
-  padding: 17px 32px;
+  padding: 15px 28px;
   font-family: var(--font-sans);
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-weight: 500;
   display: inline-flex;
   align-items: center;
   gap: 10px;
   cursor: pointer;
+  white-space: nowrap;
   transition: transform 0.2s ease, background 0.2s ease;
 }
 
@@ -342,32 +304,6 @@ const startSimulation = () => {
 
 .cta-arrow {
   font-family: var(--font-mono);
-}
-
-.stat-row {
-  display: flex;
-  justify-content: center;
-  gap: 56px;
-  margin-top: 72px;
-  padding-top: 32px;
-  border-top: 1px solid var(--border);
-}
-
-.stat {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.stat-value {
-  font-family: var(--font-mono);
-  font-size: 1.7rem;
-  font-weight: 500;
-}
-
-.stat-label {
-  font-size: 0.88rem;
-  color: var(--muted);
 }
 
 /* ---------- Shared section label ---------- */
@@ -579,13 +515,9 @@ const startSimulation = () => {
 
 /* ---------- Responsive ---------- */
 @media (max-width: 720px) {
-  .hero-body {
-    padding-top: 56px;
-  }
-
-  .stat-row {
-    gap: 28px;
-    margin-top: 48px;
+  .page-head {
+    padding: 40px 24px 8px;
+    align-items: flex-start;
   }
 
   .workflow,

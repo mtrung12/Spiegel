@@ -78,7 +78,9 @@
     "promptPlaceholder": "Who are they, what do they buy, and what does this campaign need to answer?",
     "engineBadge": "Engine: Campaign-Reaction V1",
     "startEngine": "Start Campaign Simulation",
-    "initializing": "Initializing..."
+    "initializing": "Initializing...",
+    "projectsTitle": "Your campaign tests",
+    "projectsSub": "Open a past test to read its report and ask follow-up questions, or start a new one."
   },
   "main": {
     "layoutGraph": "Graph",
@@ -90,7 +92,10 @@
       "Run Campaign",
       "KPIs & Report",
       "Interviews"
-    ]
+    ],
+    "retryBuild": "Retry the build",
+    "backToProjects": "Back to projects",
+    "projectFailed": "This project failed before it finished building."
   },
   "step1": {
     "ontologyGeneration": "Ontology Generation",
@@ -394,7 +399,26 @@
     "notStarted": "Not started",
     "roundsProgress": "{current}/{total} rounds",
     "untitledSimulation": "Untitled campaign test",
-    "unknownFile": "Unknown file"
+    "unknownFile": "Unknown file",
+    "workspaceButton": "Workspace",
+    "emptyTitle": "No campaign tests yet",
+    "emptyHint": "Upload a campaign brief and describe your target customers to run the first one.",
+    "emptyAction": "Start your first test",
+    "emptyErrorTitle": "Could not reach the backend",
+    "emptyErrorHint": "The API on port 5001 did not answer, so past tests could not be loaded.",
+    "retry": "Try again",
+    "continueButton": "Continue where you left off",
+    "stage": {
+      "upload": "Upload",
+      "graph": "Graph build",
+      "simulation": "Customer setup",
+      "run": "Campaign run",
+      "report": "Report",
+      "failed": "Failed"
+    },
+    "deleteButton": "Delete project",
+    "deleteConfirm": "Delete \"{name}\"? Its graph and simulation runs go with it. Reports are kept.",
+    "deleteFailed": "Delete failed"
   },
   "api": {
     "projectNotFound": "Project not found: {id}",
@@ -409,6 +433,7 @@
     "zepApiKeyMissing": "ZEP_API_KEY not configured",
     "ontologyNotGenerated": "Ontology not yet generated. Please call /ontology/generate first.",
     "graphBuilding": "Graph build in progress. Do not resubmit. To force rebuild, add force: true.",
+    "simulationRunning": "Simulation still running: {id}. Stop it before deleting the project.",
     "textNotFound": "Extracted text content not found",
     "ontologyNotFound": "Ontology definition not found",
     "graphBuildStarted": "Graph build task started. Query progress via /task/{taskId}.",
@@ -774,5 +799,31 @@
     "classifiedBy": "Classified by {model}",
     "seedsExcluded": "{count} campaign seed posts excluded",
     "fromCache": "cached result"
+  },
+  "workspace": {
+    "title": "Workspace",
+    "openWorkspace": "Workspace",
+    "openGraph": "Graph",
+    "project": "Project",
+    "noRequirement": "No target-customer description recorded for this project.",
+    "simulations": "Simulations",
+    "noSimulations": "No simulations yet.",
+    "noReports": "No reports yet.",
+    "selectReport": "Pick a report on the left to read it and ask follow-up questions.",
+    "reportTag": "Campaign Report",
+    "untitledReport": "Untitled report",
+    "emptyReport": "This report has no sections yet.",
+    "loadingReport": "Loading report...",
+    "sectionPending": "Not generated yet.",
+    "loading": "Loading",
+    "ready": "Ready",
+    "chatTitle": "Ask the Report Agent",
+    "chatNoTarget": "no report selected",
+    "chatEmpty": "Ask anything about the simulation: why the audience reacted the way it did, which objections came up, what to change before launch.",
+    "chatPlaceholder": "Ask a follow-up question...",
+    "clearChat": "Clear",
+    "chatError": "Request failed: {error}",
+    "noResponse": "The agent returned no answer.",
+    "requestFailed": "Request failed"
   }
 }
