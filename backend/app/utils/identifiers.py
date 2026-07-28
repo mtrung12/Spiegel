@@ -79,8 +79,10 @@ def is_valid_id(kind: str, value: Optional[str]) -> bool:
 
 
 # Platform is not an id, but it is interpolated into a database filename
-# ("{platform}_simulation.db"), so it needs the same treatment.
-VALID_PLATFORMS = frozenset({'twitter', 'reddit'})
+# ("{platform}_simulation.db"), so it needs the same treatment. 'parallel' never
+# reaches that interpolation - it selects the runner that drives both platforms -
+# but it is a valid value of the same request field, so it belongs here.
+VALID_PLATFORMS = frozenset({'twitter', 'reddit', 'parallel'})
 
 
 def validate_platform(value: Optional[str]) -> str:

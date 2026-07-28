@@ -9,12 +9,15 @@
 # ---- Stage 1: build the frontend ----
 FROM node:20-slim AS frontend-build
 
-WORKDIR /build
+# The repo layout is mirrored, not flattened: src/i18n/index.js imports
+# ../../../locales, so locales/ must sit beside frontend/ at build time.
+WORKDIR /build/frontend
 
 # Manifests first, so a source-only change does not reinstall dependencies.
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
+COPY locales/ /build/locales/
 COPY frontend/ ./
 RUN npm run build
 
@@ -43,7 +46,7 @@ COPY config/ ./config/
 COPY locales/ ./locales/
 
 # The built frontend, at the path docker/nginx.conf serves as its root.
-COPY --from=frontend-build /build/dist ./frontend/dist
+COPY --from=frontend-build /build/frontend/dist ./frontend/dist
 
 # Included from the stock nginx.conf's http{} block.
 COPY docker/nginx.conf /etc/nginx/conf.d/spiegel.conf
@@ -52,12 +55,12 @@ RUN rm -f /etc/nginx/sites-enabled/default
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Run unprivileged. uploads/ is the only application path written at runtime;
-# nginx also needs its cache, log and pid paths owned by the same user, since
-# it starts without root and cannot chown them itself.
+# Run unprivileged. uploads/ and logs/ are the application paths written at
+# runtime; nginx also needs its cache, log and pid paths owned by the same user,
+# since it starts without root and cannot chown them itself.
 RUN useradd --create-home --uid 10001 spiegel \
-  && mkdir -p /app/backend/uploads /var/lib/nginx/body /var/log/nginx \
-  && chown -R spiegel:spiegel /app/backend/uploads /var/lib/nginx /var/log/nginx \
+  && mkdir -p /app/backend/uploads /app/backend/logs /var/lib/nginx/body /var/log/nginx \
+  && chown -R spiegel:spiegel /app/backend/uploads /app/backend/logs /var/lib/nginx /var/log/nginx \
   && touch /run/nginx.pid \
   && chown spiegel:spiegel /run/nginx.pid
 
@@ -68,7 +71,10 @@ EXPOSE 3000
 
 ENV PYTHONUNBUFFERED=1
 
+# uv sync builds /app/backend/.venv; entrypoint.sh calls gunicorn by name.
+ENV PATH="/app/backend/.venv/bin:$PATH"
+
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:3000/health', timeout=4).status == 200 else 1)"
 
-ENTRYPOINT ["/usr/sbin/tini", "--", "/usr/local/bin/entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]

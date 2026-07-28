@@ -73,8 +73,11 @@ def test_malformed_ids_are_rejected(kind, value):
 
 
 def test_platform_is_restricted_to_known_values():
+    # 'parallel' is the default platform of POST /api/simulation/start, so the
+    # guard must accept it or that endpoint 404s before its handler runs.
     assert validate_platform("twitter") == "twitter"
     assert validate_platform("reddit") == "reddit"
+    assert validate_platform("parallel") == "parallel"
     for bad in ["../../etc/passwd", "", None, "mastodon"]:
         with pytest.raises(InvalidIdentifierError):
             validate_platform(bad)
