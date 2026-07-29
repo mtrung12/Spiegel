@@ -13,8 +13,9 @@ Generation is split into steps to avoid one oversized response failing:
 
 import json
 import math
+import random
 from typing import Dict, Any, List, Optional, Callable
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, replace
 from datetime import datetime
 
 from openai import OpenAI
@@ -24,6 +25,8 @@ from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, t
 from ..utils.openai_chat_compat import create_chat_completion, extract_chat_completion_text
 from ..utils.pipeline_logger import pipeline_log
+from .agent_population import AgentSlot
+from .corpus import render_distribution
 from .zep_entity_reader import EntityNode
 
 logger = get_logger('spiegel.simulation_config')
@@ -266,6 +269,8 @@ class SimulationConfigGenerator:
         enable_twitter: bool = True,
         enable_reddit: bool = True,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        corpus_distribution: Optional[Dict[str, Any]] = None,
+        slots: Optional[List[AgentSlot]] = None,
     ) -> SimulationParameters:
         """
         Generate the complete simulation configuration, one step at a time.
@@ -279,6 +284,9 @@ class SimulationConfigGenerator:
             entities: The filtered entities
             enable_twitter: Enable Twitter
             enable_reddit: Enable Reddit
+            slots: The planned population. When given, one activity config is
+                generated per entity and then expanded to every planned agent,
+                so agent_ids line up with the generated profiles
             progress_callback: Progress callback (current_step, total_steps, message)
 
         Returns:
@@ -302,14 +310,17 @@ class SimulationConfigGenerator:
         context = self._build_context(
             simulation_requirement=simulation_requirement,
             document_text=document_text,
-            entities=entities
+            entities=entities,
+            corpus_distribution=corpus_distribution
         )
         
         reasoning_parts = []
         
         # ========== Step 1: time configuration ==========
         report_progress(1, t('progress.generatingTimeConfig'))
-        num_entities = len(entities)
+        # The exposure rate is a share of the *cast*, which is the planned
+        # population when there is one, not the entity count it was built from.
+        num_entities = len(slots) if slots else len(entities)
         with pipeline_log.step(
             'SimulationConfigGenerator', 'generate_time_config',
             target=simulation_id, entities=num_entities,
@@ -337,6 +348,9 @@ class SimulationConfigGenerator:
         reasoning_parts.append(f"{t('progress.eventConfigLabel')}: {event_config_result.get('reasoning', t('common.success'))}")
         
         # ========== Steps 3-N: agent configuration, in batches ==========
+        # One config per *entity*; when the population plan cloned an entity
+        # into several agents, the clones are expanded from it afterwards
+        # rather than costing another LLM call each.
         all_agent_configs = []
         for batch_idx in range(num_batches):
             start_idx = batch_idx * self.AGENTS_PER_BATCH
@@ -361,9 +375,12 @@ class SimulationConfigGenerator:
                 )
                 step.metric(agents=len(batch_configs))
             all_agent_configs.extend(batch_configs)
-        
+
+        if slots:
+            all_agent_configs = self._expand_configs_to_slots(all_agent_configs, slots)
+
         reasoning_parts.append(t('progress.agentConfigResult', count=len(all_agent_configs)))
-        
+
         # ========== Assign a publisher agent to each initial post ==========
         logger.info("assigning poster agents to the initial posts...")
         event_config = self._assign_initial_post_agents(event_config, all_agent_configs)
@@ -419,19 +436,26 @@ class SimulationConfigGenerator:
         self,
         simulation_requirement: str,
         document_text: str,
-        entities: List[EntityNode]
+        entities: List[EntityNode],
+        corpus_distribution: Optional[Dict[str, Any]] = None
     ) -> str:
         """Build the LLM context, truncated to the maximum length."""
-        
+
         # Entity summary
         entity_summary = self._summarize_entities(entities)
-        
+
         # Assemble the context
         context_parts = [
             f"## Campaign brief and target audience\n{simulation_requirement}",
             f"\n## Audience segments and entities ({len(entities)})\n{entity_summary}",
         ]
-        
+
+        # Audience priors go in ahead of the raw document, so the themes survive
+        # the truncation that trims the document tail.
+        priors = render_distribution(corpus_distribution)
+        if priors:
+            context_parts.append(f"\n{priors}")
+
         current_length = sum(len(p) for p in context_parts)
         remaining_length = self.MAX_CONTEXT_LENGTH - current_length - 500  # Leave a 500-character margin
         
@@ -938,6 +962,66 @@ Return JSON (no markdown):
         event_config.initial_posts = updated_posts
         return event_config
     
+    def _expand_configs_to_slots(
+        self,
+        entity_configs: List[AgentActivityConfig],
+        slots: List[AgentSlot],
+    ) -> List[AgentActivityConfig]:
+        """
+        Give every planned agent an activity config, without another LLM call.
+
+        The LLM produced one config per entity. Each slot takes its entity's
+        config; clones take a jittered copy, so 40 agents off one segment do
+        not post in lockstep with identical stance and identical bias. The
+        jitter is deliberately small - it varies the behaviour, it does not
+        invent a different audience.
+        """
+        by_uuid = {cfg.entity_uuid: cfg for cfg in entity_configs}
+        rng = random.Random(len(slots))          # Reproducible for one cast size
+
+        def clamp(value: float, lo: float, hi: float) -> float:
+            return round(max(lo, min(hi, value)), 3)
+
+        expanded: List[AgentActivityConfig] = []
+        for slot in slots:
+            base = by_uuid.get(getattr(slot.entity, 'uuid', None))
+            if base is None:
+                # No config for this entity (a failed batch): defaults, so the
+                # agent still runs rather than vanishing from the cast.
+                expanded.append(AgentActivityConfig(
+                    agent_id=slot.user_id,
+                    entity_uuid=getattr(slot.entity, 'uuid', ''),
+                    entity_name=getattr(slot.entity, 'name', ''),
+                    entity_type=slot.entity_type,
+                ))
+                continue
+
+            cfg = replace(base, agent_id=slot.user_id)
+            if slot.is_clone:
+                cfg.activity_level = clamp(base.activity_level + rng.uniform(-0.1, 0.1), 0.05, 1.0)
+                cfg.posts_per_hour = clamp(base.posts_per_hour * rng.uniform(0.7, 1.3), 0.0, 20.0)
+                cfg.comments_per_hour = clamp(base.comments_per_hour * rng.uniform(0.7, 1.3), 0.0, 20.0)
+                cfg.sentiment_bias = clamp(base.sentiment_bias + rng.uniform(-0.15, 0.15), -1.0, 1.0)
+                cfg.influence_weight = clamp(base.influence_weight * rng.uniform(0.8, 1.2), 0.1, 5.0)
+                cfg.response_delay_min = max(1, int(base.response_delay_min * rng.uniform(0.7, 1.3)))
+                cfg.response_delay_max = max(
+                    cfg.response_delay_min + 1,
+                    int(base.response_delay_max * rng.uniform(0.7, 1.3)),
+                )
+                # A clone that has drifted across neutral should say so.
+                if cfg.sentiment_bias >= 0.2 and base.stance == "neutral":
+                    cfg.stance = "supportive"
+                elif cfg.sentiment_bias <= -0.2 and base.stance == "neutral":
+                    cfg.stance = "opposing"
+            expanded.append(cfg)
+
+        clones = sum(1 for s in slots if s.is_clone)
+        logger.info(
+            f"expanded {len(entity_configs)} entity configs to {len(expanded)} agent "
+            f"configs ({clones} jittered clones, 0 extra LLM calls)"
+        )
+        return expanded
+
     def _generate_agent_configs_batch(
         self,
         context: str,

@@ -195,8 +195,8 @@ defineExpose({ load })
 
 <style scoped>
 .kpi-panel {
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
+  border: 1px solid var(--border);
+  background: var(--white);
   padding: 24px;
   margin-bottom: 32px;
 }
@@ -212,20 +212,20 @@ defineExpose({ load })
 .kpi-title {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #111111;
+  color: var(--ink);
   margin: 0;
 }
 
 .kpi-subtitle {
   font-size: 0.78rem;
-  color: #A3A3A3;
+  color: var(--muted-soft);
   margin: 4px 0 0;
 }
 
 .kpi-refresh {
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   background: transparent;
-  color: #666666;
+  color: var(--muted);
   font-size: 0.75rem;
   padding: 6px 12px;
   cursor: pointer;
@@ -238,12 +238,12 @@ defineExpose({ load })
 
 .kpi-state {
   font-size: 0.82rem;
-  color: #A3A3A3;
+  color: var(--muted-soft);
   padding: 12px 0;
 }
 
 .kpi-state--error {
-  color: #DC2626;
+  color: var(--danger);
 }
 
 .kpi-group {
@@ -251,10 +251,10 @@ defineExpose({ load })
 }
 
 .kpi-group-label {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: #A3A3A3;
+  color: var(--muted-soft);
   margin-bottom: 10px;
 }
 
@@ -265,21 +265,21 @@ defineExpose({ load })
 }
 
 .kpi-card {
-  border: 1px solid #E5E5E5;
-  background: #FAFAFA;
+  border: 1px solid var(--border);
+  background: var(--surface);
   padding: 14px 16px;
 }
 
 .kpi-value {
   font-size: 1.4rem;
   font-weight: 600;
-  color: #111111;
+  color: var(--ink);
   font-family: 'JetBrains Mono', monospace;
 }
 
 .kpi-label {
-  font-size: 0.72rem;
-  color: #666666;
+  font-size: 0.75rem;
+  color: var(--muted);
   margin-top: 4px;
 }
 
@@ -297,14 +297,14 @@ defineExpose({ load })
 .kpi-table td {
   text-align: right;
   padding: 8px 12px;
-  border-bottom: 1px solid #F5F5F5;
+  border-bottom: 1px solid var(--surface-2);
   white-space: nowrap;
 }
 
 .kpi-table th {
-  color: #A3A3A3;
+  color: var(--muted-soft);
   font-weight: 500;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -312,7 +312,7 @@ defineExpose({ load })
 .kpi-table th:first-child,
 .kpi-td-name {
   text-align: left;
-  color: #111111;
+  color: var(--ink);
 }
 
 .kpi-rounds {
@@ -320,7 +320,7 @@ defineExpose({ load })
   align-items: flex-end;
   gap: 3px;
   height: 90px;
-  border-bottom: 1px solid #E5E5E5;
+  border-bottom: 1px solid var(--border);
 }
 
 .kpi-round-bar {
@@ -333,6 +333,6 @@ defineExpose({ load })
 
 .kpi-round-fill {
   width: 100%;
-  background: #111111;
+  background: var(--ink);
 }
 </style>

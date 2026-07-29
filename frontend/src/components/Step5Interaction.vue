@@ -2,79 +2,14 @@
   <div class="interaction-panel">
     <!-- Main Split Layout -->
     <div class="main-split-layout">
-      <!-- LEFT PANEL: Report Style -->
-      <div class="left-panel report-style" ref="leftPanel">
-        <div v-if="reportOutline" class="report-content-wrapper">
-          <!-- Report Header -->
-          <div class="report-header-block">
-            <div class="report-meta">
-              <span class="report-tag">Prediction Report</span>
-              <span class="report-id">ID: {{ reportId || 'REF-2024-X92' }}</span>
-            </div>
-            <h1 class="main-title">{{ reportOutline.title }}</h1>
-            <p class="sub-title">{{ reportOutline.summary }}</p>
-            <div class="header-divider"></div>
-          </div>
-
-          <!-- Sections List -->
-          <div class="sections-list">
-            <div 
-              v-for="(section, idx) in reportOutline.sections" 
-              :key="idx"
-              class="report-section-item"
-              :class="{ 
-                'is-active': currentSectionIndex === idx + 1,
-                'is-completed': isSectionCompleted(idx + 1),
-                'is-pending': !isSectionCompleted(idx + 1) && currentSectionIndex !== idx + 1
-              }"
-            >
-              <div class="section-header-row" @click="toggleSectionCollapse(idx)" :class="{ 'clickable': isSectionCompleted(idx + 1) }">
-                <span class="section-number">{{ String(idx + 1).padStart(2, '0') }}</span>
-                <h3 class="section-title">{{ section.title }}</h3>
-                <svg 
-                  v-if="isSectionCompleted(idx + 1)" 
-                  class="collapse-icon" 
-                  :class="{ 'is-collapsed': collapsedSections.has(idx) }"
-                  viewBox="0 0 24 24" 
-                  width="20" 
-                  height="20" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  stroke-width="2"
-                >
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </div>
-              
-              <div class="section-body" v-show="!collapsedSections.has(idx)">
-                <!-- Completed Content -->
-                <div v-if="generatedSections[idx + 1]" class="generated-content" v-html="renderMarkdown(generatedSections[idx + 1])"></div>
-                
-                <!-- Loading State -->
-                <div v-else-if="currentSectionIndex === idx + 1" class="loading-state">
-                  <div class="loading-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <circle cx="12" cy="12" r="10" stroke-width="4" stroke="#E5E5E5"></circle>
-                      <path d="M12 2a10 10 0 0 1 10 10" stroke-width="4" stroke="#4D4D4D" stroke-linecap="round"></path>
-                    </svg>
-                  </div>
-                  <span class="loading-text">{{ $t('step4.generatingSection', { title: section.title }) }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Waiting State -->
-        <div v-if="!reportOutline" class="waiting-placeholder">
-          <div class="waiting-animation">
-            <div class="waiting-ring"></div>
-            <div class="waiting-ring"></div>
-            <div class="waiting-ring"></div>
-          </div>
-          <span class="waiting-text">Waiting for Report Agent...</span>
-        </div>
-      </div>
+      <!-- LEFT PANEL: the rendered report (shared with step 4) -->
+      <ReportPane
+        :outline="reportOutline"
+        :generatedSections="generatedSections"
+        :currentSectionIndex="currentSectionIndex"
+        :reportId="reportId"
+        :tag="$t('step5.reportTag')"
+      />
 
       <!-- RIGHT PANEL: Interaction Interface -->
       <div class="right-panel" ref="rightPanel">
@@ -117,9 +52,10 @@
               </button>
               <div v-if="showAgentDropdown" class="dropdown-menu">
                 <div class="dropdown-header">{{ $t('step5.selectChatTarget') }}</div>
-                <div 
-                  v-for="(agent, idx) in profiles" 
+                <button
+                  v-for="(agent, idx) in profiles"
                   :key="idx"
+                  type="button"
                   class="dropdown-item"
                   @click="selectAgent(agent, idx)"
                 >
@@ -128,7 +64,7 @@
                     <span class="agent-name">{{ agent.username }}</span>
                     <span class="agent-role">{{ agent.profession || $t('step2.unknownProfession') }}</span>
                   </div>
-                </div>
+                </button>
               </div>
             </div>
             <div class="tab-divider"></div>
@@ -419,6 +355,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { chatWithReport, getReport, getAgentLog } from '../api/report'
 import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
+import ReportPane from './ReportPane.vue'
 import { renderMarkdown } from '../utils/markdown'
 
 const { t } = useI18n()
@@ -457,33 +394,15 @@ const surveyError = ref('')
 // Report Data
 const reportOutline = ref(null)
 const generatedSections = ref({})
-const collapsedSections = ref(new Set())
 const currentSectionIndex = ref(null)
 const profiles = ref([])
 
-// Helper Methods
-const isSectionCompleted = (sectionIndex) => {
-  return !!generatedSections.value[sectionIndex]
-}
-
 // Refs
-const leftPanel = ref(null)
 const rightPanel = ref(null)
 
 // Methods
 const addLog = (msg) => {
   emit('add-log', msg)
-}
-
-const toggleSectionCollapse = (idx) => {
-  if (!generatedSections.value[idx + 1]) return
-  const newSet = new Set(collapsedSections.value)
-  if (newSet.has(idx)) {
-    newSet.delete(idx)
-  } else {
-    newSet.add(idx)
-  }
-  collapsedSections.value = newSet
 }
 
 const selectChatTarget = (target) => {
@@ -906,330 +825,16 @@ watch(() => props.simulationId, (newId) => {
 }
 
 /* Left panel - report styling, identical to Step4Report.vue */
-.left-panel.report-style {
-  width: 45%;
-  min-width: 450px;
-  background: #FFFFFF;
-  border-right: 1px solid #E5E5E5;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  padding: 30px 50px 60px 50px;
-}
+/* The report pane's styles moved to ReportPane.vue. */
 
-.left-panel::-webkit-scrollbar {
-  width: 6px;
-}
 
-.left-panel::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.left-panel::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 3px;
-  transition: background 0.3s ease;
-}
-
-.left-panel:hover::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
-}
-
-.left-panel::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.25);
-}
-
-/* Report Header */
-.report-content-wrapper {
-  max-width: 800px;
-  margin: 0 auto;
-  width: 100%;
-}
-
-.report-header-block {
-  margin-bottom: 30px;
-}
-
-.report-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 24px;
-}
-
-.report-tag {
-  background: #000000;
-  color: #FFFFFF;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 4px 8px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.report-id {
-  font-size: 11px;
-  color: #999999;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-}
-
-.main-title {
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 36px;
-  font-weight: 700;
-  color: #000000;
-  line-height: 1.2;
-  margin: 0 0 16px 0;
-  letter-spacing: -0.02em;
-}
-
-.sub-title {
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 16px;
-  color: #666666;
-  font-style: italic;
-  line-height: 1.6;
-  margin: 0 0 30px 0;
-  font-weight: 400;
-}
-
-.header-divider {
-  height: 1px;
-  background: #E5E5E5;
-  width: 100%;
-}
-
-/* Sections List */
-.sections-list {
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-}
-
-.report-section-item {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.section-header-row {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  transition: background-color 0.2s ease;
-  padding: 8px 12px;
-  margin: -8px -12px;
-  border-radius: 8px;
-}
-
-.section-header-row.clickable {
-  cursor: pointer;
-}
-
-.section-header-row.clickable:hover {
-  background-color: #FAFAFA;
-}
-
-.collapse-icon {
-  margin-left: auto;
-  color: #999999;
-  transition: transform 0.3s ease;
-  flex-shrink: 0;
-  align-self: center;
-}
-
-.collapse-icon.is-collapsed {
-  transform: rotate(-90deg);
-}
-
-.section-number {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 16px;
-  color: #E5E5E5;
-  font-weight: 500;
-  transition: color 0.3s ease;
-}
-
-.section-title {
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 24px;
-  font-weight: 600;
-  color: #000000;
-  margin: 0;
-  transition: color 0.3s ease;
-}
-
-/* States */
-.report-section-item.is-pending .section-number {
-  color: #E5E5E5;
-}
-.report-section-item.is-pending .section-title {
-  color: #D4D4D4;
-}
-
-.report-section-item.is-active .section-number,
-.report-section-item.is-completed .section-number {
-  color: #999999;
-}
-
-.report-section-item.is-active .section-title,
-.report-section-item.is-completed .section-title {
-  color: #000000;
-}
-
-.section-body {
-  padding-left: 28px;
-  overflow: hidden;
-}
-
-/* Generated Content */
-.generated-content {
-  font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
-  font-size: 14px;
-  line-height: 1.8;
-  color: #333333;
-}
-
-.generated-content :deep(p) {
-  margin-bottom: 1em;
-}
-
-.generated-content :deep(.md-h2),
-.generated-content :deep(.md-h3),
-.generated-content :deep(.md-h4) {
-  font-family: 'Times New Roman', Times, serif;
-  color: #000000;
-  margin-top: 1.5em;
-  margin-bottom: 0.8em;
-  font-weight: 700;
-}
-
-.generated-content :deep(.md-h2) { font-size: 20px; border-bottom: 1px solid #F5F5F5; padding-bottom: 8px; }
-.generated-content :deep(.md-h3) { font-size: 18px; }
-.generated-content :deep(.md-h4) { font-size: 16px; }
-
-.generated-content :deep(.md-ul),
-.generated-content :deep(.md-ol) {
-  padding-left: 20px;
-  margin-bottom: 1em;
-}
-
-.generated-content :deep(.md-li) {
-  margin-bottom: 0.5em;
-}
-
-.generated-content :deep(.md-quote) {
-  border-left: 3px solid #E5E5E5;
-  padding-left: 16px;
-  margin: 1.5em 0;
-  color: #666666;
-  font-style: italic;
-  font-family: 'Times New Roman', Times, serif;
-}
-
-.generated-content :deep(.code-block) {
-  background: #FAFAFA;
-  padding: 12px;
-  border-radius: 6px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  overflow-x: auto;
-  margin: 1em 0;
-  border: 1px solid #E5E5E5;
-}
-
-.generated-content :deep(strong) {
-  font-weight: 600;
-  color: #000000;
-}
-
-/* Loading State */
-.loading-state {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #666666;
-  font-size: 14px;
-  margin-top: 4px;
-}
-
-.loading-icon {
-  width: 18px;
-  height: 18px;
-  animation: spin 1s linear infinite;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.loading-text {
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 15px;
-  color: #4D4D4D;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* Content Styles Override */
-.generated-content :deep(.md-h2) {
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 18px;
-  margin-top: 0;
-}
-
-/* Waiting Placeholder */
-.waiting-placeholder {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  padding: 40px;
-  color: #999999;
-}
-
-.waiting-animation {
-  position: relative;
-  width: 48px;
-  height: 48px;
-}
-
-.waiting-ring {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border: 2px solid #E5E5E5;
-  border-radius: 50%;
-  animation: ripple 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-
-.waiting-ring:nth-child(2) {
-  animation-delay: 0.4s;
-}
-
-.waiting-ring:nth-child(3) {
-  animation-delay: 0.8s;
-}
-
-@keyframes ripple {
-  0% { transform: scale(0.5); opacity: 1; }
-  100% { transform: scale(2); opacity: 0; }
-}
-
-.waiting-text {
-  font-size: 14px;
-}
 
 /* Right Panel - Interaction */
 .right-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #FFFFFF;
+  background: var(--white);
   overflow: hidden;
 }
 
@@ -1239,8 +844,8 @@ watch(() => props.simulationId, (newId) => {
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
-  border-bottom: 1px solid #E5E5E5;
-  background: linear-gradient(180deg, #FFFFFF 0%, #FAFBFC 100%);
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--white) 0%, #FAFBFC 100%);
   gap: 16px;
 }
 
@@ -1252,7 +857,7 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .action-bar-icon {
-  color: #111111;
+  color: var(--ink);
   flex-shrink: 0;
 }
 
@@ -1265,13 +870,13 @@ watch(() => props.simulationId, (newId) => {
 .action-bar-title {
   font-size: 13px;
   font-weight: 600;
-  color: #111111;
+  color: var(--ink);
   letter-spacing: -0.01em;
 }
 
 .action-bar-subtitle {
-  font-size: 11px;
-  color: #999999;
+  font-size: 12px;
+  color: var(--muted-soft);
 }
 
 .action-bar-subtitle.mono {
@@ -1293,8 +898,8 @@ watch(() => props.simulationId, (newId) => {
   padding: 8px 14px;
   font-size: 12px;
   font-weight: 500;
-  color: #666666;
-  background: #F5F5F5;
+  color: var(--muted);
+  background: var(--surface-2);
   border: 1px solid transparent;
   border-radius: 20px;
   cursor: pointer;
@@ -1303,13 +908,13 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .tab-pill:hover {
-  background: #E5E5E5;
-  color: #333333;
+  background: var(--border);
+  color: var(--ink-2);
 }
 
 .tab-pill.active {
-  background: #111111;
-  color: #FFFFFF;
+  background: var(--ink);
+  color: var(--white);
   box-shadow: 0 2px 8px rgba(31, 41, 55, 0.15);
 }
 
@@ -1325,7 +930,7 @@ watch(() => props.simulationId, (newId) => {
 .tab-divider {
   width: 1px;
   height: 24px;
-  background: #E5E5E5;
+  background: var(--border);
   margin: 0 6px;
 }
 
@@ -1354,15 +959,15 @@ watch(() => props.simulationId, (newId) => {
 
 .survey-pill.active {
   background: #047857;
-  color: #FFFFFF;
+  color: var(--white);
   box-shadow: 0 2px 8px rgba(4, 120, 87, 0.2);
 }
 
 /* Interaction Header */
 .interaction-header {
   padding: 16px 24px;
-  border-bottom: 1px solid #E5E5E5;
-  background: #FAFAFA;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .tab-switcher {
@@ -1377,23 +982,23 @@ watch(() => props.simulationId, (newId) => {
   padding: 10px 20px;
   font-size: 13px;
   font-weight: 600;
-  color: #666666;
+  color: var(--muted);
   background: transparent;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .tab-btn:hover {
-  background: #FAFAFA;
-  border-color: #D4D4D4;
+  background: var(--surface);
+  border-color: var(--border-strong);
 }
 
 .tab-btn.active {
-  background: #111111;
-  color: #FFFFFF;
-  border-color: #111111;
+  background: var(--ink);
+  color: var(--white);
+  border-color: var(--ink);
 }
 
 .tab-btn svg {
@@ -1410,8 +1015,8 @@ watch(() => props.simulationId, (newId) => {
 
 /* Report Agent Tools Card */
 .report-agent-tools-card {
-  border-bottom: 1px solid #E5E5E5;
-  background: linear-gradient(135deg, #FAFAFA 0%, #F5F5F5 100%);
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
 }
 
 .tools-card-header {
@@ -1426,8 +1031,8 @@ watch(() => props.simulationId, (newId) => {
   height: 44px;
   min-width: 44px;
   min-height: 44px;
-  background: linear-gradient(135deg, #111111 0%, #333333 100%);
-  color: #FFFFFF;
+  background: linear-gradient(135deg, var(--ink) 0%, var(--ink-2) 100%);
+  color: var(--white);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1446,33 +1051,33 @@ watch(() => props.simulationId, (newId) => {
 .tools-card-name {
   font-size: 15px;
   font-weight: 600;
-  color: #111111;
+  color: var(--ink);
   margin-bottom: 2px;
 }
 
 .tools-card-subtitle {
   font-size: 12px;
-  color: #666666;
+  color: var(--muted);
 }
 
 .tools-card-toggle {
   width: 28px;
   height: 28px;
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
+  background: var(--white);
+  border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #666666;
+  color: var(--muted);
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
 .tools-card-toggle:hover {
-  background: #FAFAFA;
-  border-color: #D4D4D4;
+  background: var(--surface);
+  border-color: var(--border-strong);
 }
 
 .tools-card-toggle svg {
@@ -1497,9 +1102,9 @@ watch(() => props.simulationId, (newId) => {
   display: flex;
   gap: 10px;
   padding: 12px;
-  background: #FFFFFF;
+  background: var(--white);
   border-radius: 10px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   transition: all 0.2s ease;
 }
 
@@ -1525,12 +1130,12 @@ watch(() => props.simulationId, (newId) => {
 
 .tool-blue .tool-icon-wrapper {
   background: rgba(31, 41, 55, 0.08);
-  color: #111111;
+  color: var(--ink);
 }
 
 .tool-orange .tool-icon-wrapper {
   background: rgba(249, 115, 22, 0.1);
-  color: #F97316;
+  color: var(--accent);
 }
 
 .tool-green .tool-icon-wrapper {
@@ -1546,13 +1151,13 @@ watch(() => props.simulationId, (newId) => {
 .tool-name {
   font-size: 12px;
   font-weight: 600;
-  color: #111111;
+  color: var(--ink);
   margin-bottom: 4px;
 }
 
 .tool-desc {
-  font-size: 11px;
-  color: #666666;
+  font-size: 12px;
+  color: var(--muted);
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1562,8 +1167,8 @@ watch(() => props.simulationId, (newId) => {
 
 /* Agent Profile Card */
 .agent-profile-card {
-  border-bottom: 1px solid #E5E5E5;
-  background: linear-gradient(135deg, #FAFAFA 0%, #F5F5F5 100%);
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
 }
 
 .profile-card-header {
@@ -1578,8 +1183,8 @@ watch(() => props.simulationId, (newId) => {
   height: 44px;
   min-width: 44px;
   min-height: 44px;
-  background: linear-gradient(135deg, #111111 0%, #333333 100%);
-  color: #FFFFFF;
+  background: linear-gradient(135deg, var(--ink) 0%, var(--ink-2) 100%);
+  color: var(--white);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1598,7 +1203,7 @@ watch(() => props.simulationId, (newId) => {
 .profile-card-name {
   font-size: 15px;
   font-weight: 600;
-  color: #111111;
+  color: var(--ink);
   margin-bottom: 2px;
 }
 
@@ -1607,39 +1212,39 @@ watch(() => props.simulationId, (newId) => {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #666666;
+  color: var(--muted);
 }
 
 .profile-card-handle {
-  color: #999999;
+  color: var(--muted-soft);
 }
 
 .profile-card-profession {
   padding: 2px 8px;
-  background: #E5E5E5;
+  background: var(--border);
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
 }
 
 .profile-card-toggle {
   width: 28px;
   height: 28px;
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
+  background: var(--white);
+  border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #666666;
+  color: var(--muted);
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
 .profile-card-toggle:hover {
-  background: #FAFAFA;
-  border-color: #D4D4D4;
+  background: var(--surface);
+  border-color: var(--border-strong);
 }
 
 .profile-card-toggle svg {
@@ -1658,38 +1263,38 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .profile-card-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  color: #999999;
+  color: var(--muted-soft);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 6px;
 }
 
 .profile-card-bio {
-  background: #FFFFFF;
+  background: var(--white);
   padding: 12px 14px;
   border-radius: 8px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
 }
 
 .profile-card-bio p {
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
-  color: #4D4D4D;
+  color: var(--ink-3);
 }
 
 /* Target Selector */
 .target-selector {
   padding: 16px 24px;
-  border-bottom: 1px solid #E5E5E5;
+  border-bottom: 1px solid var(--border);
 }
 
 .selector-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  color: #999999;
+  color: var(--muted-soft);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 10px;
@@ -1707,22 +1312,22 @@ watch(() => props.simulationId, (newId) => {
   padding: 10px 16px;
   font-size: 13px;
   font-weight: 500;
-  color: #333333;
-  background: #FAFAFA;
-  border: 1px solid #E5E5E5;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .target-option:hover {
-  border-color: #D4D4D4;
+  border-color: var(--border-strong);
 }
 
 .target-option.active {
-  background: #111111;
-  color: #FFFFFF;
-  border-color: #111111;
+  background: var(--ink);
+  color: var(--white);
+  border-color: var(--ink);
 }
 
 /* Agent Dropdown */
@@ -1746,8 +1351,8 @@ watch(() => props.simulationId, (newId) => {
   left: 50%;
   transform: translateX(-50%);
   min-width: 240px;
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
+  background: var(--white);
+  border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
   max-height: 320px;
@@ -1757,15 +1362,21 @@ watch(() => props.simulationId, (newId) => {
 
 .dropdown-header {
   padding: 12px 16px 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  color: #999999;
+  color: var(--muted-soft);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border-bottom: 1px solid #F5F5F5;
+  border-bottom: 1px solid var(--surface-2);
 }
 
 .dropdown-item {
+  /* A <button> now; reset the inherited control styling. */
+  font: inherit;
+  text-align: left;
+  appearance: none;
+  color: inherit;
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1776,8 +1387,8 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .dropdown-item:hover {
-  background: #FAFAFA;
-  border-left-color: #111111;
+  background: var(--surface);
+  border-left-color: var(--ink);
 }
 
 .dropdown-item:first-of-type {
@@ -1793,8 +1404,8 @@ watch(() => props.simulationId, (newId) => {
   height: 32px;
   min-width: 32px;
   min-height: 32px;
-  background: linear-gradient(135deg, #111111 0%, #333333 100%);
-  color: #FFFFFF;
+  background: linear-gradient(135deg, var(--ink) 0%, var(--ink-2) 100%);
+  color: var(--white);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1816,15 +1427,15 @@ watch(() => props.simulationId, (newId) => {
 .agent-name {
   font-size: 13px;
   font-weight: 600;
-  color: #111111;
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .agent-role {
-  font-size: 11px;
-  color: #999999;
+  font-size: 12px;
+  color: var(--muted-soft);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1847,7 +1458,7 @@ watch(() => props.simulationId, (newId) => {
   align-items: center;
   justify-content: center;
   gap: 16px;
-  color: #999999;
+  color: var(--muted-soft);
 }
 
 .empty-icon {
@@ -1885,13 +1496,13 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .chat-message.user .message-avatar {
-  background: #111111;
-  color: #FFFFFF;
+  background: var(--ink);
+  color: var(--white);
 }
 
 .chat-message.assistant .message-avatar {
-  background: #F5F5F5;
-  color: #333333;
+  background: var(--surface-2);
+  color: var(--ink-2);
 }
 
 .message-content {
@@ -1918,12 +1529,12 @@ watch(() => props.simulationId, (newId) => {
 .sender-name {
   font-size: 12px;
   font-weight: 600;
-  color: #333333;
+  color: var(--ink-2);
 }
 
 .message-time {
-  font-size: 11px;
-  color: #999999;
+  font-size: 12px;
+  color: var(--muted-soft);
 }
 
 .message-text {
@@ -1934,14 +1545,14 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .chat-message.user .message-text {
-  background: #111111;
-  color: #FFFFFF;
+  background: var(--ink);
+  color: var(--white);
   border-bottom-right-radius: 4px;
 }
 
 .chat-message.assistant .message-text {
-  background: #F5F5F5;
-  color: #333333;
+  background: var(--surface-2);
+  color: var(--ink-2);
   border-bottom-left-radius: 4px;
 }
 
@@ -1974,7 +1585,7 @@ watch(() => props.simulationId, (newId) => {
 .message-text :deep(.md-oli)::before {
   content: counter(list-counter) ".";
   font-weight: 600;
-  color: #333333;
+  color: var(--ink-2);
   min-width: 20px;
   flex-shrink: 0;
 }
@@ -1994,7 +1605,7 @@ watch(() => props.simulationId, (newId) => {
   display: flex;
   gap: 4px;
   padding: 10px 14px;
-  background: #F5F5F5;
+  background: var(--surface-2);
   border-radius: 12px;
   border-bottom-left-radius: 4px;
 }
@@ -2002,7 +1613,7 @@ watch(() => props.simulationId, (newId) => {
 .typing-indicator span {
   width: 8px;
   height: 8px;
-  background: #999999;
+  background: var(--muted-soft);
   border-radius: 50%;
   animation: typing 1.4s infinite ease-in-out;
 }
@@ -2019,7 +1630,7 @@ watch(() => props.simulationId, (newId) => {
 /* Chat Input */
 .chat-input-area {
   padding: 16px 24px;
-  border-top: 1px solid #E5E5E5;
+  border-top: 1px solid var(--border);
   display: flex;
   gap: 12px;
   align-items: flex-end;
@@ -2029,7 +1640,7 @@ watch(() => props.simulationId, (newId) => {
   flex: 1;
   padding: 12px 16px;
   font-size: 14px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   border-radius: 8px;
   resize: none;
   font-family: inherit;
@@ -2039,19 +1650,19 @@ watch(() => props.simulationId, (newId) => {
 
 .chat-input:focus {
   outline: none;
-  border-color: #111111;
+  border-color: var(--ink);
 }
 
 .chat-input:disabled {
-  background: #FAFAFA;
+  background: var(--surface);
   cursor: not-allowed;
 }
 
 .send-btn {
   width: 44px;
   height: 44px;
-  background: #111111;
-  color: #FFFFFF;
+  background: var(--ink);
+  color: var(--white);
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -2062,12 +1673,12 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .send-btn:hover:not(:disabled) {
-  background: #333333;
+  background: var(--ink-2);
 }
 
 .send-btn:disabled {
-  background: #E5E5E5;
-  color: #999999;
+  background: var(--border);
+  color: var(--muted-soft);
   cursor: not-allowed;
 }
 
@@ -2084,7 +1695,7 @@ watch(() => props.simulationId, (newId) => {
   display: flex;
   flex-direction: column;
   padding: 24px;
-  border-bottom: 1px solid #E5E5E5;
+  border-bottom: 1px solid var(--border);
   overflow: hidden;
 }
 
@@ -2114,12 +1725,12 @@ watch(() => props.simulationId, (newId) => {
 .setup-section .section-header .section-title {
   font-size: 13px;
   font-weight: 600;
-  color: #333333;
+  color: var(--ink-2);
 }
 
 .selection-count {
   font-size: 12px;
-  color: #999999;
+  color: var(--muted-soft);
 }
 
 /* Agents Grid */
@@ -2138,20 +1749,20 @@ watch(() => props.simulationId, (newId) => {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  background: #FAFAFA;
-  border: 1px solid #E5E5E5;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .agent-checkbox:hover {
-  border-color: #D4D4D4;
+  border-color: var(--border-strong);
 }
 
 .agent-checkbox.checked {
   background: #F0FDF4;
-  border-color: #10B981;
+  border-color: var(--success);
 }
 
 .agent-checkbox input {
@@ -2163,20 +1774,20 @@ watch(() => props.simulationId, (newId) => {
   height: 28px;
   min-width: 28px;
   min-height: 28px;
-  background: #E5E5E5;
-  color: #333333;
+  background: var(--border);
+  color: var(--ink-2);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   flex-shrink: 0;
 }
 
 .agent-checkbox.checked .checkbox-avatar {
-  background: #10B981;
-  color: #FFFFFF;
+  background: var(--success);
+  color: var(--white);
 }
 
 .checkbox-info {
@@ -2188,7 +1799,7 @@ watch(() => props.simulationId, (newId) => {
   display: block;
   font-size: 12px;
   font-weight: 600;
-  color: #111111;
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2196,8 +1807,8 @@ watch(() => props.simulationId, (newId) => {
 
 .checkbox-role {
   display: block;
-  font-size: 10px;
-  color: #999999;
+  font-size: 12px;
+  color: var(--muted-soft);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2206,7 +1817,7 @@ watch(() => props.simulationId, (newId) => {
 .checkbox-indicator {
   width: 20px;
   height: 20px;
-  border: 2px solid #E5E5E5;
+  border: 2px solid var(--border);
   border-radius: 4px;
   display: flex;
   align-items: center;
@@ -2216,9 +1827,9 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .agent-checkbox.checked .checkbox-indicator {
-  background: #10B981;
-  border-color: #10B981;
-  color: #FFFFFF;
+  background: var(--success);
+  border-color: var(--success);
+  color: var(--white);
 }
 
 .checkbox-indicator svg {
@@ -2240,7 +1851,7 @@ watch(() => props.simulationId, (newId) => {
 
 .action-link {
   font-size: 12px;
-  color: #666666;
+  color: var(--muted);
   background: none;
   border: none;
   cursor: pointer;
@@ -2248,12 +1859,12 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .action-link:hover {
-  color: #111111;
+  color: var(--ink);
   text-decoration: underline;
 }
 
 .action-divider {
-  color: #E5E5E5;
+  color: var(--border);
 }
 
 /* Survey Input */
@@ -2261,7 +1872,7 @@ watch(() => props.simulationId, (newId) => {
   width: 100%;
   padding: 14px 16px;
   font-size: 14px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   border-radius: 8px;
   resize: none;
   font-family: inherit;
@@ -2271,7 +1882,7 @@ watch(() => props.simulationId, (newId) => {
 
 .survey-input:focus {
   outline: none;
-  border-color: #111111;
+  border-color: var(--ink);
 }
 
 .survey-submit-btn {
@@ -2279,8 +1890,8 @@ watch(() => props.simulationId, (newId) => {
   padding: 14px 24px;
   font-size: 14px;
   font-weight: 600;
-  color: #FFFFFF;
-  background: #111111;
+  color: var(--white);
+  background: var(--ink);
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -2293,12 +1904,12 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .survey-submit-btn:hover:not(:disabled) {
-  background: #333333;
+  background: var(--ink-2);
 }
 
 .survey-submit-btn:disabled {
-  background: #E5E5E5;
-  color: #999999;
+  background: var(--border);
+  color: var(--muted-soft);
   cursor: not-allowed;
 }
 
@@ -2319,7 +1930,7 @@ watch(() => props.simulationId, (newId) => {
   width: 18px;
   height: 18px;
   border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #FFFFFF;
+  border-top-color: var(--white);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -2345,12 +1956,12 @@ watch(() => props.simulationId, (newId) => {
 .results-title {
   font-size: 14px;
   font-weight: 600;
-  color: #111111;
+  color: var(--ink);
 }
 
 .results-count {
   font-size: 12px;
-  color: #999999;
+  color: var(--muted-soft);
 }
 
 .results-list {
@@ -2360,8 +1971,8 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .result-card {
-  background: #FAFAFA;
-  border: 1px solid #E5E5E5;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px;
 }
@@ -2378,8 +1989,8 @@ watch(() => props.simulationId, (newId) => {
   height: 36px;
   min-width: 36px;
   min-height: 36px;
-  background: #111111;
-  color: #FFFFFF;
+  background: var(--ink);
+  color: var(--white);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -2398,12 +2009,12 @@ watch(() => props.simulationId, (newId) => {
 .result-name {
   font-size: 14px;
   font-weight: 600;
-  color: #111111;
+  color: var(--ink);
 }
 
 .result-role {
   font-size: 12px;
-  color: #999999;
+  color: var(--muted-soft);
 }
 
 .result-question {
@@ -2411,11 +2022,11 @@ watch(() => props.simulationId, (newId) => {
   align-items: flex-start;
   gap: 8px;
   padding: 12px 14px;
-  background: #FFFFFF;
+  background: var(--white);
   border-radius: 8px;
   margin-bottom: 12px;
   font-size: 13px;
-  color: #666666;
+  color: var(--muted);
 }
 
 .result-question svg {
@@ -2426,7 +2037,7 @@ watch(() => props.simulationId, (newId) => {
 .result-answer {
   font-size: 14px;
   line-height: 1.7;
-  color: #333333;
+  color: var(--ink-2);
 }
 
 /* Markdown Styles */
@@ -2437,28 +2048,28 @@ watch(() => props.simulationId, (newId) => {
 :deep(.md-h2) {
   font-size: 20px;
   font-weight: 700;
-  color: #111111;
+  color: var(--ink);
   margin: 24px 0 12px 0;
 }
 
 :deep(.md-h3) {
   font-size: 16px;
   font-weight: 600;
-  color: #333333;
+  color: var(--ink-2);
   margin: 20px 0 10px 0;
 }
 
 :deep(.md-h4) {
   font-size: 14px;
   font-weight: 600;
-  color: #4D4D4D;
+  color: var(--ink-3);
   margin: 16px 0 8px 0;
 }
 
 :deep(.md-h5) {
   font-size: 13px;
   font-weight: 600;
-  color: #666666;
+  color: var(--muted);
   margin: 12px 0 6px 0;
 }
 
@@ -2476,15 +2087,15 @@ watch(() => props.simulationId, (newId) => {
 .result-answer :deep(.md-quote) {
   margin: 12px 0;
   padding: 12px 16px;
-  background: #FAFAFA;
-  border-left: 3px solid #111111;
-  color: #4D4D4D;
+  background: var(--surface);
+  border-left: 3px solid var(--ink);
+  color: var(--ink-3);
 }
 
 :deep(.code-block) {
   margin: 12px 0;
   padding: 12px 16px;
-  background: #111111;
+  background: var(--ink);
   border-radius: 6px;
   overflow-x: auto;
 }
@@ -2492,22 +2103,45 @@ watch(() => props.simulationId, (newId) => {
 :deep(.code-block code) {
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
-  color: #E5E5E5;
+  color: var(--border);
 }
 
 :deep(.inline-code) {
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
-  background: #F5F5F5;
+  background: var(--surface-2);
   padding: 2px 6px;
   border-radius: 4px;
-  color: #111111;
+  color: var(--ink);
 }
 
 :deep(.md-hr) {
   border: none;
-  border-top: 1px solid #E5E5E5;
+  border-top: 1px solid var(--border);
   margin: 24px 0;
+}
+
+/* ---------- Narrow screens ----------
+   The two panes stop being readable side by side well before they stop
+   fitting, so below this they stack and the shell scrolls as one column. */
+@media (max-width: 1024px) {
+  .main-split-layout {
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .left-panel.report-style {
+    width: 100%;
+    min-width: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 24px 20px 40px;
+  }
+
+  .right-panel {
+    width: 100%;
+    min-width: 0;
+  }
 }
 </style>
 

@@ -15,29 +15,34 @@
         </div>
         
         <div class="card-content">
-          <p class="api-note">POST /api/simulation/create</p>
           <p class="description">
             {{ $t('step2.simInstanceDesc') }}
           </p>
 
-          <div v-if="simulationId" class="info-card">
-            <div class="info-row">
-              <span class="info-label">Project ID</span>
-              <span class="info-value mono">{{ projectData?.project_id }}</span>
+          <!-- Internal record ids matter when reporting a problem and nowhere
+               else, so they collapse by default. <details> gives the disclosure
+               keyboard and screen-reader behaviour for free. -->
+          <details v-if="simulationId" class="info-disclosure">
+            <summary class="info-summary">{{ $t('step2.technicalDetails') }}</summary>
+            <div class="info-card">
+              <div class="info-row">
+                <span class="info-label">{{ $t('step2.idProject') }}</span>
+                <span class="info-value mono">{{ projectData?.project_id }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">{{ $t('step2.idGraph') }}</span>
+                <span class="info-value mono">{{ projectData?.graph_id }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">{{ $t('step2.idSimulation') }}</span>
+                <span class="info-value mono">{{ simulationId }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">{{ $t('step2.idTask') }}</span>
+                <span class="info-value mono">{{ taskId || $t('step2.asyncTaskDone') }}</span>
+              </div>
             </div>
-            <div class="info-row">
-              <span class="info-label">Graph ID</span>
-              <span class="info-value mono">{{ projectData?.graph_id }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Simulation ID</span>
-              <span class="info-value mono">{{ simulationId }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Task ID</span>
-              <span class="info-value mono">{{ taskId || $t('step2.asyncTaskDone') }}</span>
-            </div>
-          </div>
+          </details>
         </div>
       </div>
 
@@ -56,13 +61,70 @@
         </div>
 
         <div class="card-content">
-          <p class="api-note">POST /api/simulation/prepare</p>
           <p class="description">
             {{ $t('step2.generateAgentPersonaDesc') }}
           </p>
 
+          <!-- Audience size - set before generation, since it decides the cast -->
+          <div v-if="awaitingAudienceSize" class="rounds-config-section">
+            <div class="rounds-header">
+              <div class="header-left">
+                <span class="section-title">{{ $t('step2.audienceSizeConfig') }}</span>
+                <span class="section-desc">{{ $t('step2.audienceSizeDesc', { max: MAX_AGENTS }) }}</span>
+              </div>
+            </div>
+
+            <div class="rounds-content custom">
+              <div class="slider-display">
+                <div class="slider-main-value">
+                  <span class="val-num">{{ maxAgents }}</span>
+                  <span class="val-unit">{{ $t('step2.audienceSizeUnit') }}</span>
+                </div>
+                <div class="slider-meta-info">
+                  <span v-if="segmentCount !== null">{{ $t('step2.graphSegments') }}: {{ segmentCount }}</span>
+                  <span v-if="expectedTotal">{{ $t('step2.expectedAgentTotal') }}: {{ expectedTotal }}</span>
+                </div>
+              </div>
+
+              <div class="range-wrapper">
+                <input
+                  type="range"
+                  v-model.number="maxAgents"
+                  min="20"
+                  :max="MAX_AGENTS"
+                  step="10"
+                  class="minimal-slider"
+                  :style="{ '--percent': ((maxAgents - 20) / (MAX_AGENTS - 20)) * 100 + '%' }"
+                />
+                <div class="range-marks">
+                  <span>20</span>
+                  <button
+                    type="button"
+                    class="mark-recommend"
+                    :class="{ active: maxAgents === RECOMMENDED_AGENTS }"
+                    @click="maxAgents = RECOMMENDED_AGENTS"
+                    :style="{ position: 'absolute', left: `calc(${(RECOMMENDED_AGENTS - 20) / (MAX_AGENTS - 20) * 100}% - 30px)` }"
+                  >{{ $t('step2.audienceSizeRecommended', { count: RECOMMENDED_AGENTS }) }}</button>
+                  <span>{{ MAX_AGENTS }}</span>
+                </div>
+              </div>
+
+              <p class="description">{{ $t('step2.audienceSizeTip') }}</p>
+
+              <div class="action-group">
+                <button class="action-btn primary" @click="startPrepareSimulation">
+                  {{ $t('step2.generatePersonas') }} ➝
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- Profiles Stats -->
           <div v-if="profiles.length > 0" class="stats-grid">
+            <div class="stat-card">
+              <span class="stat-value">{{ segmentCount ?? '-' }}</span>
+              <span class="stat-label">{{ $t('step2.graphSegments') }}</span>
+            </div>
             <div class="stat-card">
               <span class="stat-value">{{ profiles.length }}</span>
               <span class="stat-label">{{ $t('step2.currentAgentCount') }}</span>
@@ -83,9 +145,10 @@
               <span class="preview-title">{{ $t('step2.generatedAgentPersonas') }}</span>
             </div>
             <div class="profiles-list">
-              <div 
-                v-for="(profile, idx) in profiles" 
-                :key="idx" 
+              <button
+                v-for="(profile, idx) in profiles"
+                :key="idx"
+                type="button"
                 class="profile-card"
                 @click="selectProfile(profile)"
               >
@@ -96,7 +159,7 @@
                 <div class="profile-meta">
                   <span class="profile-profession">{{ profile.profession || $t('step2.unknownProfession') }}</span>
                 </div>
-                <p class="profile-bio">{{ profile.bio || $t('step2.noBio') }}</p>
+                <span class="profile-bio">{{ profile.bio || $t('step2.noBio') }}</span>
                 <div v-if="profile.interested_topics?.length" class="profile-topics">
                   <span 
                     v-for="topic in profile.interested_topics.slice(0, 3)" 
@@ -107,7 +170,7 @@
                     +{{ profile.interested_topics.length - 3 }}
                   </span>
                 </div>
-              </div>
+              </button>
             </div>
           </div>
         </div>
@@ -128,7 +191,6 @@
         </div>
 
         <div class="card-content">
-          <p class="api-note">POST /api/simulation/prepare</p>
           <p class="description">
             {{ $t('step2.dualPlatformConfigDesc') }}
           </p>
@@ -361,7 +423,6 @@
         </div>
 
         <div class="card-content">
-          <p class="api-note">POST /api/simulation/prepare</p>
           <p class="description">
             {{ $t('step2.initialActivationDesc') }}
           </p>
@@ -432,7 +493,6 @@
         </div>
 
         <div class="card-content">
-          <p class="api-note">POST /api/simulation/start</p>
           <p class="description">{{ $t('step2.setupCompleteDesc') }}</p>
           
           <!-- Round count - shown only once the config is generated and the count is known -->
@@ -473,12 +533,13 @@
                   />
                   <div class="range-marks">
                     <span>10</span>
-                    <span 
-                      class="mark-recommend" 
+                    <button
+                      type="button"
+                      class="mark-recommend"
                       :class="{ active: customMaxRounds === 40 }"
                       @click="customMaxRounds = 40"
                       :style="{ position: 'absolute', left: `calc(${(40 - 10) / (autoGeneratedRounds - 10) * 100}% - 30px)` }"
-                    >{{ $t('step2.recommendedRounds', { rounds: 40 }) }}</span>
+                    >{{ $t('step2.recommendedRounds', { rounds: 40 }) }}</button>
                     <span>{{ autoGeneratedRounds }}</span>
                   </div>
                 </div>
@@ -501,7 +562,7 @@
                       </span>
                     </div>
                     <div class="auto-desc">
-                      <p class="highlight-tip" @click="useCustomRounds = true">{{ $t('step2.customTip') }} ➝</p>
+                      <button type="button" class="highlight-tip" @click="useCustomRounds = true">{{ $t('step2.customTip') }} <span aria-hidden="true">➝</span></button>
                     </div>
                   </div>
                 </div>
@@ -618,7 +679,7 @@
     <!-- Bottom Info / Logs -->
     <div class="system-logs">
       <div class="log-header">
-        <span class="log-title">SYSTEM DASHBOARD</span>
+        <span class="log-title">{{ $t('step2.systemDashboard') }}</span>
         <span class="log-id">{{ simulationId || 'NO_SIMULATION' }}</span>
       </div>
       <div class="log-content" ref="logContent">
@@ -635,6 +696,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
+  getGraphEntities,
   prepareSimulation,
   getPrepareStatus,
   getSimulationProfilesRealtime,
@@ -662,6 +724,7 @@ const progressMessage = ref('')
 const profiles = ref([])
 const entityTypes = ref([])
 const expectedTotal = ref(null)
+const segmentCount = ref(null)  // Entities read from the graph, before cloning/trimming
 const simulationConfig = ref(null)
 const selectedProfile = ref(null)
 const showProfilesDetail = ref(true)
@@ -674,6 +737,13 @@ let lastLoggedConfigStage = ''
 // Round count
 const useCustomRounds = ref(false) // The generated round count is used by default
 const customMaxRounds = ref(40)   // 40 rounds is the recommended default
+
+// Audience size. Must be chosen before preparation starts: it decides how many
+// customers get built, so it cannot be changed once the personas exist.
+const MAX_AGENTS = 500            // Backend hard cap; a larger value is clamped there
+const RECOMMENDED_AGENTS = 200
+const maxAgents = ref(RECOMMENDED_AGENTS)
+const awaitingAudienceSize = ref(false)
 
 // Watch stage to update phase
 watch(currentStage, (newStage) => {
@@ -785,16 +855,18 @@ const startPrepareSimulation = async () => {
   }
   
   // Step one is done; begin step two
+  awaitingAudienceSize.value = false
   phase.value = 1
   addLog(t('log.simInstanceCreated', { id: props.simulationId }))
   addLog(t('log.preparingSimEnv'))
   emit('update-status', 'processing')
-  
+
   try {
     const res = await prepareSimulation({
       simulation_id: props.simulationId,
       use_llm_for_profiles: true,
-      parallel_profile_count: 5
+      parallel_profile_count: 5,
+      max_agents: maxAgents.value
     })
     
     if (res.success && res.data) {
@@ -808,9 +880,12 @@ const startPrepareSimulation = async () => {
       addLog(t('log.prepareTaskStarted'))
       addLog(t('log.prepareTaskId', { taskId: res.data.task_id }))
       
-      // Set the expected agent total right away, from the prepare response
+      // Set the expected agent total right away, from the prepare response.
+      // The cast is the planned agent count, which is not the segment count:
+      // segments get cloned up to the audience size, or trimmed down to it.
       if (res.data.expected_entities_count) {
-        expectedTotal.value = res.data.expected_entities_count
+        segmentCount.value = res.data.expected_entities_count
+        expectedTotal.value = res.data.expected_agent_count || res.data.expected_entities_count
         addLog(t('log.zepEntitiesFound', { count: res.data.expected_entities_count }))
         if (res.data.entity_types && res.data.entity_types.length > 0) {
           addLog(t('log.entityTypes', { types: res.data.entity_types.join(', ') }))
@@ -923,9 +998,11 @@ const fetchProfilesRealtime = async () => {
     if (res.success && res.data) {
       const prevCount = profiles.value.length
       profiles.value = res.data.profiles || []
-      // Only overwrite when the API returned something usable
+      // total_expected is the segment count, not the cast size. Only fall back
+      // to it when the planned agent total is still unknown (e.g. a reload).
       if (res.data.total_expected) {
-        expectedTotal.value = res.data.total_expected
+        segmentCount.value = res.data.total_expected
+        if (!expectedTotal.value) expectedTotal.value = res.data.total_expected
       }
       
       // Extract the entity types
@@ -1086,11 +1163,45 @@ watch(() => props.systemLogs?.length, () => {
   })
 })
 
-onMounted(() => {
-  // Start preparation automatically
-  if (props.simulationId) {
-    addLog(t('log.step2Init'))
-    startPrepareSimulation()
+onMounted(async () => {
+  if (!props.simulationId) return
+
+  addLog(t('log.step2Init'))
+
+  // Preparation used to start on its own. It cannot any more: the audience
+  // size decides how many customers get built, so it has to be chosen first.
+  // Work already prepared skips the question and loads straight away.
+  try {
+    const res = await getPrepareStatus({ simulation_id: props.simulationId })
+    if (res.success && res.data?.already_prepared) {
+      addLog(t('log.detectedExistingPrep'))
+      await loadPreparedData()
+      return
+    }
+  } catch (err) {
+    // A failed check is not fatal - fall through and ask for the size.
+    addLog(t('log.prepareException', { error: err.message }))
+  }
+
+  phase.value = 1
+  awaitingAudienceSize.value = true
+
+  // Show how many segments the graph holds, so the audience size is a choice
+  // against a known number instead of a blind one.
+  if (props.projectData?.graph_id) {
+    try {
+      const res = await getGraphEntities(props.projectData.graph_id)
+      if (res.success && res.data) {
+        segmentCount.value = res.data.filtered_count
+        entityTypes.value = res.data.entity_types || []
+        addLog(t('log.zepEntitiesFound', { count: res.data.filtered_count }))
+        if (entityTypes.value.length) {
+          addLog(t('log.entityTypes', { types: entityTypes.value.join(', ') }))
+        }
+      }
+    } catch (err) {
+      console.warn('failed to fetch the graph entities:', err)
+    }
   }
 })
 
@@ -1106,7 +1217,7 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #FAFAFA;
+  background: var(--surface);
   font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
 }
 
@@ -1121,11 +1232,11 @@ onUnmounted(() => {
 
 /* Step Card */
 .step-card {
-  background: #FFF;
+  background: var(--white);
   border-radius: 8px;
   padding: 20px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  border: 1px solid #EAEAEA;
+  border: 1px solid var(--border-soft);
   transition: all 0.3s ease;
   position: relative;
 }
@@ -1152,12 +1263,12 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', monospace;
   font-size: 20px;
   font-weight: 700;
-  color: #E0E0E0;
+  color: var(--border-soft);
 }
 
 .step-card.active .step-num,
 .step-card.completed .step-num {
-  color: #000;
+  color: var(--black);
 }
 
 .step-title {
@@ -1167,7 +1278,7 @@ onUnmounted(() => {
 }
 
 .badge {
-  font-size: 10px;
+  font-size: 12px;
   padding: 4px 8px;
   border-radius: 4px;
   font-weight: 600;
@@ -1175,24 +1286,36 @@ onUnmounted(() => {
 }
 
 .badge.success { background: #E8F5E9; color: #2E7D32; }
-.badge.processing { background: #FF5722; color: #FFF; }
-.badge.pending { background: #F5F5F5; color: #999; }
+.badge.processing { background: #FF5722; color: var(--white); }
+.badge.pending { background: var(--surface-2); color: var(--muted-soft); }
 .badge.accent { background: #E3F2FD; color: #1565C0; }
 
 .card-content {
   /* No extra padding - uses step-card's padding */
 }
 
-.api-note {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  color: #999;
-  margin-bottom: 8px;
+/* Collapsed record ids: useful for a bug report, noise the rest of the time. */
+.info-disclosure {
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.info-summary {
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.info-summary:hover {
+  color: var(--ink);
 }
 
 .description {
   font-size: 12px;
-  color: #666;
+  color: var(--muted);
   line-height: 1.5;
   margin-bottom: 16px;
 }
@@ -1216,8 +1339,8 @@ onUnmounted(() => {
 }
 
 .action-btn.primary {
-  background: #F97316;
-  color: #FFF;
+  background: var(--accent);
+  color: var(--white);
 }
 
 .action-btn.primary:hover:not(:disabled) {
@@ -1225,12 +1348,12 @@ onUnmounted(() => {
 }
 
 .action-btn.secondary {
-  background: #F5F5F5;
-  color: #333;
+  background: var(--surface-2);
+  color: var(--ink-2);
 }
 
 .action-btn.secondary:hover:not(:disabled) {
-  background: #E5E5E5;
+  background: var(--border);
 }
 
 .action-btn:disabled {
@@ -1255,7 +1378,7 @@ onUnmounted(() => {
 
 /* Info Card */
 .info-card {
-  background: #F5F5F5;
+  background: var(--surface-2);
   border-radius: 6px;
   padding: 16px;
   margin-top: 16px;
@@ -1266,7 +1389,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 8px 0;
-  border-bottom: 1px dashed #E0E0E0;
+  border-bottom: 1px dashed var(--border-soft);
 }
 
 .info-row:last-child {
@@ -1275,7 +1398,7 @@ onUnmounted(() => {
 
 .info-label {
   font-size: 12px;
-  color: #666;
+  color: var(--muted);
 }
 
 .info-value {
@@ -1291,9 +1414,9 @@ onUnmounted(() => {
 /* Stats Grid */
 .stats-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
   gap: 12px;
-  background: #F9F9F9;
+  background: var(--surface);
   padding: 16px;
   border-radius: 6px;
 }
@@ -1306,13 +1429,13 @@ onUnmounted(() => {
   display: block;
   font-size: 20px;
   font-weight: 700;
-  color: #000;
+  color: var(--black);
   font-family: 'JetBrains Mono', monospace;
 }
 
 .stat-label {
-  font-size: 9px;
-  color: #999;
+  font-size: 12px;
+  color: var(--muted-soft);
   text-transform: uppercase;
   margin-top: 4px;
   display: block;
@@ -1321,7 +1444,7 @@ onUnmounted(() => {
 /* Profiles Preview */
 .profiles-preview {
   margin-top: 20px;
-  border-top: 1px solid #E5E5E5;
+  border-top: 1px solid var(--border);
   padding-top: 16px;
 }
 
@@ -1335,7 +1458,7 @@ onUnmounted(() => {
 .preview-title {
   font-size: 12px;
   font-weight: 600;
-  color: #666;
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -1354,17 +1477,23 @@ onUnmounted(() => {
 }
 
 .profiles-list::-webkit-scrollbar-thumb {
-  background: #DDD;
+  background: var(--border-strong);
   border-radius: 2px;
 }
 
 .profiles-list::-webkit-scrollbar-thumb:hover {
-  background: #CCC;
+  background: var(--border-strong);
 }
 
 .profile-card {
-  background: #FAFAFA;
-  border: 1px solid #E5E5E5;
+  /* A <button> now; reset the inherited control styling. */
+  font: inherit;
+  text-align: left;
+  appearance: none;
+  color: inherit;
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 14px;
   cursor: pointer;
@@ -1372,8 +1501,8 @@ onUnmounted(() => {
 }
 
 .profile-card:hover {
-  border-color: #999;
-  background: #FFF;
+  border-color: var(--muted-soft);
+  background: var(--white);
 }
 
 .profile-header {
@@ -1386,13 +1515,13 @@ onUnmounted(() => {
 .profile-realname {
   font-size: 14px;
   font-weight: 700;
-  color: #000;
+  color: var(--black);
 }
 
 .profile-username {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: #999;
+  font-size: 12px;
+  color: var(--muted-soft);
 }
 
 .profile-meta {
@@ -1400,16 +1529,16 @@ onUnmounted(() => {
 }
 
 .profile-profession {
-  font-size: 11px;
-  color: #666;
-  background: #F0F0F0;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface-3);
   padding: 2px 8px;
   border-radius: 3px;
 }
 
 .profile-bio {
   font-size: 12px;
-  color: #444;
+  color: var(--ink-3);
   line-height: 1.6;
   margin: 0 0 10px 0;
   display: -webkit-box;
@@ -1425,7 +1554,7 @@ onUnmounted(() => {
 }
 
 .topic-tag {
-  font-size: 10px;
+  font-size: 12px;
   color: #1565C0;
   background: #E3F2FD;
   padding: 2px 8px;
@@ -1433,8 +1562,8 @@ onUnmounted(() => {
 }
 
 .topic-more {
-  font-size: 10px;
-  color: #999;
+  font-size: 12px;
+  color: var(--muted-soft);
   padding: 2px 6px;
 }
 
@@ -1446,7 +1575,7 @@ onUnmounted(() => {
 
 .config-block {
   margin-top: 16px;
-  border-top: 1px solid #E5E5E5;
+  border-top: 1px solid var(--border);
   padding-top: 12px;
 }
 
@@ -1466,15 +1595,15 @@ onUnmounted(() => {
 .config-block-title {
   font-size: 12px;
   font-weight: 600;
-  color: #666;
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .config-block-badge {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  background: #F5F5F5;
+  font-size: 12px;
+  background: var(--surface-2);
   color: #475569;
   padding: 2px 8px;
   border-radius: 10px;
@@ -1488,7 +1617,7 @@ onUnmounted(() => {
 }
 
 .config-item {
-  background: #F9F9F9;
+  background: var(--surface);
   padding: 12px 14px;
   border-radius: 6px;
   display: flex;
@@ -1497,8 +1626,8 @@ onUnmounted(() => {
 }
 
 .config-item-label {
-  font-size: 11px;
-  color: #A3A3A3;
+  font-size: 12px;
+  color: var(--muted-soft);
 }
 
 .config-item-value {
@@ -1521,29 +1650,29 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   padding: 8px 12px;
-  background: #F9F9F9;
+  background: var(--surface);
   border-radius: 6px;
 }
 
 .period-label {
   font-size: 12px;
   font-weight: 500;
-  color: #666666;
+  color: var(--muted);
   min-width: 70px;
 }
 
 .period-hours {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
+  font-size: 12px;
   color: #475569;
   flex: 1;
 }
 
 .period-multiplier {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  color: #666666;
+  color: var(--muted);
   background: #EEF2FF;
   padding: 2px 6px;
   border-radius: 4px;
@@ -1564,25 +1693,25 @@ onUnmounted(() => {
 }
 
 .agents-cards::-webkit-scrollbar-thumb {
-  background: #DDD;
+  background: var(--border-strong);
   border-radius: 2px;
 }
 
 .agents-cards::-webkit-scrollbar-thumb:hover {
-  background: #CCC;
+  background: var(--border-strong);
 }
 
 .agent-card {
-  background: #F9F9F9;
-  border: 1px solid #E5E5E5;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 14px;
   transition: all 0.2s ease;
 }
 
 .agent-card:hover {
-  border-color: #999;
-  background: #FFF;
+  border-color: var(--muted-soft);
+  background: var(--white);
 }
 
 /* Agent Card Header */
@@ -1592,7 +1721,7 @@ onUnmounted(() => {
   align-items: flex-start;
   margin-bottom: 14px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #F5F5F5;
+  border-bottom: 1px solid var(--surface-2);
 }
 
 .agent-identity {
@@ -1603,8 +1732,8 @@ onUnmounted(() => {
 
 .agent-id {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  color: #A3A3A3;
+  font-size: 12px;
+  color: var(--muted-soft);
 }
 
 .agent-name {
@@ -1619,15 +1748,15 @@ onUnmounted(() => {
 }
 
 .agent-type {
-  font-size: 10px;
-  color: #666666;
-  background: #F5F5F5;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface-2);
   padding: 2px 8px;
   border-radius: 4px;
 }
 
 .agent-stance {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
   text-transform: uppercase;
   padding: 2px 8px;
@@ -1635,8 +1764,8 @@ onUnmounted(() => {
 }
 
 .stance-neutral {
-  background: #F5F5F5;
-  color: #666666;
+  background: var(--surface-2);
+  color: var(--muted);
 }
 
 .stance-supportive {
@@ -1646,7 +1775,7 @@ onUnmounted(() => {
 
 .stance-opposing {
   background: #FEE2E2;
-  color: #DC2626;
+  color: var(--danger);
 }
 
 .stance-observer {
@@ -1661,8 +1790,8 @@ onUnmounted(() => {
 
 .timeline-label {
   display: block;
-  font-size: 10px;
-  color: #A3A3A3;
+  font-size: 12px;
+  color: var(--muted-soft);
   margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1672,20 +1801,20 @@ onUnmounted(() => {
   display: flex;
   gap: 2px;
   height: 16px;
-  background: #FAFAFA;
+  background: var(--surface);
   border-radius: 4px;
   padding: 3px;
 }
 
 .timeline-hour {
   flex: 1;
-  background: #E5E5E5;
+  background: var(--border);
   border-radius: 2px;
   transition: all 0.2s;
 }
 
 .timeline-hour.active {
-  background: linear-gradient(180deg, #666666, #A3A3A3);
+  background: linear-gradient(180deg, var(--muted), var(--muted-soft));
 }
 
 .timeline-marks {
@@ -1693,8 +1822,8 @@ onUnmounted(() => {
   justify-content: space-between;
   margin-top: 4px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 9px;
-  color: #A3A3A3;
+  font-size: 12px;
+  color: var(--muted-soft);
 }
 
 /* Agent Params */
@@ -1717,8 +1846,8 @@ onUnmounted(() => {
 }
 
 .param-item .param-label {
-  font-size: 10px;
-  color: #A3A3A3;
+  font-size: 12px;
+  color: var(--muted-soft);
 }
 
 .param-item .param-value {
@@ -1736,7 +1865,7 @@ onUnmounted(() => {
 
 .mini-bar {
   height: 4px;
-  background: linear-gradient(90deg, #A3A3A3, #F97316);
+  background: linear-gradient(90deg, var(--muted-soft), var(--accent));
   border-radius: 2px;
   min-width: 4px;
   max-width: 40px;
@@ -1747,15 +1876,15 @@ onUnmounted(() => {
 }
 
 .param-value.negative {
-  color: #DC2626;
+  color: var(--danger);
 }
 
 .param-value.neutral {
-  color: #666666;
+  color: var(--muted);
 }
 
 .param-value.highlight {
-  color: #666666;
+  color: var(--muted);
 }
 
 /* Platforms Grid */
@@ -1766,7 +1895,7 @@ onUnmounted(() => {
 }
 
 .platform-card {
-  background: #F9F9F9;
+  background: var(--surface);
   padding: 14px;
   border-radius: 6px;
 }
@@ -1774,13 +1903,13 @@ onUnmounted(() => {
 .platform-card-header {
   margin-bottom: 10px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #E5E5E5;
+  border-bottom: 1px solid var(--border);
 }
 
 .platform-name {
   font-size: 13px;
   font-weight: 600;
-  color: #333;
+  color: var(--ink-2);
 }
 
 .platform-params {
@@ -1797,7 +1926,7 @@ onUnmounted(() => {
 
 .param-label {
   font-size: 12px;
-  color: #666666;
+  color: var(--muted);
 }
 
 .param-value {
@@ -1816,13 +1945,13 @@ onUnmounted(() => {
 
 .reasoning-item {
   padding: 12px 14px;
-  background: #F9F9F9;
+  background: var(--surface);
   border-radius: 6px;
 }
 
 .reasoning-text {
   font-size: 13px;
-  color: #555;
+  color: var(--ink-3);
   line-height: 1.7;
   margin: 0;
 }
@@ -1843,7 +1972,7 @@ onUnmounted(() => {
 }
 
 .profile-modal {
-  background: #FFF;
+  background: var(--white);
   border-radius: 16px;
   width: 90%;
   max-width: 600px;
@@ -1859,8 +1988,8 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: flex-start;
   padding: 24px;
-  background: #FFF;
-  border-bottom: 1px solid #F0F0F0;
+  background: var(--white);
+  border-bottom: 1px solid var(--surface-3);
 }
 
 .modal-header-info {
@@ -1877,19 +2006,19 @@ onUnmounted(() => {
 .modal-realname {
   font-size: 20px;
   font-weight: 700;
-  color: #000;
+  color: var(--black);
 }
 
 .modal-username {
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
-  color: #999;
+  color: var(--muted-soft);
 }
 
 .modal-profession {
   font-size: 12px;
-  color: #666;
-  background: #F5F5F5;
+  color: var(--muted);
+  background: var(--surface-2);
   padding: 4px 10px;
   border-radius: 4px;
   display: inline-block;
@@ -1901,7 +2030,7 @@ onUnmounted(() => {
   height: 32px;
   border: none;
   background: none;
-  color: #999;
+  color: var(--muted-soft);
   border-radius: 50%;
   font-size: 24px;
   cursor: pointer;
@@ -1914,7 +2043,7 @@ onUnmounted(() => {
 }
 
 .close-btn:hover {
-  color: #333;
+  color: var(--ink-2);
 }
 
 .modal-body {
@@ -1941,8 +2070,8 @@ onUnmounted(() => {
 }
 
 .info-label {
-  font-size: 11px;
-  color: #999;
+  font-size: 12px;
+  color: var(--muted-soft);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   font-weight: 600;
@@ -1951,7 +2080,7 @@ onUnmounted(() => {
 .info-value {
   font-size: 15px;
   font-weight: 600;
-  color: #333;
+  color: var(--ink-2);
 }
 
 .info-value.mbti {
@@ -1966,9 +2095,9 @@ onUnmounted(() => {
 
 .section-label {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  color: #999;
+  color: var(--muted-soft);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 12px;
@@ -1976,13 +2105,13 @@ onUnmounted(() => {
 
 .section-bio {
   font-size: 14px;
-  color: #333;
+  color: var(--ink-2);
   line-height: 1.6;
   margin: 0;
   padding: 16px;
-  background: #F9F9F9;
+  background: var(--surface);
   border-radius: 6px;
-  border-left: 3px solid #E0E0E0;
+  border-left: 3px solid var(--border-soft);
 }
 
 /* Topic tags */
@@ -1993,7 +2122,7 @@ onUnmounted(() => {
 }
 
 .topic-item {
-  font-size: 11px;
+  font-size: 12px;
   color: #1565C0;
   background: #E3F2FD;
   padding: 4px 10px;
@@ -2019,27 +2148,27 @@ onUnmounted(() => {
   background: #F8F9FA;
   padding: 12px;
   border-radius: 6px;
-  border-left: 3px solid #DDD;
+  border-left: 3px solid var(--border-strong);
   transition: all 0.2s;
 }
 
 .dimension-card:hover {
-  background: #F0F0F0;
-  border-left-color: #999;
+  background: var(--surface-3);
+  border-left-color: var(--muted-soft);
 }
 
 .dim-title {
   display: block;
   font-size: 12px;
   font-weight: 700;
-  color: #333;
+  color: var(--ink-2);
   margin-bottom: 4px;
 }
 
 .dim-desc {
   display: block;
-  font-size: 10px;
-  color: #888;
+  font-size: 12px;
+  color: var(--muted-soft);
   line-height: 1.4;
 }
 
@@ -2057,13 +2186,13 @@ onUnmounted(() => {
 }
 
 .persona-content::-webkit-scrollbar-thumb {
-  background: #DDD;
+  background: var(--border-strong);
   border-radius: 2px;
 }
 
 .section-persona {
   font-size: 13px;
-  color: #555;
+  color: var(--ink-3);
   line-height: 1.8;
   margin: 0;
   text-align: justify;
@@ -2071,22 +2200,22 @@ onUnmounted(() => {
 
 /* System Logs */
 .system-logs {
-  background: #FAFAFA;
-  color: #333333;
+  background: var(--surface);
+  color: var(--ink-2);
   padding: 16px;
   font-family: 'JetBrains Mono', monospace;
-  border-top: 1px solid #E5E5E5;
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .log-header {
   display: flex;
   justify-content: space-between;
-  border-bottom: 1px solid #E5E5E5;
+  border-bottom: 1px solid var(--border);
   padding-bottom: 8px;
   margin-bottom: 8px;
-  font-size: 10px;
-  color: #999999;
+  font-size: 12px;
+  color: var(--muted-soft);
 }
 
 .log-content {
@@ -2103,24 +2232,24 @@ onUnmounted(() => {
 }
 
 .log-content::-webkit-scrollbar-thumb {
-  background: #D4D4D4;
+  background: var(--border-strong);
   border-radius: 2px;
 }
 
 .log-line {
-  font-size: 11px;
+  font-size: 12px;
   display: flex;
   gap: 12px;
   line-height: 1.5;
 }
 
 .log-time {
-  color: #999999;
+  color: var(--muted-soft);
   min-width: 75px;
 }
 
 .log-msg {
-  color: #333333;
+  color: var(--ink-2);
   word-break: break-all;
 }
 
@@ -2128,7 +2257,7 @@ onUnmounted(() => {
 .spinner-sm {
   width: 16px;
   height: 16px;
-  border: 2px solid #E5E5E5;
+  border: 2px solid var(--border);
   border-top-color: #FF5722;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
@@ -2149,14 +2278,14 @@ onUnmounted(() => {
   display: block;
   font-size: 12px;
   font-weight: 600;
-  color: #666;
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 12px;
 }
 
 .narrative-box {
-  background: #FFFFFF;
+  background: var(--white);
   padding: 20px 24px;
   border-radius: 12px;
   border: 1px solid #EEF2F6;
@@ -2168,7 +2297,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #666;
+  color: var(--muted);
   font-size: 13px;
   letter-spacing: 0.5px;
   margin-bottom: 12px;
@@ -2195,7 +2324,7 @@ onUnmounted(() => {
 }
 
 .topics-section {
-  background: #FFF;
+  background: var(--white);
 }
 
 .hot-topics-grid {
@@ -2214,13 +2343,13 @@ onUnmounted(() => {
 }
 
 .hot-topic-more {
-  font-size: 11px;
-  color: #999;
+  font-size: 12px;
+  color: var(--muted-soft);
   padding: 4px 6px;
 }
 
 .initial-posts-section {
-  border-top: 1px solid #EAEAEA;
+  border-top: 1px solid var(--border-soft);
   padding-top: 16px;
 }
 
@@ -2229,7 +2358,7 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 16px;
   padding-left: 8px;
-  border-left: 2px solid #F0F0F0;
+  border-left: 2px solid var(--surface-3);
   margin-top: 12px;
 }
 
@@ -2244,14 +2373,14 @@ onUnmounted(() => {
   top: 14px;
   width: 12px;
   height: 2px;
-  background: #DDD;
+  background: var(--border-strong);
 }
 
 .timeline-content {
-  background: #F9F9F9;
+  background: var(--surface);
   padding: 12px;
   border-radius: 6px;
-  border: 1px solid #EEE;
+  border: 1px solid var(--border-soft);
 }
 
 .post-header {
@@ -2261,9 +2390,9 @@ onUnmounted(() => {
 }
 
 .post-role {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  color: #333;
+  color: var(--ink-2);
   text-transform: uppercase;
 }
 
@@ -2276,8 +2405,8 @@ onUnmounted(() => {
 .post-id,
 .post-username {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  color: #666;
+  font-size: 12px;
+  color: var(--muted);
   line-height: 1;
   vertical-align: baseline;
 }
@@ -2288,7 +2417,7 @@ onUnmounted(() => {
 
 .post-text {
   font-size: 12px;
-  color: #555;
+  color: var(--ink-3);
   line-height: 1.5;
   margin: 0;
 }
@@ -2297,7 +2426,7 @@ onUnmounted(() => {
 .rounds-config-section {
   margin: 24px 0;
   padding-top: 24px;
-  border-top: 1px solid #EAEAEA;
+  border-top: 1px solid var(--border-soft);
 }
 
 .rounds-header {
@@ -2321,14 +2450,14 @@ onUnmounted(() => {
 
 .section-desc {
   font-size: 12px;
-  color: #A3A3A3;
+  color: var(--muted-soft);
 }
 
 .desc-highlight {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 600;
   color: #1E293B;
-  background: #F5F5F5;
+  background: var(--surface-2);
   padding: 1px 6px;
   border-radius: 4px;
   margin: 0 2px;
@@ -2346,7 +2475,7 @@ onUnmounted(() => {
 }
 
 .switch-control:hover {
-  background: #FAFAFA;
+  background: var(--surface);
 }
 
 .switch-control input {
@@ -2356,7 +2485,7 @@ onUnmounted(() => {
 .switch-track {
   width: 36px;
   height: 20px;
-  background: #E5E5E5;
+  background: var(--border);
   border-radius: 10px;
   position: relative;
   transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
@@ -2369,14 +2498,14 @@ onUnmounted(() => {
   top: 2px;
   width: 16px;
   height: 16px;
-  background: #FFF;
+  background: var(--white);
   border-radius: 50%;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
 }
 
 .switch-control input:checked + .switch-track {
-  background: #000;
+  background: var(--black);
 }
 
 .switch-control input:checked + .switch-track::after {
@@ -2386,7 +2515,7 @@ onUnmounted(() => {
 .switch-label {
   font-size: 12px;
   font-weight: 500;
-  color: #666666;
+  color: var(--muted);
 }
 
 .switch-control input:checked ~ .switch-label {
@@ -2415,20 +2544,20 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', monospace;
   font-size: 24px;
   font-weight: 700;
-  color: #000;
+  color: var(--black);
 }
 
 .val-unit {
   font-size: 12px;
-  color: #666;
+  color: var(--muted);
   font-weight: 500;
 }
 
 .slider-meta-info {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: #666666;
-  background: #F5F5F5;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface-2);
   padding: 4px 8px;
   border-radius: 4px;
 }
@@ -2442,10 +2571,10 @@ onUnmounted(() => {
   -webkit-appearance: none;
   width: 100%;
   height: 4px;
-  background: #E5E5E5;
+  background: var(--border);
   border-radius: 2px;
   outline: none;
-  background-image: linear-gradient(#000, #000);
+  background-image: linear-gradient(var(--black), var(--black));
   background-size: var(--percent, 0%) 100%;
   background-repeat: no-repeat;
   cursor: pointer;
@@ -2456,8 +2585,8 @@ onUnmounted(() => {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #FFF;
-  border: 2px solid #000;
+  background: var(--white);
+  border: 2px solid var(--black);
   cursor: pointer;
   box-shadow: 0 1px 4px rgba(0,0,0,0.1);
   transition: transform 0.1s;
@@ -2478,23 +2607,29 @@ onUnmounted(() => {
   justify-content: space-between;
   margin-top: 8px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  color: #A3A3A3;
+  font-size: 12px;
+  color: var(--muted-soft);
   position: relative;
 }
 
 .mark-recommend {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  white-space: nowrap;
   cursor: pointer;
   transition: color 0.2s;
   position: relative;
 }
 
 .mark-recommend:hover {
-  color: #000;
+  color: var(--black);
 }
 
 .mark-recommend.active {
-  color: #000;
+  color: var(--black);
   font-weight: 600;
 }
 
@@ -2506,7 +2641,7 @@ onUnmounted(() => {
   transform: translateX(-50%);
   width: 1px;
   height: 4px;
-  background: #D4D4D4;
+  background: var(--border-strong);
 }
 
 /* Auto Info */
@@ -2514,7 +2649,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 24px;
-  background: #FAFAFA;
+  background: var(--surface);
   padding: 16px 20px;
   border-radius: 8px;
 }
@@ -2525,7 +2660,7 @@ onUnmounted(() => {
   align-items: baseline;
   gap: 4px;
   padding-right: 24px;
-  border-right: 1px solid #E5E5E5;
+  border-right: 1px solid var(--border);
 }
 
 .auto-content {
@@ -2546,11 +2681,11 @@ onUnmounted(() => {
   align-items: center;
   gap: 5px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
-  color: #666666;
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
+  color: var(--muted);
+  background: var(--white);
+  border: 1px solid var(--border);
   padding: 3px 8px;
   border-radius: 6px;
   box-shadow: 0 1px 2px rgba(0,0,0,0.02);
@@ -2565,14 +2700,23 @@ onUnmounted(() => {
 .auto-desc p {
   margin: 0;
   font-size: 13px;
-  color: #666666;
+  color: var(--muted);
   line-height: 1.5;
 }
 
 .highlight-tip {
+  /* Now a <button>: reset the inherited control styling. */
+  font: inherit;
+  text-align: left;
+  appearance: none;
+  border: none;
+  background: none;
+  color: inherit;
+  width: 100%;
+  padding: 0;
   margin-top: 4px !important;
   font-size: 12px !important;
-  color: #000 !important;
+  color: var(--black) !important;
   font-weight: 500;
   cursor: pointer;
 }
@@ -2619,5 +2763,22 @@ onUnmounted(() => {
 .modal-leave-to .profile-modal {
   transform: scale(0.95) translateY(10px);
   opacity: 0;
+}
+
+/* ---------- Narrow screens ---------- */
+@media (max-width: 720px) {
+  .env-setup-panel .scroll-container,
+  .workbench-panel .scroll-container {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  /* Multi-column stat and config grids stop being legible well before they
+     stop fitting, so they drop to a single column. */
+  [class*="-grid"],
+  .info-card,
+  .stats-row {
+    grid-template-columns: 1fr !important;
+  }
 }
 </style>

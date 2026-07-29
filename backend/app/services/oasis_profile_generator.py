@@ -13,7 +13,7 @@ import json
 import random
 import time
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 from openai import OpenAI
@@ -27,6 +27,14 @@ from ..utils.zep import (
     get_zep_client,
     is_retryable_zep_error,
     normalize_zep_search_query,
+)
+from ..utils.ontology import is_cloneable_kind, is_person_kind
+from .agent_population import (
+    INDIVIDUAL_ENTITY_TYPES as _INDIVIDUAL_ENTITY_TYPES,
+    MAX_AGENTS,
+    AgentSlot,
+    entity_kind,
+    plan_population,
 )
 from .zep_entity_reader import EntityNode
 
@@ -244,22 +252,19 @@ class OasisProfileGenerator:
         "Canada", "Australia", "Brazil", "India", "South Korea"
     ]
     
-    # Individual entity types (get a concrete buyer persona)
-    INDIVIDUAL_ENTITY_TYPES = [
-        "student", "alumni", "professor", "person", "publicfigure",
-        "expert", "faculty", "official", "journalist", "activist",
-        # Marketing audience types
-        "consumer", "customer", "buyer", "shopper", "influencer",
-        "reviewer", "creator", "prospect",
-    ]
+    # Individual entity types (get a concrete buyer persona). Defined in
+    # agent_population so the population planner and the persona prompts agree
+    # on what counts as a natural person.
+    INDIVIDUAL_ENTITY_TYPES = _INDIVIDUAL_ENTITY_TYPES
 
     def __init__(
-        self, 
+        self,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         model_name: Optional[str] = None,
         zep_api_key: Optional[str] = None,
-        graph_id: Optional[str] = None
+        graph_id: Optional[str] = None,
+        corpus_distribution: Optional[Dict[str, Any]] = None
     ):
         self.api_key = api_key or Config.LLM_API_KEY
         self.base_url = base_url or Config.LLM_BASE_URL
@@ -273,6 +278,15 @@ class OasisProfileGenerator:
             base_url=self.base_url
         )
         
+        # Audience priors harvested from public discussion. Optional: without
+        # them every persona is generated from the graph entity alone, which is
+        # the behaviour that predates the corpus.
+        self.corpus_distribution = corpus_distribution
+
+        # {entity_type: kind} over ENTITY_KINDS, set by the caller from the
+        # ontology and derive_population_hints. Empty means classify by name.
+        self.entity_kinds: Dict[str, str] = {}
+
         # Zep client, used to retrieve richer context
         self.zep_api_key = zep_api_key or Config.ZEP_API_KEY
         self.zep_client = None
@@ -285,10 +299,11 @@ class OasisProfileGenerator:
                 logger.warning(f"Zep client failed to initialise: {e}")
     
     def generate_profile_from_entity(
-        self, 
-        entity: EntityNode, 
+        self,
+        entity: EntityNode,
         user_id: int,
-        use_llm: bool = True
+        use_llm: bool = True,
+        theme: Optional[Dict[str, Any]] = None
     ) -> OasisAgentProfile:
         """
         Build an OASIS agent profile from a Zep entity.
@@ -297,6 +312,9 @@ class OasisProfileGenerator:
             entity: The Zep entity node
             user_id: User ID (used by OASIS)
             use_llm: Whether to build the detailed persona with the LLM
+            theme: Audience prior allocated to this agent, if any. The entity
+                supplies who they are; the theme supplies what they already
+                think about the category.
 
         Returns:
             OasisAgentProfile
@@ -326,9 +344,10 @@ class OasisProfileGenerator:
                     entity_type=entity_type,
                     entity_summary=entity.summary,
                     entity_attributes=entity.attributes,
-                    context=context
+                    context=context,
+                    theme=theme
                 )
-                step.metric(source='llm')
+                step.metric(source='llm', theme=(theme or {}).get('theme', ''))
             else:
                 # Build a basic persona from the rules
                 profile_data = self._generate_profile_rule_based(
@@ -365,6 +384,88 @@ class OasisProfileGenerator:
             source_entity_type=entity_type,
         )
     
+    def allocate_themes(self, count: int) -> List[Optional[Dict[str, Any]]]:
+        """
+        Assign one audience prior to each of ``count`` agents, by share.
+
+        The distribution says 22.8% of public discussion is about price; this
+        turns that into 22.8% of the agent pool carrying price as their standing
+        concern. Telling a model "23% should care about price" does not reliably
+        produce 23% - allocating the slots does.
+
+        Largest-remainder apportionment, so the seats add up exactly and a theme
+        with a real share is never rounded out of existence. Themes are assigned
+        round-robin across the agent list rather than in blocks, so a truncated
+        or partially failed run still covers the spread.
+
+        Returns:
+            A list of ``count`` entries, each a theme dict or None. Every entry
+            is None when there is no distribution to apportion.
+        """
+        themes = (self.corpus_distribution or {}).get('themes') or []
+        if not themes or count <= 0:
+            return [None] * max(count, 0)
+
+        total_share = sum(t.get('share_pct', 0) for t in themes)
+        if total_share <= 0:
+            return [None] * count
+
+        # Exact seat counts, then hand the leftovers to the largest remainders.
+        exact = [(t, t.get('share_pct', 0) / total_share * count) for t in themes]
+        seats = [(theme, int(value)) for theme, value in exact]
+        assigned = sum(n for _, n in seats)
+
+        remainders = sorted(
+            range(len(exact)),
+            key=lambda i: exact[i][1] - int(exact[i][1]),
+            reverse=True,
+        )
+        for i in remainders[:count - assigned]:
+            theme, n = seats[i]
+            seats[i] = (theme, n + 1)
+
+        # Deal the seats round-robin: one from each theme in turn, so the first
+        # agents generated already span the spread rather than all sharing the
+        # single largest theme.
+        queues = [[theme] * n for theme, n in seats if n > 0]
+        allocation: List[Optional[Dict[str, Any]]] = []
+        while queues and len(allocation) < count:
+            for queue in queues:
+                if queue:
+                    allocation.append(queue.pop())
+                    if len(allocation) >= count:
+                        break
+            queues = [q for q in queues if q]
+
+        allocation.extend([None] * (count - len(allocation)))
+        return allocation
+
+    @staticmethod
+    def _render_theme_prior(theme: Optional[Dict[str, Any]]) -> str:
+        """Render one allocated theme as a prompt block."""
+        if not theme:
+            return ""
+
+        lines = [
+            "",
+            "## This person's standing view of the category",
+            f"Before any campaign ran, {theme.get('share_pct', 0)}% of public discussion "
+            f"in this category was about: {theme.get('theme', '')} "
+            f"(mostly {theme.get('dominant_sentiment', 'neutral')}).",
+            "This persona is one of the people who holds that view. Real things "
+            "people wrote about it:",
+        ]
+        for example in (theme.get('examples') or [])[:2]:
+            quote = str(example.get('text', '')).replace('\n', ' ').strip()
+            if quote:
+                lines.append(f'  - "{quote}"')
+        lines.append(
+            "Build this into their category memory and their objections, in their "
+            "own words - do not quote the above verbatim. It is what they already "
+            "believed, not a reaction to the campaign."
+        )
+        return '\n'.join(lines)
+
     def _generate_username(self, name: str) -> str:
         """Generate a username."""
         # Strip special characters and lowercase
@@ -560,36 +661,53 @@ class OasisProfileGenerator:
         
         return "\n\n".join(context_parts)
     
+    def _entity_kind(self, entity_type: str) -> str:
+        """
+        The campaign's classification of this entity type, one of ENTITY_KINDS.
+
+        Prefers ``entity_kinds`` - the per-campaign map the caller set -
+        because the ontology names its types per campaign and no fixed list
+        contains "GenZstudent".
+        """
+        return entity_kind(entity_type, self.entity_kinds)
+
     def _is_individual_entity(self, entity_type: str) -> bool:
-        """Whether this entity type represents an individual."""
-        return entity_type.lower() in self.INDIVIDUAL_ENTITY_TYPES
-    
+        """Whether this entity type represents a natural person."""
+        return is_person_kind(self._entity_kind(entity_type))
+
     def _generate_profile_with_llm(
         self,
         entity_name: str,
         entity_type: str,
         entity_summary: str,
         entity_attributes: Dict[str, Any],
-        context: str
+        context: str,
+        theme: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Build a very detailed persona with the LLM.
 
-        The entity type decides the shape:
-        - Individual entities get a concrete person profile
-        - Group and institutional entities get a representative account profile
+        The entity's kind decides the shape. Both axes matter: a person is
+        written up differently from an organisation, and a named actor is
+        written up differently from a representative one - the named actor has
+        a real public record to stay true to, the representative one has none
+        to invent.
         """
-        
-        is_individual = self._is_individual_entity(entity_type)
-        
-        if is_individual:
-            prompt = self._build_individual_persona_prompt(
-                entity_name, entity_type, entity_summary, entity_attributes, context
-            )
-        else:
-            prompt = self._build_group_persona_prompt(
-                entity_name, entity_type, entity_summary, entity_attributes, context
-            )
+
+        kind = self._entity_kind(entity_type)
+        is_individual = is_person_kind(kind)
+        # A specific kind is one named actor with a real public record; a
+        # general one is a representative member of a class, invented to fit.
+        specific = not is_cloneable_kind(kind)
+
+        builder = (self._build_individual_persona_prompt if is_individual
+                   else self._build_group_persona_prompt)
+        prompt = builder(
+            entity_name, entity_type, entity_summary, entity_attributes, context,
+            specific=specific,
+        )
+
+        prompt += self._render_theme_prior(theme)
 
         # Retry until it succeeds or the attempt budget runs out
         max_attempts = 3
@@ -630,6 +748,7 @@ class OasisProfileGenerator:
                     extra_metrics={
                         'finish_reason': finish_reason,
                         'is_individual': is_individual,
+                        'kind': kind,
                     },
                 )
 
@@ -798,16 +917,42 @@ class OasisProfileGenerator:
         entity_type: str,
         entity_summary: str,
         entity_attributes: Dict[str, Any],
-        context: str
+        context: str,
+        specific: bool = False,
     ) -> str:
-        """Build the detailed persona prompt for an individual entity."""
-        
+        """
+        Build the detailed persona prompt for a natural person.
+
+        ``specific`` distinguishes ONE named person, who has a real public
+        record the persona must stay true to, from a representative member of
+        a class, who has none and must be invented to fit the class.
+        """
+
         attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else "none"
         context_str = context[:3000] if context else "no additional context"
-        
-        return f"""Generate a detailed AUDIENCE SEGMENT PERSONA for this entity: a buyer who will
-see a marketing campaign in their social feed and react to it. Stay as close to
-the real audience as possible.
+
+        if specific:
+            framing = """Generate a detailed PERSONA for this ONE NAMED REAL PERSON, who will see a
+marketing campaign in their social feed and react to it publicly. This is a
+particular individual, not a type of person: build the persona from what is
+actually known about them - their role, their public positions, what they have
+said about this category before - and mark anything you must infer as
+inference. Do not invent a biography that contradicts the record below."""
+            # One named person has a real age; there is nothing to sample.
+            demographics_rule = """Return "age" as an integer: this person's actual age, or your best estimate
+from the record. Do NOT return gender, MBTI or country - those are filled in
+separately and anything you return for them is discarded."""
+        else:
+            framing = """Generate a detailed AUDIENCE SEGMENT PERSONA for this entity: a buyer who will
+see a marketing campaign in their social feed and react to it. This stands for
+a class of people, not one named person, so invent one representative member
+who is typical of the class. Stay as close to the real audience as possible."""
+            demographics_rule = """Do NOT return age, gender, MBTI or country. Those are sampled from the
+population distribution, not decided per person, and anything you return for
+them is discarded. Write the persona so it stays true whatever age and
+personality type this member of the class turns out to have."""
+
+        return f"""{framing}
 
 Entity name: {entity_name}
 Entity type: {entity_type}
@@ -838,19 +983,16 @@ Return JSON with the following fields:
    - Category memory (a key part of the persona: their history with this
      product category and this brand - past purchases, past disappointments,
      what they have already said publicly about it)
-3. age: age as a number (must be an integer)
-4. gender: must be the English string "male" or "female"
-5. mbti: MBTI type (e.g. INTJ, ENFP)
-6. country: country name (e.g. "China")
-7. profession: occupation
-8. interested_topics: array of topics and product categories they follow
+3. profession: occupation
+4. interested_topics: array of topics and product categories they follow
+
+{demographics_rule}
 
 Important:
 - Every field value must be a string or a number, with no newline characters
 - persona must read as one continuous passage
-- {get_language_instruction()} (the gender field must stay English: male/female)
+- {get_language_instruction()}
 - The content must stay consistent with the entity information
-- age must be a valid integer and gender must be "male" or "female"
 - Give this persona a specific, non-neutral relationship to the product
   category. A persona with no clear buying motivation and no clear objection
   produces a useless campaign test.
@@ -862,17 +1004,40 @@ Important:
         entity_type: str,
         entity_summary: str,
         entity_attributes: Dict[str, Any],
-        context: str
+        context: str,
+        specific: bool = True,
     ) -> str:
-        """Build the detailed persona prompt for a group or institutional entity."""
-        
+        """
+        Build the detailed persona prompt for an organisation.
+
+        ``specific`` distinguishes ONE named organisation, which has a real
+        history to stay true to, from a class of firms, for which inventing a
+        founding date and a formal name would be fabrication.
+        """
+
         attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else "none"
         context_str = context[:3000] if context else "no additional context"
-        
-        return f"""Generate a detailed social media account profile for this organisation, brand,
-media outlet or community group - one of the collective voices that shapes how a
-marketing campaign is received in this category. Stay as close to the real
-organisation as possible.
+
+        if specific:
+            framing = """Generate a detailed social media account profile for this ONE NAMED
+organisation, brand, media outlet or community group - one of the collective
+voices that shapes how a marketing campaign is received in this category. Stay
+as close to the real organisation as possible: its actual history, remit and
+public positions."""
+            basics = ("Organisation basics (formal name, nature of the body, "
+                      "founding background, main remit)")
+        else:
+            framing = """Generate a detailed social media account profile for a REPRESENTATIVE
+organisation of this class - not one named firm, but a typical member of the
+class, of the kind that shapes how a marketing campaign is received in this
+category. Invent a plausible account of this kind rather than describing any
+real company, and do not attach a real company's name, history or figures to
+it."""
+            basics = ("Organisation basics (the kind of body this is, its size band, "
+                      "its position in the market - incumbent, challenger or niche - "
+                      "and its main remit; no invented founding dates or real names)")
+
+        return f"""{framing}
 
 Entity name: {entity_name}
 Entity type: {entity_type}
@@ -886,7 +1051,7 @@ Return JSON with the following fields:
 
 1. bio: official account bio, around 200 characters, professional in tone
 2. persona: detailed account description (around 2000 characters of plain text), covering:
-   - Organisation basics (formal name, nature of the body, founding background, main remit)
+   - {basics}
    - Role in the category (competitor, retail channel, trade press, consumer
      watchdog, review community, industry body, or the advertiser itself)
    - Audience it speaks to (who follows this account, and how much they trust it)
@@ -900,22 +1065,131 @@ Return JSON with the following fields:
    - Institutional memory (a key part of the profile: this organisation's
      history with the advertised brand and category, and what it has already
      said publicly about them)
-3. age: always 30 (the notional age of an institutional account)
-4. gender: always "other" (institutional accounts use other to mark a non-person)
-5. mbti: MBTI type describing the account's voice, e.g. ISTJ for rigorous and conservative
-6. country: country name (e.g. "China")
-7. profession: description of the organisation's remit
-8. interested_topics: array of focus areas
+3. profession: description of the organisation's remit
+4. interested_topics: array of focus areas
+
+Do NOT return age, gender, MBTI or country. An institutional account is
+assigned those automatically, and anything you return for them is discarded.
 
 Important:
 - Every field value must be a string or a number; null is not allowed
 - persona must read as one continuous passage with no newline characters
-- {get_language_instruction()} (the gender field must stay the English string "other")
-- age must be the integer 30 and gender must be the string "other"
+- {get_language_instruction()}
 - The account's voice must match its official identity, and its reaction to a
   campaign must follow from its role in the category rather than being neutral
   by default"""
     
+    # One row per firm, positional - the field names live here, not repeated
+    # 20 times in the model's output. See _generate_company_variants.
+    _COMPANY_VARIANT_FIELDS = ("name", "position", "angle")
+
+    def _generate_company_variants(
+        self,
+        entity_name: str,
+        entity_type: str,
+        base_persona: str,
+        count: int,
+    ) -> List[Dict[str, str]]:
+        """
+        Differentiate ``count`` firms off one ``general_company`` archetype.
+
+        A general_company entity ("car companies") stands for a class, so its
+        clones would otherwise be N copies of one persona - and unlike a person
+        they have no age, gender or MBTI to vary them. This is the one extra
+        LLM call that makes them distinct firms.
+
+        Output tokens are the whole cost here, so the response is a positional
+        array, not a list of objects: three short strings per firm with the
+        field names carried by ``_COMPANY_VARIANT_FIELDS`` instead of repeated
+        on every row. That is roughly 25 output tokens per firm against ~550
+        for a full persona each, and about a third less than the same rows sent
+        as JSON objects.
+
+        Returns:
+            Exactly ``count`` variants, or an empty list. A short response is
+            cycled out to length and a failed one degrades to the shared
+            archetype; neither raises.
+        """
+        if count <= 1:
+            return []
+
+        prompt = f"""Class of organisations: {entity_name} ({entity_type})
+
+Archetype they all belong to:
+{base_persona[:1200]}
+
+Invent {count} DISTINCT firms of this class that would each hold a social
+account and react to a campaign in this category. Vary size, market position
+and attitude - include leaders and strugglers, defenders and undercutters.
+
+Return compact JSON, one array per firm, in this exact field order:
+["name", "position", "angle"]
+
+- name: plausible invented company name, not a real one
+- position: size and market position, at most 5 words
+- angle: how it talks about rivals' campaigns, at most 12 words
+
+No prose, no markdown, no keys, no trailing commentary. Exactly {count} rows.
+{{"v":[["Northgate Motors","mid-size regional challenger","undercuts on price, quotes range figures"]]}}"""
+
+        try:
+            call_started = time.perf_counter()
+            messages = [
+                {"role": "system", "content":
+                    "You differentiate a class of companies into distinct firms. "
+                    "Return pure compact JSON and nothing else."},
+                {"role": "user", "content": prompt},
+            ]
+            response = create_chat_completion(
+                self.client,
+                model=self.model_name,
+                messages=messages,
+                response_format={"type": "json_object"},
+                temperature=0.9,          # variety is the entire point
+                # Three short strings per firm, plus room for the wrapper.
+                max_tokens=200 + count * 40,
+            )
+            content = extract_chat_completion_text(response)
+            pipeline_log.llm_call(
+                'OasisProfileGenerator', 'llm.company_variants',
+                model=self.model_name,
+                messages=messages,
+                params={'temperature': 0.9, 'response_format': 'json_object'},
+                response_text=content,
+                duration_ms=(time.perf_counter() - call_started) * 1000,
+                target=f"{entity_type}:{entity_name}",
+                usage=_usage_dict(response),
+                extra_metrics={'requested': count},
+            )
+            rows = json.loads(content).get("v") or []
+        except Exception as e:
+            logger.warning(
+                f"company variants failed for {entity_name}, falling back to the "
+                f"shared archetype: {type(e).__name__}: {str(e)[:80]}"
+            )
+            return []
+
+        variants: List[Dict[str, str]] = []
+        for row in rows:
+            if not isinstance(row, (list, tuple)):
+                continue
+            variant = {
+                field: _coerce_to_str(row[i]).strip() if i < len(row) else ""
+                for i, field in enumerate(self._COMPANY_VARIANT_FIELDS)
+            }
+            if variant.get("name"):
+                variants.append(variant)
+
+        if not variants:
+            logger.warning(f"company variants for {entity_name} parsed to nothing")
+            return []
+
+        # A model that returned 17 rows for 20 firms must not leave three slots
+        # unfilled, and one that returned 23 must not shift the rest.
+        if len(variants) < count:
+            variants = [variants[i % len(variants)] for i in range(count)]
+        return variants[:count]
+
     def _generate_profile_rule_based(
         self,
         entity_name: str,
@@ -997,23 +1271,59 @@ Important:
         graph_id: Optional[str] = None,
         parallel_count: int = 5,
         realtime_output_path: Optional[str] = None,
+        output_platform: str = "reddit",
+        max_agents: int = MAX_AGENTS,
+    ) -> List[OasisAgentProfile]:
+        """
+        Build the agent profiles for a set of entities.
+
+        Convenience wrapper: plans the population itself (so the agent cap
+        applies), then generates. Callers that need the slots downstream - to
+        keep agent_ids aligned with the activity configs - should call
+        ``plan_population`` and ``generate_profiles_from_slots`` directly.
+        """
+        slots = plan_population(entities, max_agents=max_agents)
+        return self.generate_profiles_from_slots(
+            slots=slots,
+            use_llm=use_llm,
+            progress_callback=progress_callback,
+            graph_id=graph_id,
+            parallel_count=parallel_count,
+            realtime_output_path=realtime_output_path,
+            output_platform=output_platform,
+        )
+
+    def generate_profiles_from_slots(
+        self,
+        slots: List[AgentSlot],
+        use_llm: bool = True,
+        progress_callback: Optional[callable] = None,
+        graph_id: Optional[str] = None,
+        parallel_count: int = 5,
+        realtime_output_path: Optional[str] = None,
         output_platform: str = "reddit"
     ) -> List[OasisAgentProfile]:
         """
-        Build agent profiles for a batch of entities, in parallel.
+        Build one agent profile per planned slot.
+
+        The persona is generated once per *entity*, not once per slot: clones
+        of an entity share its persona and differ by their sampled age, gender,
+        MBTI and country, and by the audience prior allocated to each of them.
+        So the LLM cost tracks the number of entities in the graph, while the
+        cast size is whatever ``plan_population`` decided.
 
         Args:
-            entities: The entities
+            slots: Planned population from ``plan_population``
             use_llm: Whether to build detailed personas with the LLM
             progress_callback: Progress callback (current, total, message)
             graph_id: Graph ID used for Zep retrieval
             parallel_count: Number generated in parallel, default 5
             realtime_output_path: Incremental save path; when given, the file is
-                rewritten after every profile
+                rewritten after every persona
             output_platform: Output format ("reddit" or "twitter")
 
         Returns:
-            The agent profiles
+            The agent profiles, ordered by ``slot.user_id``
         """
         import concurrent.futures
         from contextvars import copy_context
@@ -1022,12 +1332,36 @@ Important:
         # Set the graph_id used for Zep retrieval
         if graph_id:
             self.graph_id = graph_id
-        
-        total = len(entities)
-        profiles = [None] * total  # Preallocated so the order is preserved
+
+        total_slots = len(slots)
+        if not total_slots:
+            return []
+
+        # Group the slots by their source entity: one persona call per entity,
+        # however many agents come off it.
+        unique_entities: Dict[str, EntityNode] = {}
+        slots_by_entity: Dict[str, List[AgentSlot]] = {}
+        for slot in slots:
+            key = getattr(slot.entity, 'uuid', None) or f"{slot.entity_type}:{slot.entity.name}"
+            unique_entities.setdefault(key, slot.entity)
+            slots_by_entity.setdefault(key, []).append(slot)
+        entity_keys = list(unique_entities)
+
+        total = len(entity_keys)  # Progress is reported over personas, not slots
+        profiles = [None] * total_slots  # Preallocated so slot order is preserved
         completed_count = [0]  # A list so the closure can mutate it
         lock = Lock()
-        
+
+        # Apportion the audience priors across the whole cast, up front, so the
+        # composition holds regardless of the order the workers finish in.
+        theme_allocation = self.allocate_themes(total_slots)
+        allocated = sum(1 for t in theme_allocation if t)
+        if allocated:
+            logger.info(
+                f"allocated audience priors to {allocated}/{total_slots} agents "
+                f"across {len({t['theme'] for t in theme_allocation if t})} themes"
+            )
+
         # Helper that writes the file incrementally
         def save_profiles_realtime():
             """Write the profiles generated so far out to the file."""
@@ -1062,28 +1396,56 @@ Important:
         # Capture locale before spawning thread pool workers
         current_locale = get_locale()
 
-        def generate_single_profile(idx: int, entity: EntityNode) -> tuple:
-            """Worker that generates a single profile."""
+        # {entity key: one variant per slot}, filled by the worker below for
+        # general_company entities only. Each key is written by exactly one
+        # worker before that worker's result is materialized, so no lock.
+        company_variants: Dict[str, List[Dict[str, str]]] = {}
+
+        def materialize(key: str, base: OasisAgentProfile) -> None:
+            """Fan one entity's persona out over every slot that came off it."""
+            variants = company_variants.get(key)
+            for slot in slots_by_entity[key]:
+                theme = theme_allocation[slot.user_id] if slot.user_id < len(theme_allocation) else None
+                variant = variants[slot.variant_index % len(variants)] if variants else None
+                profiles[slot.user_id] = self._profile_for_slot(base, slot, theme, variant)
+
+        def generate_single_persona(key: str, entity: EntityNode) -> tuple:
+            """Worker that generates the persona shared by one entity's slots."""
             set_locale(current_locale)
             entity_type = entity.get_entity_type() or "Entity"
-            
+            first_slot = slots_by_entity[key][0]
+
             try:
                 profile = self.generate_profile_from_entity(
                     entity=entity,
-                    user_id=idx,
-                    use_llm=use_llm
+                    user_id=first_slot.user_id,
+                    use_llm=use_llm,
+                    # The first slot's prior grounds the persona itself; every
+                    # other slot gets its own appended in _profile_for_slot.
+                    theme=(theme_allocation[first_slot.user_id]
+                           if first_slot.user_id < len(theme_allocation) else None)
                 )
-                
+
+                # A class of firms has no age or MBTI to tell its clones apart,
+                # so one extra call splits the archetype into distinct firms.
+                # Cheap: three short strings each, not a persona each.
+                entity_slots = slots_by_entity[key]
+                if (use_llm and len(entity_slots) > 1
+                        and self._entity_kind(entity_type) == "general_company"):
+                    company_variants[key] = self._generate_company_variants(
+                        entity.name, entity_type, profile.persona, len(entity_slots)
+                    )
+
                 # Echo the generated persona to the console and the log
                 self._print_generated_profile(entity.name, entity_type, profile)
-                
-                return idx, profile, None
-                
+
+                return key, profile, None
+
             except Exception as e:
                 logger.error(f"failed to generate a profile for entity {entity.name}: {str(e)}")
                 # Fall back to a basic profile
                 fallback_profile = OasisAgentProfile(
-                    user_id=idx,
+                    user_id=first_slot.user_id,
                     user_name=self._generate_username(entity.name),
                     name=entity.name,
                     bio=f"{entity_type}: {entity.name}",
@@ -1091,32 +1453,39 @@ Important:
                     source_entity_uuid=entity.uuid,
                     source_entity_type=entity_type,
                 )
-                return idx, fallback_profile, str(e)
-        
-        logger.info(f"generating {total} agent profiles in parallel (concurrency: {parallel_count})...")
+                return key, fallback_profile, str(e)
+
+        clone_count = total_slots - total
+        logger.info(
+            f"generating {total} personas in parallel (concurrency: {parallel_count}) "
+            f"for {total_slots} agents ({clone_count} clones, one extra call per "
+            f"cloned general_company entity)..."
+        )
         print(f"\n{'='*60}")
-        print(f"generating agent profiles - {total} entities, concurrency: {parallel_count}")
+        print(f"generating agent profiles - {total} entities -> {total_slots} agents, "
+              f"concurrency: {parallel_count}")
         print(f"{'='*60}\n")
-        
+
         # Run on a thread pool
         with concurrent.futures.ThreadPoolExecutor(max_workers=parallel_count) as executor:
             # Submit every task. Each worker runs inside its own copy of the
             # caller's context so the pipeline run and stage carry over into
             # the pool threads, which do not inherit context by default.
             future_to_entity = {
-                executor.submit(copy_context().run, generate_single_profile, idx, entity): (idx, entity)
-                for idx, entity in enumerate(entities)
+                executor.submit(copy_context().run, generate_single_persona, key, unique_entities[key]): key
+                for key in entity_keys
             }
-            
+
             # Collect the results
             for future in concurrent.futures.as_completed(future_to_entity):
-                idx, entity = future_to_entity[future]
+                key = future_to_entity[future]
+                entity = unique_entities[key]
                 entity_type = entity.get_entity_type() or "Entity"
-                
+
                 try:
-                    result_idx, profile, error = future.result()
-                    profiles[result_idx] = profile
-                    
+                    result_key, profile, error = future.result()
+                    materialize(result_key, profile)
+
                     with lock:
                         completed_count[0] += 1
                         current = completed_count[0]
@@ -1135,29 +1504,118 @@ Important:
                         logger.warning(f"[{current}/{total}] {entity.name} using a fallback profile: {error}")
                     else:
                         logger.info(f"[{current}/{total}] generated profile: {entity.name} ({entity_type})")
-                        
+
                 except Exception as e:
                     logger.error(f"error while processing entity {entity.name}: {str(e)}")
                     with lock:
                         completed_count[0] += 1
-                    profiles[idx] = OasisAgentProfile(
-                        user_id=idx,
+                    materialize(key, OasisAgentProfile(
+                        user_id=slots_by_entity[key][0].user_id,
                         user_name=self._generate_username(entity.name),
                         name=entity.name,
                         bio=f"{entity_type}: {entity.name}",
                         persona=entity.summary or "A participant in social discussions.",
                         source_entity_uuid=entity.uuid,
                         source_entity_type=entity_type,
-                    )
+                    ))
                     # Write out incrementally, even for a fallback persona
                     save_profiles_realtime()
-        
+
         print(f"\n{'='*60}")
-        print(f"profile generation complete: {len([p for p in profiles if p])} agents")
+        print(f"profile generation complete: {len([p for p in profiles if p])} agents "
+              f"from {total} personas")
         print(f"{'='*60}\n")
-        
+
         return profiles
-    
+
+    def _profile_for_slot(
+        self,
+        base: OasisAgentProfile,
+        slot: AgentSlot,
+        theme: Optional[Dict[str, Any]] = None,
+        variant: Optional[Dict[str, str]] = None,
+    ) -> OasisAgentProfile:
+        """
+        Stamp one slot's sampled attributes onto its entity's persona.
+
+        The demographics come from the population plan, not from the model, and
+        the slot's own audience prior is appended so two clones of one entity
+        walk into the campaign already disagreeing about the category.
+
+        Two exceptions:
+        - a specific_individual is a named real person with a real age, so the
+          persona call's answer beats a draw from the type's age band
+        - a general_company slot carries a variant, which gives it its own firm
+          name and market position on top of the shared archetype
+        """
+        persona = base.persona
+        prior = self._theme_sentence(theme)
+        if prior and prior not in persona:
+            persona = f"{persona} {prior}"
+
+        name, user_name = base.name, f"{base.user_name}_{slot.user_id}"
+        if variant and variant.get("name"):
+            name = variant["name"]
+            user_name = f"{self._generate_username(name)}_{slot.user_id}"
+            persona = f"{persona} {self._variant_sentence(variant)}"
+
+        age = slot.age
+        if slot.kind == "specific_individual" and base.age:
+            try:
+                age = int(base.age)
+            except (TypeError, ValueError):
+                pass
+
+        return replace(
+            base,
+            user_id=slot.user_id,
+            name=name,
+            # The base username carries a random suffix; the slot id is what
+            # actually guarantees uniqueness across a 500-agent cast.
+            user_name=user_name,
+            persona=persona,
+            age=age,
+            gender=slot.gender,
+            mbti=slot.mbti,
+            country=slot.country,
+        )
+
+    @staticmethod
+    def _demographics_sentence(profile: OasisAgentProfile) -> str:
+        """The sampled attributes as one sentence, for platforms with no slot for them."""
+        parts = []
+        if profile.gender and profile.gender != "other":
+            parts.append(f"You are {profile.gender}")
+        if profile.age:
+            parts.append(f"{profile.age} years old")
+        if profile.mbti:
+            parts.append(f"MBTI type {profile.mbti}")
+        if profile.country:
+            parts.append(f"based in {profile.country}")
+        return f"{', '.join(parts)}." if parts else ""
+
+    @staticmethod
+    def _variant_sentence(variant: Dict[str, str]) -> str:
+        """The firm's own identity, layered over the class archetype."""
+        parts = [f"You are {variant['name']}"]
+        if variant.get("position"):
+            parts.append(f"a {variant['position']} in this category")
+        sentence = ", ".join(parts) + "."
+        if variant.get("angle"):
+            sentence += f" How you talk about rivals' campaigns: {variant['angle']}."
+        return sentence
+
+    @staticmethod
+    def _theme_sentence(theme: Optional[Dict[str, Any]]) -> str:
+        """One persona-facing line stating the prior this agent already holds."""
+        if not theme or not theme.get('theme'):
+            return ""
+        return (
+            f"Your standing view of this category, held long before this campaign "
+            f"appeared: {theme['theme']} "
+            f"(you feel {theme.get('dominant_sentiment', 'neutral')} about it)."
+        )
+
     def _print_generated_profile(self, entity_name: str, entity_type: str, profile: OasisAgentProfile):
         """Echo a generated persona to the console in full, without truncation."""
         separator = "-" * 70
@@ -1248,6 +1706,9 @@ Important:
                 user_char = profile.bio
                 if profile.persona and profile.persona != profile.bio:
                     user_char = f"{profile.bio} {profile.persona}"
+                # The Twitter system message has no demographics slot, so the
+                # sampled attributes only reach the agent through user_char.
+                user_char = f"{user_char} {self._demographics_sentence(profile)}".strip()
                 # Replace newlines with spaces so the CSV stays well formed
                 user_char = user_char.replace('\n', ' ').replace('\r', ' ')
                 
@@ -1326,7 +1787,10 @@ Important:
                 "age": profile.age if profile.age else 30,
                 "gender": self._normalize_gender(profile.gender),
                 "mbti": profile.mbti if profile.mbti else "ISTJ",
-                "country": profile.country if profile.country else "China",
+                # Deliberately null when the brief named no market: the agent
+                # system message then omits the country clause entirely rather
+                # than asserting a nationality nobody asked for.
+                "country": profile.country or None,
             }
             
             # Optional fields

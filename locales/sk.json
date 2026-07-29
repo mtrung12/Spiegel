@@ -74,13 +74,13 @@
     "dragToUpload": "Presuňte sem zadanie a kreatívu",
     "orBrowse": "alebo kliknite pre výber",
     "inputParams": "Vstupné parametre",
-    "simulationPrompt": "02 / Cieľoví zákazníci",
-    "promptPlaceholder": "Kto sú, čo nakupujú a na akú otázku má táto kampaň odpovedať?",
     "engineBadge": "Engine: Campaign-Reaction V1",
     "startEngine": "Spustiť simuláciu kampane",
     "initializing": "Inicializuje sa...",
     "projectsTitle": "Vaše testy kampaní",
-    "projectsSub": "Otvorte predchádzajúci test, prečítajte si jeho správu a pýtajte sa doplňujúce otázky, alebo spustite nový."
+    "projectsSub": "Otvorte predchádzajúci test, prečítajte si jeho správu a pýtajte sa doplňujúce otázky, alebo spustite nový.",
+    "removeFile": "Odstrániť {name}",
+    "addMoreFiles": "Pridať ďalšie súbory"
   },
   "main": {
     "layoutGraph": "Graf",
@@ -96,7 +96,19 @@
     ],
     "retryBuild": "Skúsiť zostavenie znova",
     "backToProjects": "Späť na projekty",
-    "projectFailed": "Tento projekt zlyhal pred dokončením zostavenia."
+    "projectFailed": "Tento projekt zlyhal pred dokončením zostavenia.",
+    "statusError": "Chyba",
+    "statusReady": "Pripravené",
+    "statusCompleted": "Dokončené",
+    "statusRunning": "Prebieha",
+    "statusGenerating": "Generuje sa",
+    "statusProcessing": "Spracúva sa",
+    "statusPreparing": "Pripravuje sa",
+    "statusBuildingGraph": "Buduje sa graf",
+    "statusGeneratingOntology": "Generuje sa ontológia",
+    "statusInitializing": "Inicializuje sa",
+    "graphRefreshFailed": "Graf sa nepodarilo obnoviť: {error}",
+    "graphLoadFailed": "Graf sa nepodarilo načítať: {error}"
   },
   "step1": {
     "ontologyGeneration": "Generovanie ontológie",
@@ -107,6 +119,16 @@
     "analyzingDocs": "Analyzujú sa podklady kampane...",
     "graphRagBuild": "Tvorba GraphRAG",
     "graphRagDesc": "Zadanie a kreatíva sa rozdelia na časti a odošlú do Zep Cloud, kde vznikne znalostný graf kampane — produkty, posolstvá, entity zákazníkov a vzťahy medzi nimi",
+    "crawlerLabel": "Výskum publika",
+    "crawlerStarting": "Pripravuje sa vyhľadávanie...",
+    "crawlerSearching": "Hľadajú sa verejné diskusie...",
+    "crawlerCoding": "Číta sa, čo ľudia napísali...",
+    "crawlerDone": "Nájdených {themes} opakujúcich sa tém",
+    "crawlerSkipped": "Nenašli sa žiadne verejné diskusie",
+    "stopBuild": "Zastaviť",
+    "stopping": "Zastavuje sa...",
+    "stopConfirm": "Zastaviť tvorbu? Doterajší postup sa zahodí a bude ju potrebné spustiť znova.",
+    "buildStopped": "Tvorba zastavená.",
     "entityNodes": "Uzly entít",
     "relationEdges": "Hrany vzťahov",
     "schemaTypes": "Typy schémy",
@@ -116,7 +138,21 @@
     "creating": "Vytvára sa...",
     "enterEnvSetup": "Vytvoriť zákazníkov",
     "createSimulationFailed": "Nepodarilo sa vytvoriť simuláciu: {error}",
-    "createSimulationException": "Chyba pri vytváraní simulácie: {error}"
+    "createSimulationException": "Chyba pri vytváraní simulácie: {error}",
+    "viewSourceText": "Zobraziť extrahovaný zdrojový text",
+    "sourceTextChars": "{count} znakov",
+    "sourceTextLoading": "Načítava sa extrahovaný text...",
+    "sourceTextEmpty": "Pre tento projekt nebol uložený žiadny extrahovaný text.",
+    "sourceTextFailed": "Extrahovaný text sa nepodarilo načítať.",
+    "createSimulationFailedTitle": "Simuláciu sa nepodarilo vytvoriť",
+    "attributes": "Atribúty",
+    "examples": "Príklady",
+    "connections": "Spojenia",
+    "generatedEntityTypes": "Vygenerované typy entít",
+    "generatedRelationTypes": "Vygenerované typy vzťahov",
+    "systemDashboard": "Systémový prehľad",
+    "entityBadge": "Entita",
+    "relationBadge": "Vzťah"
   },
   "step2": {
     "simInstanceInit": "Inicializácia testu kampane",
@@ -125,6 +161,7 @@
     "generateAgentPersona": "Generovať persóny zákazníkov",
     "generateAgentPersonaDesc": "Z entít grafu kampane vzniknú persóny zákazníkov — demografia, potreby, postoj k značke, nákupné správanie a mediálne návyky",
     "currentAgentCount": "Vytvorené persóny",
+    "graphSegments": "Segmenty v grafe",
     "expectedAgentTotal": "Očakávaný počet zákazníkov",
     "relatedTopicsCount": "Témy súvisiace s kampaňou",
     "generatedAgentPersonas": "Vygenerované persóny zákazníkov",
@@ -165,6 +202,12 @@
     "initialActivationSeq": "Zasiate príspevky ({count})",
     "setupComplete": "Zákazníci pripravení",
     "setupCompleteDesc": "Zákazníci aj kanály sú nastavené. Teraz môžete vypustiť kampaň.",
+    "audienceSizeConfig": "Veľkosť publika",
+    "audienceSizeDesc": "Koľko zákazníkov modelovať. Segmenty z grafu sa klonujú na tento počet alebo sa naň orežú. Maximum je {max}.",
+    "audienceSizeUnit": "zákazníkov",
+    "audienceSizeRecommended": "{count} (odporúčané)",
+    "audienceSizeTip": "Väčšie publikum nestojí viac pri príprave, ale viac aktívnych zákazníkov za hodinu znamená viac tokenov na kolo.",
+    "generatePersonas": "Vygenerovať persóny zákazníkov",
     "roundsConfig": "Dĺžka behu kampane",
     "roundsConfigDesc": "Automaticky naplánované na {hours} hodín pôsobenia kampane, pričom jedno kolo predstavuje {minutesPerRound} minút",
     "customToggle": "Vlastné",
@@ -195,7 +238,13 @@
     "genderOther": "Iné",
     "yearsOld": "rokov",
     "initializing": "Inicializuje sa",
-    "generating": "Generuje sa"
+    "generating": "Generuje sa",
+    "technicalDetails": "Technické podrobnosti",
+    "idProject": "ID projektu",
+    "idGraph": "ID grafu",
+    "idSimulation": "ID simulácie",
+    "idTask": "ID úlohy",
+    "systemDashboard": "Systémový prehľad"
   },
   "step3": {
     "startGenerateReport": "Zmerať KPI a vytvoriť správu",
@@ -230,7 +279,32 @@
     "viewStream": "Tok akcií",
     "viewBoard": "Tabuľa príspevkov",
     "summaryRound": "Kolo",
-    "summaryEvents": "udalostí"
+    "summaryEvents": "udalostí",
+    "simulationMonitor": "Monitor simulácie",
+    "noSimulation": "Žiadna simulácia",
+    "platformInfoPlaza": "Info Plaza",
+    "platformTopicCommunity": "Topic Community",
+    "statRound": "Kolo",
+    "statTime": "Čas",
+    "statActs": "Akcie",
+    "availableActions": "Dostupné akcie",
+    "actionSkipped": "Akcia preskočená",
+    "actions": {
+      "post": "Príspevok",
+      "like": "Páči sa",
+      "repost": "Zdieľanie",
+      "quote": "Citácia",
+      "follow": "Sledovať",
+      "idle": "Nečinnosť",
+      "comment": "Komentár",
+      "dislike": "Nepáči sa",
+      "search": "Hľadanie",
+      "trend": "Trendy",
+      "mute": "Stlmiť",
+      "refresh": "Obnoviť"
+    },
+    "totalEvents": "Udalosti celkovo",
+    "searchQuery": "Vyhľadávací dopyt"
   },
   "feedBoard": {
     "postCount": "Príspevky",
@@ -238,15 +312,23 @@
     "author": "Autor",
     "likes": "Páči sa",
     "dislikes": "Nepáči sa",
+    "upvotes": "Kladné hlasy",
+    "downvotes": "Negatívne hlasy",
     "comments": "Komentáre",
+    "replies": "Odpovede",
+    "reposts": "Zdieľania",
     "shares": "Zdieľania",
     "repost": "Zdieľané",
+    "repostedBy": "{name} zdieľal",
     "sortNewest": "Nové",
     "sortNewestHint": "Najnovšie prvé",
     "sortComments": "Kom.",
+    "sortReplies": "Odp.",
+    "sortReposts": "Zdieľ.",
     "sortShares": "Zdieľ.",
     "noPosts": "V tejto simulácii zatiaľ nie sú žiadne príspevky",
     "noComments": "Tento príspevok nemá komentáre",
+    "noReplies": "Tento príspevok nemá odpovede",
     "noSimulation": "Nie je vybraná žiadna simulácia",
     "loadFailed": "Načítanie príspevkov zlyhalo",
     "selectPrompt": "Vyberte príspevok na prečítanie",
@@ -297,7 +379,16 @@
     "panelRelatedEdges": "Súvisiace hrany",
     "panelRelatedNodes": "Súvisiace uzly",
     "world1": "Twitter (simulovaný)",
-    "world2": "Reddit (simulovaný)"
+    "world2": "Reddit (simulovaný)",
+    "reportIdLabel": "ID",
+    "metricSections": "Sekcie",
+    "metricElapsed": "Uplynulo",
+    "metricTools": "Nástroje",
+    "infoSimulation": "Simulácia",
+    "infoRequirement": "Požiadavka",
+    "reportGenerationComplete": "Generovanie správy dokončené",
+    "waitingForAgentActivity": "Čaká sa na aktivitu agenta…",
+    "consoleOutput": "Výstup konzoly"
   },
   "step5": {
     "interactiveTools": "Nástroje na rozhovory",
@@ -332,7 +423,8 @@
     "errorOccurred": "Ľutujeme, nastala chyba: {error}",
     "noResponse": "Žiadna odpoveď",
     "requestFailed": "Požiadavka zlyhala",
-    "selectAgentFirst": "Najprv vyberte zákazníka"
+    "selectAgentFirst": "Najprv vyberte zákazníka",
+    "reportTag": "Prediktívna správa"
   },
   "campaign": {
     "panelTitle": "KPI kampane",
@@ -381,7 +473,21 @@
     "graphDataLoading": "Načítavajú sa dáta grafu...",
     "waitingOntology": "Čaká sa na vygenerovanie ontológie...",
     "toggleMaximize": "Maximalizovať/obnoviť",
-    "closeHint": "Zavrieť nápovedu"
+    "closeHint": "Zavrieť nápovedu",
+    "refresh": "Obnoviť",
+    "entityTypes": "Typy entít",
+    "showEdgeLabels": "Zobraziť popisy hrán",
+    "fieldName": "Názov",
+    "fieldUuid": "UUID",
+    "fieldCreated": "Vytvorené",
+    "fieldProperties": "Vlastnosti",
+    "fieldSummary": "Zhrnutie",
+    "fieldLabels": "Menovky",
+    "fieldFact": "Fakt",
+    "fieldType": "Typ",
+    "fieldEpisodes": "Epizódy",
+    "fieldLabel": "Menovka",
+    "fieldValidFrom": "Platné od"
   },
   "history": {
     "title": "Predchádzajúce testy kampaní",
@@ -421,7 +527,20 @@
     },
     "deleteButton": "Zmazať projekt",
     "deleteConfirm": "Zmazať \"{name}\"? Jeho graf a behy simulácie sa zmažú tiež. Správy zostanú.",
-    "deleteFailed": "Mazanie zlyhalo"
+    "deleteFailed": "Mazanie zlyhalo",
+    "stepBadge": "Krok {n}",
+    "allBadge": "Všetko"
+  },
+  "report": {
+    "docTitle": "Hodnotenie kampane",
+    "docSummary": "Reakcia simulovaného publika na kampaň, meraná marketingovými KPI",
+    "sections": {
+      "whoSawIt": "Kto to videl",
+      "howTheyReacted": "Ako reagovali",
+      "howFarItSpread": "Ako ďaleko sa to rozšírilo",
+      "whichGroups": "Ktoré skupiny to prijali a ktoré nie",
+      "whatToFix": "Čo opraviť pred spustením"
+    }
   },
   "sentiment": {
     "panelTitle": "Čo publikum napísalo",
@@ -481,5 +600,12 @@
     "chatError": "Požiadavka zlyhala: {error}",
     "noResponse": "Agent nevrátil žiadnu odpoveď.",
     "requestFailed": "Požiadavka zlyhala"
+  },
+  "a11y": {
+    "skipToContent": "Preskočiť na hlavný obsah",
+    "backToProjectList": "Späť na zoznam projektov",
+    "layoutSwitcher": "Rozloženie panelov",
+    "statusLabel": "Stav",
+    "workflowSteps": "Kroky pracovného postupu"
   }
 }

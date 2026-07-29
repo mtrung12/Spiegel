@@ -1,7 +1,7 @@
 # Public-discussion corpus: which sources run and how politely.
 #
 # Behaviour lives here; secrets stay in .env (REDDIT_CLIENT_ID,
-# REDDIT_CLIENT_SECRET, CORPUS_AUTHOR_SALT).
+# REDDIT_CLIENT_SECRET, CORPUS_AUTHOR_SALT, THREADS_COOKIES_FILE).
 #
 # Point CORPUS_CONFIG_FILE at another path to use a different file. Every value
 # below can also be overridden by its CORPUS_* environment variable, which is
@@ -11,11 +11,28 @@
 # false harvests nothing. Deleting the whole `sources:` block re-enables every
 # registered source, which is not the same thing.
 #
-# Reddit is the only registered source. Without REDDIT_CLIENT_ID/SECRET in .env
-# it skips itself and names the missing key in the harvest errors, so leaving it
-# true while you wait for credentials is harmless.
+# An enabled source that is missing its credentials skips itself and names what
+# is missing in the harvest errors, so leaving one true while you wait for keys
+# is harmless.
 sources:
   reddit: true          # official OAuth API, needs REDDIT_CLIENT_ID/SECRET
+
+  # Threads has no public search API, so this source renders threads.net in a
+  # headless browser. That is a different kind of access to the rest of this
+  # file and it is off deliberately. Before switching it on:
+  #
+  #   1. pip install playwright lxml && playwright install chromium
+  #   2. export a logged-in threads.net session to THREADS_COOKIES_FILE
+  #      (default ~/.config/threads-auth/credential.json) - signed-out clients
+  #      get a login wall and harvest nothing
+  #   3. decide about THREADS_RESPECT_ROBOTS. It defaults to true, and Threads'
+  #      robots.txt disallows the paths this source reads, so the adapter will
+  #      refuse to fetch and say so. Setting it false is a terms-of-service
+  #      decision, not a technical one.
+  #
+  # Handles are pseudonymised and permalinks are not stored, because a Threads
+  # URL contains the author handle.
+  threads: false        # headless browser, no official API - read the notes above
 
 limits:
   # Requests per second per host. Raise only if the source documents a higher

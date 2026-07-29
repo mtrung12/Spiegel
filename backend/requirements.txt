@@ -27,6 +27,16 @@ httpx>=0.27.0
 camel-oasis==0.2.5
 camel-ai==0.2.78
 
+# ============= Corpus: Threads source (optional) =============
+# Only needed when config/corpus.yml enables the `threads` source, which renders
+# threads.net in a headless browser because there is no public search API.
+# Chromium is a further ~300 MB and is NOT installed by pip:
+#   pip install playwright lxml && playwright install chromium
+# Left commented so the default image stays small; the adapter reports itself
+# unavailable rather than failing when these are absent.
+# playwright>=1.44.0
+# lxml>=5.0.0
+
 # ============= File processing =============
 PyMuPDF>=1.24.0
 # Encoding detection (supports non-UTF-8 text files)

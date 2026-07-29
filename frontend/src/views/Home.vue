@@ -7,6 +7,7 @@
       </div>
     </nav>
 
+    <main id="main-content">
     <!-- Landing on the project list: pick up existing work, or start new -->
     <section class="page-head">
       <div class="page-head-text">
@@ -34,50 +35,51 @@
             <span class="field-meta">{{ $t('home.supportedFormats') }}</span>
           </div>
 
+          <!-- Dropping is a mouse-only affordance; the Browse button is the
+               keyboard path to the same file picker. -->
           <div
             class="upload-zone"
             :class="{ 'drag-over': isDragOver, 'has-files': files.length > 0 }"
             @dragover.prevent="handleDragOver"
             @dragleave.prevent="handleDragLeave"
             @drop.prevent="handleDrop"
-            @click="triggerFileInput"
           >
             <input
               ref="fileInput"
+              id="brief-files"
               type="file"
               multiple
               accept=".pdf,.md,.txt"
               @change="handleFileSelect"
-              style="display: none"
+              class="sr-only"
               :disabled="loading"
             />
 
             <div v-if="files.length === 0" class="upload-placeholder">
-              <div class="upload-icon">↑</div>
+              <div class="upload-icon" aria-hidden="true">↑</div>
               <div class="upload-title">{{ $t('home.dragToUpload') }}</div>
-              <div class="upload-hint">{{ $t('home.orBrowse') }}</div>
+              <button type="button" class="upload-browse" :disabled="loading" @click="triggerFileInput">
+                {{ $t('home.orBrowse') }}
+              </button>
             </div>
 
             <div v-else class="file-list">
               <div v-for="(file, index) in files" :key="index" class="file-item">
                 <span class="file-name">{{ file.name }}</span>
-                <button @click.stop="removeFile(index)" class="remove-btn">×</button>
+                <button
+                  type="button"
+                  class="remove-btn"
+                  :aria-label="$t('home.removeFile', { name: file.name })"
+                  @click.stop="removeFile(index)"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
               </div>
+              <button type="button" class="upload-browse" :disabled="loading" @click="triggerFileInput">
+                {{ $t('home.addMoreFiles') }}
+              </button>
             </div>
           </div>
-        </div>
-
-        <div class="field">
-          <div class="field-head">
-            <span class="field-label">{{ $t('home.simulationPrompt') }}</span>
-          </div>
-          <textarea
-            v-model="formData.simulationRequirement"
-            class="audience-input"
-            :placeholder="$t('home.promptPlaceholder')"
-            rows="4"
-            :disabled="loading"
-          ></textarea>
         </div>
 
         <button class="submit-btn" @click="startSimulation" :disabled="!canSubmit || loading">
@@ -98,6 +100,7 @@
         </li>
       </ol>
     </section>
+    </main>
   </div>
 </template>
 
@@ -115,11 +118,6 @@ const workflowSteps = [1, 2, 3, 4, 5].map(n => ({
   desc: `home.step0${n}Desc`
 }))
 
-// Form data
-const formData = ref({
-  simulationRequirement: ''
-})
-
 // File list
 const files = ref([])
 
@@ -136,9 +134,9 @@ const fileInput = ref(null)
 const consoleRef = ref(null)
 
 // Computed: is the form submittable?
-const canSubmit = computed(() => {
-  return formData.value.simulationRequirement.trim() !== '' && files.value.length > 0
-})
+// The uploaded brief is the only input. The audience description lives inside
+// it, so a separate box for it only invited the two to disagree.
+const canSubmit = computed(() => files.value.length > 0)
 
 // Open the file picker
 const triggerFileInput = () => {
@@ -199,7 +197,7 @@ const startSimulation = () => {
 
   // Stash the data waiting to be uploaded
   import('../store/pendingUpload.js').then(({ setPendingUpload }) => {
-    setPendingUpload(files.value, formData.value.simulationRequirement)
+    setPendingUpload(files.value)
 
     // Navigate straight to the Process page, flagged as a new project
     router.push({
@@ -212,18 +210,8 @@ const startSimulation = () => {
 
 <style scoped>
 .home-container {
-  /* Palette: orange, white, black. Backgrounds stay white or near-white. */
-  --white: #FFFFFF;
-  --accent: #F97316;
-  --accent-strong: #EA580C;
-  --ink: #111111;
-  --muted: #666666;
-  --muted-soft: #999999;
-  --surface: #FAFAFA;
-  --border: #E5E5E5;
-  --font-mono: 'JetBrains Mono', monospace;
-  --font-sans: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
-
+  /* Palette lives in :root (App.vue); this page used to redeclare it locally,
+     which is how the rest of the app drifted away from it. */
   min-height: 100vh;
   background: var(--white);
   font-family: var(--font-sans);
@@ -391,12 +379,12 @@ const startSimulation = () => {
 
 .upload-zone {
   border: 1px dashed var(--border);
+  flex-direction: column;
   height: 170px;
   overflow-y: auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
   transition: border-color 0.2s ease, background 0.2s ease;
   background: var(--surface);
 }
@@ -404,12 +392,11 @@ const startSimulation = () => {
 .upload-zone:hover,
 .upload-zone.drag-over {
   border-color: var(--ink);
-  background: #F5F5F5;
+  background: var(--surface-2);
 }
 
 .upload-zone.has-files {
   align-items: flex-start;
-  cursor: default;
 }
 
 .upload-placeholder {
@@ -427,11 +414,24 @@ const startSimulation = () => {
   font-weight: 500;
 }
 
-.upload-hint {
+.upload-browse {
+  margin-top: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--white);
+  padding: 8px 16px;
   font-family: var(--font-mono);
   font-size: 0.82rem;
-  color: var(--muted);
-  margin-top: 6px;
+  color: var(--ink);
+}
+
+.upload-browse:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--ink);
+}
+
+.upload-browse:disabled {
+  color: var(--muted-soft);
+  cursor: not-allowed;
 }
 
 .file-list {
@@ -473,24 +473,6 @@ const startSimulation = () => {
   color: var(--accent);
 }
 
-.audience-input {
-  width: 100%;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  padding: 18px;
-  font-family: var(--font-sans);
-  font-size: 1.02rem;
-  line-height: 1.6;
-  resize: vertical;
-  outline: none;
-  color: var(--ink);
-}
-
-.audience-input:focus {
-  border-color: var(--ink);
-  background: var(--white);
-}
-
 .submit-btn {
   background: var(--accent);
   color: var(--white);
@@ -513,9 +495,9 @@ const startSimulation = () => {
 }
 
 .submit-btn:disabled {
-  background: #F5F5F5;
+  background: var(--surface-2);
   border-color: var(--border);
-  color: #A3A3A3;
+  color: var(--muted-soft);
   cursor: not-allowed;
 }
 

@@ -5,6 +5,29 @@ from typing import Any, Dict, List, Optional
 
 MAX_ONTOLOGY_TYPES = 10
 MAX_ONTOLOGY_ATTRIBUTES = 10
+# What one entity type stands for, as two independent facts crossed together:
+#
+#   specific / general  - is this ONE named actor, or a class of them?
+#                         Decides whether the type is simulated once or cloned.
+#   individual / company - a natural person, or an organisation?
+#                         Decides whether it gets an age, a gender and an MBTI,
+#                         and which persona prompt it is written with.
+#
+# Written by the ontology generator, consumed by the population planner.
+ENTITY_KINDS = (
+    "specific_individual",   # Jensen Huang
+    "specific_company",      # Tesla
+    "general_individual",    # Gen Z students, EV sceptics, CEOs in general
+    "general_company",       # car companies, EV startups
+)
+
+# The three-way kind this replaced. Ontologies saved before the split still
+# carry these, and so does any hints response from a cached prompt.
+LEGACY_ENTITY_KINDS = {
+    "segment": "general_individual",
+    "individual": "specific_individual",
+    "institution": "specific_company",
+}
 MAX_ONTOLOGY_SOURCE_TARGETS = 10
 RESERVED_ONTOLOGY_ATTRIBUTE_NAMES = frozenset({
     "uuid",
@@ -21,6 +44,28 @@ _FALLBACK_ATTRIBUTE = {
     "type": "text",
     "description": "Additional details about this ontology type.",
 }
+
+
+def normalize_entity_kind(kind: Any) -> Optional[str]:
+    """
+    Return a canonical kind, or ``None`` when the value is unusable.
+
+    Accepts the legacy three-way names so an ontology saved before the split
+    keeps working without a migration pass over stored projects.
+    """
+    key = str(kind or "").strip().lower()
+    key = LEGACY_ENTITY_KINDS.get(key, key)
+    return key if key in ENTITY_KINDS else None
+
+
+def is_cloneable_kind(kind: str) -> bool:
+    """A general kind stands for a class of actors, so N copies are meaningful."""
+    return str(kind).startswith("general")
+
+
+def is_person_kind(kind: str) -> bool:
+    """A natural person gets an age, a gender, an MBTI and a person's persona."""
+    return str(kind).endswith("individual")
 
 
 def normalize_ontology_attribute(attribute: Any) -> Optional[Dict[str, Any]]:

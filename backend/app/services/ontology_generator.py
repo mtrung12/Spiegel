@@ -14,6 +14,7 @@ from ..utils.pipeline_logger import llm_caller, pipeline_log
 from ..utils.file_parser import split_text_into_chunks
 from ..utils.ontology import (
     MAX_ONTOLOGY_TYPES,
+    normalize_entity_kind,
     normalize_ontology_attributes,
     normalize_ontology_source_targets,
 )
@@ -83,6 +84,7 @@ Output JSON with the following structure:
     "entity_types": [
         {
             "name": "Entity type name (English, PascalCase)",
+            "kind": "specific_individual | specific_company | general_individual | general_company",
             "description": "Short description (English, at most 100 characters)",
             "attributes": [
                 {
@@ -136,6 +138,41 @@ B. **Specific types (8, designed from the text)**:
 - Identify the frequent or pivotal role types in the text
 - Each specific type must have clear boundaries and must not overlap another
 - The description must state clearly how the type differs from the fallback type
+
+C. **Kind (required on every entity type)**:
+
+Every entity type must carry a `kind`. It answers two independent questions:
+
+1. **specific or general** - is this ONE named actor that exists once in the
+   world, or a class of actors the campaign meets many of?
+2. **individual or company** - a natural person, or an organisation?
+
+Cross them and pick exactly one:
+
+- `specific_individual`: ONE named natural person - a named CEO, a named
+  journalist, a named creator. There is only one of them, so we simulate one.
+- `specific_company`: ONE named organisation, brand, media outlet, agency,
+  university or platform - the advertiser itself included. It posts from a
+  single official account, so we simulate one.
+- `general_individual`: a class of ordinary people. The campaign reaches
+  thousands of them and no single one is named. Students, brand loyalists,
+  sceptics, commuters, first-time buyers, parents, "CEOs" as a group. We
+  simulate many independent members, each with their own age, gender and
+  personality.
+- `general_company`: a class of organisations rather than one named firm - car
+  companies, EV startups, regional dealerships, trade press in general. We
+  simulate a handful of representative ones.
+
+Judge what the type stands for in this campaign, not what its name resembles.
+`Person` is `general_individual` (anonymous members of the public);
+`Organization` is `specific_company` (it collects named orgs that had no type
+of their own).
+
+This field decides two things downstream: whether the type gets a person's age,
+gender and MBTI, and whether it is simulated once or hundreds of times. A named
+brand marked `general_*` would put hundreds of copies of one company in the
+room; a real mass audience marked `specific_*` would be represented by a single
+agent.
 
 ### 2. Relationship type design
 
@@ -330,6 +367,7 @@ Using the content above, design the entity types and relationship types for a so
 3. The first 8 are specific types designed from the text content
 4. Every entity type must be a real-world actor that can speak publicly, never an abstract concept
 5. Attribute names must not use reserved words such as name, uuid, group_id or graph_id; use full_name, org_name and similar instead
+6. Every entity type must carry a "kind" of specific_individual, specific_company, general_individual or general_company
 """
         
         return message
@@ -522,6 +560,20 @@ Using the content above, design the entity types and relationship types for a so
                     f"Entity type name '{original_name}' auto-converted to '{normalized_name}'"
                 )
             entity["name"] = normalized_name
+            # An absent or unrecognised kind is left off rather than guessed at:
+            # entity_kind() then falls through to the population-hints call and
+            # the fixed name lists, which is also the path every ontology built
+            # before this field existed takes.
+            kind = normalize_entity_kind(entity.get("kind"))
+            if kind:
+                entity["kind"] = kind
+            else:
+                if entity.get("kind") is not None:
+                    logger.warning(
+                        f"Entity type '{normalized_name}' has an unusable kind "
+                        f"{entity.get('kind')!r}; leaving it unclassified"
+                    )
+                entity.pop("kind", None)
             entity["attributes"] = normalize_ontology_attributes(
                 entity.get("attributes", [])
             )
@@ -546,6 +598,8 @@ Using the content above, design the entity types and relationship types for a so
         # Fallback type definitions
         person_fallback = {
             "name": "Person",
+            # Anonymous members of the public - a class of people, not one person.
+            "kind": "general_individual",
             "description": "Any individual person not fitting other specific person types.",
             "attributes": [
                 {"name": "full_name", "type": "text", "description": "Full name of the person"},
@@ -556,6 +610,9 @@ Using the content above, design the entity types and relationship types for a so
         
         organization_fallback = {
             "name": "Organization",
+            # It collects named orgs that had no type of their own, so one
+            # official account each rather than a class to be cloned.
+            "kind": "specific_company",
             "description": "Any organization not fitting other specific organization types.",
             "attributes": [
                 {"name": "org_name", "type": "text", "description": "Name of the organization"},

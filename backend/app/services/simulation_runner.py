@@ -462,18 +462,21 @@ class SimulationRunner:
         else:
             cls._graph_memory_enabled[simulation_id] = False
         
-        # Decide which script to run (they live in backend/scripts/)
+        # One runner script for every platform (it lives in backend/scripts/).
+        # It runs a single platform too, via --twitter-only / --reddit-only, so
+        # there is no separate per-platform copy to keep in step.
+        script_name = "run_parallel_simulation.py"
+        script_args: List[str] = []
         if platform == "twitter":
-            script_name = "run_twitter_simulation.py"
+            script_args = ["--twitter-only"]
             state.twitter_running = True
         elif platform == "reddit":
-            script_name = "run_reddit_simulation.py"
+            script_args = ["--reddit-only"]
             state.reddit_running = True
         else:
-            script_name = "run_parallel_simulation.py"
             state.twitter_running = True
             state.reddit_running = True
-        
+
         script_path = os.path.join(cls.SCRIPTS_DIR, script_name)
         
         if not os.path.exists(script_path):
@@ -518,8 +521,9 @@ class SimulationRunner:
                 sys.executable,  # Python interpreter
                 script_path,
                 "--config", config_path,  # Absolute path to the config file
+                *script_args,  # --twitter-only / --reddit-only for a single-platform run
             ]
-            
+
             # Pass the round cap through on the command line
             if max_rounds is not None and max_rounds > 0:
                 cmd.extend(["--max-rounds", str(max_rounds)])

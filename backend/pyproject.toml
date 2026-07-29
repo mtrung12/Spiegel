@@ -36,6 +36,8 @@ dependencies = [
     # Utilities
     "python-dotenv>=1.0.0",
     "pydantic>=2.0.0",
+    # config/corpus.yml is read at import time in app/config.py
+    "PyYAML>=6.0",
 
     # WSGI server, used by docker/entrypoint.sh in the container image.
     "gunicorn>=23.0.0",
@@ -46,6 +48,14 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pipreqs>=0.5.0",
+]
+# The `threads` corpus source renders threads.net in a headless browser, since
+# there is no public search API. Chromium is a further ~300 MB and pip does not
+# install it: run `playwright install chromium` afterwards. Without these the
+# source reports itself unavailable and is skipped.
+threads = [
+    "playwright>=1.44.0",
+    "lxml>=5.0.0",
 ]
 
 [build-system]

@@ -1,42 +1,17 @@
 <template>
   <div class="main-view">
-    <!-- Header -->
-    <header class="app-header">
-      <div class="header-left">
-        <div class="brand" @click="router.push('/')">CAMPAIGN REACTION</div>
-      </div>
-      
-      <div class="header-center">
-        <div class="view-switcher">
-          <button 
-            v-for="mode in ['graph', 'split', 'workbench']" 
-            :key="mode"
-            class="switch-btn"
-            :class="{ active: viewMode === mode }"
-            @click="viewMode = mode"
-          >
-            {{ { graph: $t('main.layoutGraph'), split: $t('main.layoutSplit'), workbench: $t('main.layoutWorkbench') }[mode] }}
-          </button>
-        </div>
-      </div>
-
-      <div class="header-right">
-        <LanguageSwitcher />
-        <div class="step-divider"></div>
-        <div class="workflow-step">
-          <span class="step-num">Step {{ currentStep }}/5</span>
-          <span class="step-name">{{ $tm('main.stepNames')[currentStep - 1] }}</span>
-        </div>
-        <div class="step-divider"></div>
-        <span class="status-indicator" :class="statusClass">
-          <span class="dot"></span>
-          {{ statusText }}
-        </span>
-      </div>
-    </header>
+    <AppHeader
+      :currentStep="1"
+      :status="statusClass"
+      :statusText="statusText"
+      v-model="viewMode"
+      :projectId="currentProjectId === 'new' ? null : currentProjectId"
+      :simulationId="null"
+      :reportId="null"
+    />
 
     <!-- Failure banner: without it a failed project is a dead end on screen -->
-    <div v-if="error" class="error-banner">
+    <div v-if="error" class="error-banner" role="alert">
       <span class="error-text">{{ error }}</span>
       <button v-if="canRetry" class="error-retry" :disabled="retrying" @click="retryProject">
         {{ retrying ? $t('common.loading') : $t('main.retryBuild') }}
@@ -44,11 +19,18 @@
       <button class="error-back" @click="router.push('/')">{{ $t('main.backToProjects') }}</button>
     </div>
 
+    <!-- A stale graph looks identical to a fresh one, so a failed refresh has to
+         say so rather than only reaching the console. -->
+    <div v-if="graphError" class="warn-banner" role="status">
+      <span class="warn-text">{{ graphError }}</span>
+      <button class="warn-retry" @click="refreshGraph">{{ $t('common.retry') }}</button>
+    </div>
+
     <!-- Main Content Area -->
-    <main class="content-area">
+    <main id="main-content" class="content-area" :data-mode="viewMode">
       <!-- Left Panel: Graph -->
-      <div class="panel-wrapper left" :style="leftPanelStyle">
-        <GraphPanel 
+      <div class="panel-wrapper left">
+        <GraphPanel
           :graphData="graphData"
           :loading="graphLoading"
           :currentPhase="currentPhase"
@@ -57,31 +39,31 @@
         />
       </div>
 
-      <!-- Right Panel: Step Components -->
-      <div class="panel-wrapper right" :style="rightPanelStyle">
-        <!-- Step 1: graph build -->
-        <Step1GraphBuild 
-          v-if="currentStep === 1"
+      <!-- Right panel: step 1, graph build. Later steps are separate routes;
+           this view only ever renders step 1. -->
+      <div class="panel-wrapper right">
+        <Step1GraphBuild
           :currentPhase="currentPhase"
           :projectData="projectData"
           :ontologyProgress="ontologyProgress"
           :buildProgress="buildProgress"
           :graphData="graphData"
           :systemLogs="systemLogs"
-          @next-step="handleNextStep"
-        />
-        <!-- Step 2: environment setup -->
-        <Step2EnvSetup
-          v-else-if="currentStep === 2"
-          :projectData="projectData"
-          :graphData="graphData"
-          :systemLogs="systemLogs"
-          @go-back="handleGoBack"
-          @next-step="handleNextStep"
-          @add-log="addLog"
+          :stopping="stoppingBuild"
+          @stop-build="handleStopBuild"
         />
       </div>
     </main>
+
+    <ConfirmDialog
+      :open="confirmingStop"
+      destructive
+      :title="$t('step1.stopBuild')"
+      :message="$t('step1.stopConfirm')"
+      :confirmLabel="$t('step1.stopBuild')"
+      @confirm="doStopBuild"
+      @cancel="confirmingStop = false"
+    />
   </div>
 </template>
 
@@ -91,51 +73,40 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import GraphPanel from '../components/GraphPanel.vue'
 import Step1GraphBuild from '../components/Step1GraphBuild.vue'
-import Step2EnvSetup from '../components/Step2EnvSetup.vue'
-import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData, resetProject } from '../api/graph'
+import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData, resetProject, cancelTask } from '../api/graph'
 import { getPendingUpload, clearPendingUpload } from '../store/pendingUpload'
-import LanguageSwitcher from '../components/LanguageSwitcher.vue'
+import AppHeader from '../components/AppHeader.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import { useSplitLayout, useSystemLog } from '../composables/useWorkbench'
 
 const route = useRoute()
 const router = useRouter()
-const { t, tm } = useI18n()
+const { t } = useI18n()
 
-// Layout State
-const viewMode = ref('split') // graph | split | workbench
-
-// Step State
-const currentStep = ref(1) // 1: graph build, 2: environment setup, 3: run simulation, 4: report, 5: deep interaction
-const stepNames = computed(() => tm('main.stepNames'))
+const { viewMode, toggleMaximize } = useSplitLayout('split')
+const { systemLogs, addLog } = useSystemLog(100)
 
 // Data State
 const currentProjectId = ref(route.params.projectId)
 const loading = ref(false)
 const graphLoading = ref(false)
 const error = ref('')
+// A refresh failure is recoverable and must not replace the whole view the way
+// `error` does, so it gets its own dismissible notice.
+const graphError = ref('')
 const retrying = ref(false)
 const projectData = ref(null)
 const graphData = ref(null)
 const currentPhase = ref(-1) // -1: Upload, 0: Ontology, 1: Build, 2: Complete
 const ontologyProgress = ref(null)
 const buildProgress = ref(null)
-const systemLogs = ref([])
+// The build task currently being polled, so it can be stopped.
+const buildTaskId = ref(null)
+const stoppingBuild = ref(false)
 
 // Polling timers
 let pollTimer = null
 let graphPollTimer = null
-
-// --- Computed Layout Styles ---
-const leftPanelStyle = computed(() => {
-  if (viewMode.value === 'graph') return { width: '100%', opacity: 1, transform: 'translateX(0)' }
-  if (viewMode.value === 'workbench') return { width: '0%', opacity: 0, transform: 'translateX(-20px)' }
-  return { width: '50%', opacity: 1, transform: 'translateX(0)' }
-})
-
-const rightPanelStyle = computed(() => {
-  if (viewMode.value === 'workbench') return { width: '100%', opacity: 1, transform: 'translateX(0)' }
-  if (viewMode.value === 'graph') return { width: '0%', opacity: 0, transform: 'translateX(20px)' }
-  return { width: '50%', opacity: 1, transform: 'translateX(0)' }
-})
 
 // --- Status Computed ---
 const statusClass = computed(() => {
@@ -145,50 +116,12 @@ const statusClass = computed(() => {
 })
 
 const statusText = computed(() => {
-  if (error.value) return 'Error'
-  if (currentPhase.value >= 2) return 'Ready'
-  if (currentPhase.value === 1) return 'Building Graph'
-  if (currentPhase.value === 0) return 'Generating Ontology'
-  return 'Initializing'
+  if (error.value) return t('main.statusError')
+  if (currentPhase.value >= 2) return t('main.statusReady')
+  if (currentPhase.value === 1) return t('main.statusBuildingGraph')
+  if (currentPhase.value === 0) return t('main.statusGeneratingOntology')
+  return t('main.statusInitializing')
 })
-
-// --- Helpers ---
-const addLog = (msg) => {
-  const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + new Date().getMilliseconds().toString().padStart(3, '0')
-  systemLogs.value.push({ time, msg })
-  // Keep last 100 logs
-  if (systemLogs.value.length > 100) {
-    systemLogs.value.shift()
-  }
-}
-
-// --- Layout Methods ---
-const toggleMaximize = (target) => {
-  if (viewMode.value === target) {
-    viewMode.value = 'split'
-  } else {
-    viewMode.value = target
-  }
-}
-
-const handleNextStep = (params = {}) => {
-  if (currentStep.value < 5) {
-    currentStep.value++
-    addLog(t('log.enterStep', { step: currentStep.value, name: stepNames.value[currentStep.value - 1] }))
-    
-    // Moving from step 2 into step 3: record the round count
-    if (currentStep.value === 3 && params.maxRounds) {
-      addLog(t('log.customSimRounds', { rounds: params.maxRounds }))
-    }
-  }
-}
-
-const handleGoBack = () => {
-  if (currentStep.value > 1) {
-    currentStep.value--
-    addLog(t('log.returnToStep', { step: currentStep.value, name: stepNames.value[currentStep.value - 1] }))
-  }
-}
 
 // --- Data Logic ---
 
@@ -217,8 +150,7 @@ const handleNewProject = async () => {
     
     const formData = new FormData()
     pending.files.forEach(f => formData.append('files', f))
-    formData.append('simulation_requirement', pending.simulationRequirement)
-    
+
     const res = await generateOntology(formData)
     if (res.success) {
       clearPendingUpload()
@@ -349,19 +281,54 @@ const fetchGraphData = async () => {
       const gRes = await getGraphData(projRes.data.graph_id)
       if (gRes.success) {
         graphData.value = gRes.data
+        graphError.value = ''
         const nodeCount = gRes.data.node_count || gRes.data.nodes?.length || 0
         const edgeCount = gRes.data.edge_count || gRes.data.edges?.length || 0
         addLog(`Graph data refreshed. Nodes: ${nodeCount}, Edges: ${edgeCount}`)
+      } else {
+        graphError.value = t('main.graphRefreshFailed', { error: gRes.error || t('common.unknownError') })
       }
     }
   } catch (err) {
-    console.warn('Graph fetch error:', err)
+    // A stale graph is indistinguishable from a current one on screen, so the
+    // failure has to reach the user and not just the console.
+    graphError.value = t('main.graphRefreshFailed', { error: err.message })
+    addLog(`Graph fetch error: ${err.message}`)
   }
 }
 
 const startPollingTask = (taskId) => {
+  buildTaskId.value = taskId
   pollTaskStatus(taskId)
   pollTimer = setInterval(() => pollTaskStatus(taskId), 2000)
+}
+
+// Ask the backend to stop the build. Cancellation is cooperative, so the
+// pipeline halts at its next checkpoint - keep polling until it reports back.
+const confirmingStop = ref(false)
+
+const handleStopBuild = () => {
+  if (!buildTaskId.value || stoppingBuild.value) return
+  confirmingStop.value = true
+}
+
+const doStopBuild = async () => {
+  confirmingStop.value = false
+  if (!buildTaskId.value || stoppingBuild.value) return
+
+  stoppingBuild.value = true
+  addLog('Stop requested for the graph build...')
+
+  try {
+    const res = await cancelTask(buildTaskId.value)
+    if (!res.success) {
+      addLog(`Stop failed: ${res.error}`)
+      stoppingBuild.value = false
+    }
+  } catch (err) {
+    addLog(`Stop failed: ${err.message}`)
+    stoppingBuild.value = false
+  }
 }
 
 const pollTaskStatus = async (taskId) => {
@@ -375,22 +342,38 @@ const pollTaskStatus = async (taskId) => {
         addLog(task.message)
       }
       
-      buildProgress.value = { progress: task.progress || 0, message: task.message }
-      
+      buildProgress.value = {
+        progress: task.progress || 0,
+        message: task.message,
+        detail: task.progress_detail || {},
+        stopping: stoppingBuild.value || task.cancel_requested === true
+      }
+
       if (task.status === 'completed') {
         addLog('Graph build task completed.')
         stopPolling()
         stopGraphPolling() // Stop polling, do final load
         currentPhase.value = 2
-        
+
         // Final load
         const projRes = await getProject(currentProjectId.value)
         if (projRes.success && projRes.data.graph_id) {
             projectData.value = projRes.data
             await loadGraph(projRes.data.graph_id)
         }
+      } else if (task.status === 'cancelled') {
+        stopPolling()
+        stopGraphPolling()
+        stoppingBuild.value = false
+        buildProgress.value = null
+        addLog(t('step1.buildStopped'))
+        // The backend leaves a stopped build in the same recoverable state as a
+        // failed one, so reload and let the existing retry path take over.
+        await loadProject()
       } else if (task.status === 'failed') {
         stopPolling()
+        stoppingBuild.value = false
+        buildProgress.value = null
         error.value = task.error
         addLog(`Graph build task failed: ${task.error}`)
       }
@@ -407,11 +390,14 @@ const loadGraph = async (graphId) => {
     const res = await getGraphData(graphId)
     if (res.success) {
       graphData.value = res.data
+      graphError.value = ''
       addLog('Graph data loaded successfully.')
     } else {
+      graphError.value = t('main.graphLoadFailed', { error: res.error || t('common.unknownError') })
       addLog(`Failed to load graph data: ${res.error}`)
     }
   } catch (e) {
+    graphError.value = t('main.graphLoadFailed', { error: e.message })
     addLog(`Exception loading graph: ${e.message}`)
   } finally {
     graphLoading.value = false
@@ -451,152 +437,52 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.main-view {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #FFF;
-  overflow: hidden;
-  font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
-}
-
-/* Header */
-.app-header {
-  height: 60px;
-  border-bottom: 1px solid #E5E5E5;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  background: #FFF;
-  color: #111111;
-  z-index: 100;
-  position: relative;
-}
-
-.header-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.brand {
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: 1px;
-  cursor: pointer;
-}
-
-.view-switcher {
-  display: flex;
-  background: #F5F5F5;
-  padding: 4px;
-  border-radius: 6px;
-  gap: 4px;
-}
-
-.switch-btn {
-  border: none;
-  background: transparent;
-  padding: 6px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #666666;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.switch-btn.active {
-  background: #FFF;
-  color: #111111;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-}
-
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: #666666;
-  font-weight: 500;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.workflow-step {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-}
-
-.step-num {
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 700;
-  color: #A3A3A3;
-}
-
-.step-name {
-  font-weight: 700;
-  color: #111111;
-}
-
-.step-divider {
-  width: 1px;
-  height: 14px;
-  background-color: #E5E5E5;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #CCC;
-}
-
-.status-indicator.processing .dot { background: #F97316; animation: pulse 1s infinite; }
-.status-indicator.completed .dot { background: #4CAF50; }
-.status-indicator.error .dot { background: #F44336; }
-
-@keyframes pulse { 50% { opacity: 0.5; } }
+/* The shell (.main-view / .content-area / .panel-wrapper) lives in App.vue. */
 
 /* Failure banner */
-.error-banner {
+.error-banner,
+.warn-banner {
   display: flex;
   align-items: center;
   gap: 16px;
   padding: 12px 24px;
+  font-size: 14px;
+  flex-wrap: wrap;
+}
+
+.error-banner {
   background: #FEF2F2;
   border-bottom: 1px solid #FECACA;
   color: #B91C1C;
-  font-size: 0.9rem;
 }
 
-.error-text {
+.warn-banner {
+  background: #FFF7ED;
+  border-bottom: 1px solid #FDBA74;
+  color: #9A3412;
+}
+
+.error-text,
+.warn-text {
   flex: 1;
+  min-width: 200px;
 }
 
 .error-retry,
-.error-back {
+.error-back,
+.warn-retry {
   flex-shrink: 0;
   border: 1px solid currentColor;
   background: none;
   padding: 7px 14px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
   color: inherit;
 }
 
 .error-retry {
   background: #B91C1C;
-  color: #FFFFFF;
+  color: var(--white);
 }
 
 .error-retry:disabled {
@@ -605,26 +491,7 @@ onUnmounted(() => {
 }
 
 .error-back {
-  color: #666666;
-  border-color: #E5E5E5;
-}
-
-/* Content */
-.content-area {
-  flex: 1;
-  display: flex;
-  position: relative;
-  overflow: hidden;
-}
-
-.panel-wrapper {
-  height: 100%;
-  overflow: hidden;
-  transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.3s ease, transform 0.3s ease;
-  will-change: width, opacity, transform;
-}
-
-.panel-wrapper.left {
-  border-right: 1px solid #EAEAEA;
+  color: var(--muted);
+  border-color: var(--border);
 }
 </style>

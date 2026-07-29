@@ -1,23 +1,34 @@
 """
 Source adapter registry.
 
-Every source here stays on an official API; anything that would require
-scraping a site that does not offer one is deliberately absent. Reddit is
-currently the only registered source, and it needs a free API key.
+Sources are split by how they reach their data, because the two kinds carry
+different obligations. API sources consume a documented, rate-limited endpoint
+and are safe to leave enabled. Browser sources render pages published for people,
+which is a terms-of-service question rather than a technical one - they ship
+disabled in config/corpus.yml and refuse to fetch until an operator says
+otherwise.
 """
 
 from typing import Any, Dict, List, Type
 
 from .base import SourceAdapter
 from .reddit import RedditSource
+from .threads import ThreadsSource
 
 #: Adapters on official APIs that need a free key.
 CREDENTIALED_SOURCES: Dict[str, Type[SourceAdapter]] = {
     RedditSource.name: RedditSource,
 }
 
+#: Adapters that render pages instead of calling an API. Off by default; see the
+#: module docstring in threads.py for what enabling one commits you to.
+BROWSER_SOURCES: Dict[str, Type[SourceAdapter]] = {
+    ThreadsSource.name: ThreadsSource,
+}
+
 SOURCE_REGISTRY: Dict[str, Type[SourceAdapter]] = {
     **CREDENTIALED_SOURCES,
+    **BROWSER_SOURCES,
 }
 
 #: Sensible default when the caller does not name any sources: everything
@@ -68,8 +79,10 @@ def describe_sources() -> List[Dict[str, Any]]:
 __all__ = [
     'SourceAdapter',
     'RedditSource',
+    'ThreadsSource',
     'SOURCE_REGISTRY',
     'CREDENTIALED_SOURCES',
+    'BROWSER_SOURCES',
     'DEFAULT_SOURCES',
     'get_source',
     'describe_sources',

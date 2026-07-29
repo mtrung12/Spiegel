@@ -169,8 +169,10 @@ try:
         LLMAction,
         ManualAction,
         generate_twitter_agent_graph,
-        generate_reddit_agent_graph
     )
+    # Local builder: OASIS's own one cannot omit the country clause, and cannot
+    # forward a custom system-message template. See scripts/oasis_graph.py.
+    from oasis_graph import generate_reddit_agent_graph
 except ImportError as e:
     print(f"Error: missing dependency {e}")
     print("Install it first: pip install oasis-ai camel-ai")
@@ -186,6 +188,9 @@ TWITTER_ACTIONS = [
     ActionType.FOLLOW,
     ActionType.DO_NOTHING,
     ActionType.QUOTE_POST,
+    # Replies on X. DISLIKE_COMMENT is left out: X has no downvote.
+    ActionType.CREATE_COMMENT,
+    ActionType.LIKE_COMMENT,
 ]
 
 # Actions available on Reddit. INTERVIEW is excluded: it can only be

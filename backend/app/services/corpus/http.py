@@ -136,6 +136,15 @@ class PoliteClient:
             return True
         return parser.can_fetch(self.user_agent, url)
 
+    def allows(self, url: str) -> bool:
+        """
+        Whether robots.txt permits fetching this URL.
+
+        Exposed for adapters that do not fetch through ``request`` - a headless
+        browser bypasses this client entirely, so it has to ask first.
+        """
+        return self._robots_allows(url)
+
     # -- requests ----------------------------------------------------------
 
     def request(

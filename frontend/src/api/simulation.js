@@ -9,6 +9,15 @@ export const createSimulation = (data) => {
 }
 
 /**
+ * Get the graph entities (segments) that agents get built from.
+ * @param {string} graphId
+ * @param {boolean} [enrich] - also fetch related edges; false is much faster
+ */
+export const getGraphEntities = (graphId, enrich = false) => {
+  return service.get(`/api/simulation/entities/${graphId}`, { params: { enrich } })
+}
+
+/**
  * Prepare the simulation environment (background task).
  * @param {Object} data - { simulation_id, entity_types?, use_llm_for_profiles?, parallel_profile_count?, force_regenerate? }
  */

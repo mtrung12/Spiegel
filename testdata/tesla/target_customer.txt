@@ -1,0 +1,27 @@
+### Brand Context
+Brand: Tesla, Inc.
+Product: Tesla Model Zero (Ultra-affordable $14,990 Electric Hatchback targeted at Gen Z and urban commuters).
+Brand Perception Context: Known for premium EVs, cutting-edge software, Autopilot, minimalist design, and Elon Musk’s high-profile persona. High brand prestige mixed with skepticism regarding delivery timelines and build quality.
+
+### Target Audience & Persona Segments
+
+1. Segment A: Gen Z / College Students & First-Time Buyers
+- Age: 18–25
+- Income: $0 – $35k/year
+- Priorities: Affordability, mobile app connectivity, sustainability flex on social media, low maintenance.
+- Media Habits: Highly active on TikTok, X/Twitter, Reddit (r/College, r/Technology).
+- Sentiments: Eager for an affordable EV, highly sensitive to price, cynical toward traditional corporate marketing, quick to call out hype vs. reality.
+
+2. Segment B: Tesla Brand Loyalists & Tech Enthusiasts
+- Age: 28–45
+- Income: $80k – $150k+
+- Priorities: Brand prestige, high performance, OTA updates, FSD (Full Self-Driving), Supercharger access.
+- Media Habits: Daily users of X/Twitter, r/TeslaMotors, X Spaces, tech blogs.
+- Sentiments: Protective of Tesla’s premium reputation; concerned that a $15k model will degrade Supercharger network quality and brand prestige.
+
+3. Segment C: EV Skeptics & Automotive Traditionalists
+- Age: 30–55
+- Income: $50k – $100k
+- Priorities: Reliability, physical buttons, long range, proven build quality, traditional dealership service.
+- Media Habits: Reddit (r/cars), Twitter, auto news forums.
+- Sentiments: Highly critical of all-touchscreen interfaces, doubtful about a $15k EV's safety/range, quick to bring up panel gaps and battery degradation fears.

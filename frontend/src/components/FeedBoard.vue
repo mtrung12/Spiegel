@@ -48,35 +48,88 @@
         </div>
 
         <div class="list-scroll">
-          <div
+          <button
             v-for="post in posts"
             :key="post.post_id"
+            type="button"
             class="post-row"
-            :class="{ selected: selectedPost && selectedPost.post_id === post.post_id }"
+            :class="[isX ? 'x-row' : 'r-row', { selected: selectedPost && selectedPost.post_id === post.post_id }]"
+            :aria-pressed="!!selectedPost && selectedPost.post_id === post.post_id"
             @click="selectPost(post)"
           >
-            <div class="row-top">
-              <span class="post-id mono">#{{ post.post_id }}</span>
-              <span class="post-author">{{ authorLabel(post) }}</span>
-              <span v-if="post.original_post_id" class="repost-tag">{{ $t('feedBoard.repost') }}</span>
-            </div>
-
-            <div class="row-content">{{ preview(post) }}</div>
-
-            <div class="row-metrics">
-              <span class="metric up" :title="$t('feedBoard.likes')">▲ <span class="mono">{{ post.num_likes || 0 }}</span></span>
-              <span class="metric down" :title="$t('feedBoard.dislikes')">▼ <span class="mono">{{ post.num_dislikes || 0 }}</span></span>
-              <span class="metric" :title="$t('feedBoard.comments')">
-                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-                <span class="mono">{{ post.num_comments || 0 }}</span>
-              </span>
-              <span class="metric" :title="$t('feedBoard.shares')">
+            <!-- Info Plaza / X: repost banner, avatar left, name · @handle ·
+                 time on one line, then the text, then reply/repost/like. -->
+            <template v-if="isX">
+              <div v-if="post.original_post_id" class="x-repost-banner">
                 <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
-                <span class="mono">{{ post.num_shares || 0 }}</span>
-              </span>
-              <span class="metric time mono">{{ formatTime(post.created_at) }}</span>
-            </div>
-          </div>
+                {{ $t('feedBoard.repostedBy', { name: handle(post) }) }}
+              </div>
+
+              <div class="x-body">
+                <div class="x-avatar">{{ authorInitial(post) }}</div>
+                <div class="x-main">
+                  <div class="x-head">
+                    <span class="x-name">{{ displayName(post) }}</span>
+                    <span class="x-handle mono">@{{ handle(post) }}</span>
+                    <span class="x-dot">·</span>
+                    <span class="x-time mono">{{ formatTime(post.created_at) }}</span>
+                  </div>
+
+                  <div class="x-text">{{ preview(post) }}</div>
+
+                  <div class="x-actions">
+                    <span class="x-action reply" :title="$t('feedBoard.replies')">
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+                      <span class="mono">{{ post.num_comments || 0 }}</span>
+                    </span>
+                    <span class="x-action repost" :title="$t('feedBoard.reposts')">
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+                      <span class="mono">{{ post.num_shares || 0 }}</span>
+                    </span>
+                    <span class="x-action like" :title="$t('feedBoard.likes')">
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"></path></svg>
+                      <span class="mono">{{ post.num_likes || 0 }}</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Topic Community / Reddit: vote stack left, one score, then the
+                 u/author line and a comment count. -->
+            <template v-else>
+              <div class="r-body">
+                <div class="r-votes">
+                  <span class="vote-arrow up">▲</span>
+                  <span class="vote-score mono">{{ voteScore(post) }}</span>
+                  <span class="vote-arrow down">▼</span>
+                </div>
+
+                <div class="r-main">
+                  <div class="r-head">
+                    <span class="post-id mono">#{{ post.post_id }}</span>
+                    <span class="r-author">u/{{ handle(post) }}</span>
+                    <span class="r-time mono">{{ formatTime(post.created_at) }}</span>
+                    <span v-if="post.original_post_id" class="repost-tag">{{ $t('feedBoard.repost') }}</span>
+                  </div>
+
+                  <div class="row-content">{{ preview(post) }}</div>
+
+                  <div class="r-actions">
+                    <span class="metric" :title="$t('feedBoard.comments')">
+                      <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+                      <span class="mono">{{ post.num_comments || 0 }}</span>
+                      {{ $t('feedBoard.comments') }}
+                    </span>
+                    <span class="metric" :title="$t('feedBoard.shares')">
+                      <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+                      <span class="mono">{{ post.num_shares || 0 }}</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </button>
 
           <div v-if="!loading && posts.length === 0" class="empty-state">
             <div class="pulse-ring"></div>
@@ -103,9 +156,10 @@
             <div class="detail-author">
               <div class="avatar-placeholder">{{ authorInitial(selectedPost) }}</div>
               <div class="author-meta">
-                <span class="author-name">{{ authorLabel(selectedPost) }}</span>
+                <span class="author-name">{{ isX ? displayName(selectedPost) : authorLabel(selectedPost) }}</span>
                 <span class="author-sub mono">
-                  #{{ selectedPost.post_id }} • agent {{ selectedPost.user_id }} • {{ formatTime(selectedPost.created_at) }}
+                  {{ isX ? `@${handle(selectedPost)}` : `u/${handle(selectedPost)}` }}
+                  • #{{ selectedPost.post_id }} • {{ formatTime(selectedPost.created_at) }}
                 </span>
               </div>
             </div>
@@ -113,7 +167,9 @@
           </div>
 
           <div class="detail-scroll">
-            <div class="detail-content">{{ selectedPost.content || $t('feedBoard.emptyContent') }}</div>
+            <div class="detail-content">
+              {{ selectedPost.content || selectedPost.original_content || $t('feedBoard.emptyContent') }}
+            </div>
 
             <div v-if="selectedPost.quote_content" class="quoted-block">
               <div class="quote-label">{{ $t('feedBoard.quoted') }}</div>
@@ -121,28 +177,38 @@
             </div>
 
             <div class="detail-metrics">
-              <span class="detail-metric up">▲ <span class="mono">{{ selectedPost.num_likes || 0 }}</span></span>
-              <span class="detail-metric down">▼ <span class="mono">{{ selectedPost.num_dislikes || 0 }}</span></span>
-              <span class="detail-metric">{{ $t('feedBoard.shares') }} <span class="mono">{{ selectedPost.num_shares || 0 }}</span></span>
+              <template v-if="isX">
+                <span class="detail-metric">{{ $t('feedBoard.replies') }} <span class="mono">{{ comments.length }}</span></span>
+                <span class="detail-metric">{{ $t('feedBoard.reposts') }} <span class="mono">{{ selectedPost.num_shares || 0 }}</span></span>
+                <span class="detail-metric like">♥ <span class="mono">{{ selectedPost.num_likes || 0 }}</span></span>
+              </template>
+              <template v-else>
+                <span class="detail-metric up">▲ <span class="mono">{{ selectedPost.num_likes || 0 }}</span></span>
+                <span class="detail-metric down">▼ <span class="mono">{{ selectedPost.num_dislikes || 0 }}</span></span>
+                <span class="detail-metric">{{ $t('feedBoard.shares') }} <span class="mono">{{ selectedPost.num_shares || 0 }}</span></span>
+              </template>
             </div>
 
             <div class="comments-section">
               <div class="comments-header">
-                {{ $t('feedBoard.comments') }}
+                {{ isX ? $t('feedBoard.replies') : $t('feedBoard.comments') }}
                 <span class="mono">{{ comments.length }}</span>
                 <span v-if="commentsLoading" class="loading-dot">…</span>
               </div>
 
               <div v-for="c in comments" :key="c.comment_id" class="comment-item">
                 <div class="comment-head">
-                  <span class="comment-author">{{ authorLabel(c) }}</span>
-                  <span class="comment-metrics mono">▲ {{ c.num_likes || 0 }} ▼ {{ c.num_dislikes || 0 }}</span>
+                  <span class="comment-author">{{ isX ? `@${handle(c)}` : `u/${handle(c)}` }}</span>
+                  <span class="comment-metrics mono">
+                    <template v-if="isX">♥ {{ c.num_likes || 0 }}</template>
+                    <template v-else>▲ {{ c.num_likes || 0 }} ▼ {{ c.num_dislikes || 0 }}</template>
+                  </span>
                 </div>
                 <div class="comment-body">{{ c.content }}</div>
               </div>
 
               <div v-if="!commentsLoading && comments.length === 0" class="no-comments">
-                {{ $t('feedBoard.noComments') }}
+                {{ isX ? $t('feedBoard.noReplies') : $t('feedBoard.noComments') }}
               </div>
             </div>
           </div>
@@ -176,12 +242,21 @@ const platforms = [
   { value: 'twitter', label: 'Info Plaza' }
 ]
 
-const sortableColumns = [
+// Sort columns are named after the platform's own vocabulary: Topic Community
+// votes on posts, Info Plaza likes and reposts them.
+const REDDIT_COLUMNS = [
   { key: 'created_at', label: t('feedBoard.sortNewest'), title: t('feedBoard.sortNewestHint') },
-  { key: 'num_likes', label: '▲', title: t('feedBoard.likes') },
-  { key: 'num_dislikes', label: '▼', title: t('feedBoard.dislikes') },
+  { key: 'num_likes', label: '▲', title: t('feedBoard.upvotes') },
+  { key: 'num_dislikes', label: '▼', title: t('feedBoard.downvotes') },
   { key: 'num_comments', label: t('feedBoard.sortComments'), title: t('feedBoard.comments') },
   { key: 'num_shares', label: t('feedBoard.sortShares'), title: t('feedBoard.shares') }
+]
+
+const X_COLUMNS = [
+  { key: 'created_at', label: t('feedBoard.sortNewest'), title: t('feedBoard.sortNewestHint') },
+  { key: 'num_likes', label: '♥', title: t('feedBoard.likes') },
+  { key: 'num_comments', label: t('feedBoard.sortReplies'), title: t('feedBoard.replies') },
+  { key: 'num_shares', label: t('feedBoard.sortReposts'), title: t('feedBoard.reposts') }
 ]
 
 // State
@@ -199,6 +274,11 @@ const comments = ref([])
 const commentsLoading = ref(false)
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
+
+// Info Plaza follows X: avatar-left single column, reply/repost/like bar, no
+// downvote at all. Topic Community follows Reddit: a vote stack on the left.
+const isX = computed(() => platform.value === 'twitter')
+const sortableColumns = computed(() => (isX.value ? X_COLUMNS : REDDIT_COLUMNS))
 
 async function loadPosts() {
   if (!props.simulationId) {
@@ -276,6 +356,11 @@ function setSort(key) {
 function selectPlatform(value) {
   if (platform.value === value) return
   platform.value = value
+  // The sort can point at a column the new platform does not show.
+  if (!sortableColumns.value.some(c => c.key === sortBy.value)) {
+    sortBy.value = 'created_at'
+    order.value = 'desc'
+  }
   page.value = 0
   selectedPost.value = null
   comments.value = []
@@ -291,12 +376,29 @@ function authorLabel(row) {
   return row.author_user_name || row.author_name || `agent_${row.user_id}`
 }
 
+// X shows the display name and the @handle side by side, so they are needed
+// apart rather than as one label.
+function displayName(row) {
+  return row.author_name || row.author_user_name || `agent_${row.user_id}`
+}
+
+function handle(row) {
+  return row.author_user_name || `agent_${row.user_id}`
+}
+
+// Reddit shows one score, not two counters.
+function voteScore(row) {
+  return (row.num_likes || 0) - (row.num_dislikes || 0)
+}
+
 function authorInitial(row) {
   return (authorLabel(row) || 'A')[0].toUpperCase()
 }
 
 function preview(post) {
-  const text = post.content || post.quote_content || ''
+  // A repost is stored with no content of its own, only a pointer at the
+  // original, so the original's text is what it actually shows.
+  const text = post.content || post.quote_content || post.original_content || ''
   if (!text) return t('feedBoard.emptyContent')
   return text.length > 180 ? `${text.slice(0, 180)}…` : text
 }
@@ -332,7 +434,7 @@ defineExpose({ loadPosts })
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: #FFF;
+  background: var(--white);
   font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
   overflow: hidden;
 }
@@ -345,8 +447,8 @@ defineExpose({ loadPosts })
   justify-content: space-between;
   align-items: center;
   padding: 10px 20px;
-  border-bottom: 1px solid #EAEAEA;
-  background: #FAFAFA;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface);
   flex-shrink: 0;
 }
 
@@ -357,23 +459,23 @@ defineExpose({ loadPosts })
 
 .switch-btn {
   padding: 5px 12px;
-  border: 1px solid #EAEAEA;
+  border: 1px solid var(--border-soft);
   border-radius: 4px;
-  background: #FFF;
-  color: #888;
-  font-size: 11px;
+  background: var(--white);
+  color: var(--muted-soft);
+  font-size: 12px;
   font-family: inherit;
   letter-spacing: 0.04em;
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.switch-btn:hover { border-color: #CCC; color: #555; }
+.switch-btn:hover { border-color: var(--border-strong); color: var(--ink-3); }
 
 .switch-btn.active {
-  border-color: #333;
-  background: #333;
-  color: #FFF;
+  border-color: var(--ink-2);
+  background: var(--ink-2);
+  color: var(--white);
 }
 
 .toolbar-right {
@@ -383,30 +485,30 @@ defineExpose({ loadPosts })
 }
 
 .total-label {
-  font-size: 11px;
-  color: #888;
+  font-size: 12px;
+  color: var(--muted-soft);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
-.total-label .mono { color: #333; margin-left: 4px; }
+.total-label .mono { color: var(--ink-2); margin-left: 4px; }
 
 .refresh-btn {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 5px 12px;
-  border: 1px solid #EAEAEA;
+  border: 1px solid var(--border-soft);
   border-radius: 4px;
-  background: #FFF;
-  color: #555;
-  font-size: 11px;
+  background: var(--white);
+  color: var(--ink-3);
+  font-size: 12px;
   font-family: inherit;
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.refresh-btn:hover:not(:disabled) { border-color: #333; color: #111; }
+.refresh-btn:hover:not(:disabled) { border-color: var(--ink-2); color: var(--ink); }
 .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .spinning { animation: spin 1s linear infinite; }
@@ -423,8 +525,8 @@ defineExpose({ loadPosts })
   display: flex;
   flex-direction: column;
   width: 46%;
-  min-width: 320px;
-  border-right: 1px solid #EAEAEA;
+  min-width: 0;
+  border-right: 1px solid var(--border-soft);
   min-height: 0;
 }
 
@@ -433,15 +535,15 @@ defineExpose({ loadPosts })
   align-items: center;
   gap: 4px;
   padding: 8px 16px;
-  border-bottom: 1px solid #EAEAEA;
-  background: #FFF;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--white);
   flex-shrink: 0;
 }
 
 .col-author {
   flex: 1;
-  font-size: 10px;
-  color: #AAA;
+  font-size: 12px;
+  color: var(--muted-soft);
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
@@ -451,8 +553,8 @@ defineExpose({ loadPosts })
   border: 1px solid transparent;
   border-radius: 3px;
   background: transparent;
-  color: #888;
-  font-size: 10px;
+  color: var(--muted-soft);
+  font-size: 12px;
   font-family: inherit;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -461,10 +563,10 @@ defineExpose({ loadPosts })
   white-space: nowrap;
 }
 
-.col-sort:hover { background: #F5F5F5; color: #333; }
+.col-sort:hover { background: var(--surface-2); color: var(--ink-2); }
 
 .col-sort.active {
-  border-color: #EAEAEA;
+  border-color: var(--border-soft);
   background: #F2FAF6;
   color: #1A936F;
 }
@@ -479,13 +581,20 @@ defineExpose({ loadPosts })
 }
 
 .post-row {
+  /* A <button> now; reset the inherited control styling. */
+  font: inherit;
+  text-align: left;
+  appearance: none;
+  color: inherit;
+  width: 100%;
+  display: block;
   padding: 12px 16px;
-  border-bottom: 1px solid #F5F5F5;
+  border-bottom: 1px solid var(--surface-2);
   cursor: pointer;
   transition: background 0.15s;
 }
 
-.post-row:hover { background: #FAFAFA; }
+.post-row:hover { background: var(--surface); }
 
 .post-row.selected {
   background: #F2FAF6;
@@ -499,12 +608,12 @@ defineExpose({ loadPosts })
   margin-bottom: 5px;
 }
 
-.post-id { font-size: 10px; color: #BBB; }
+.post-id { font-size: 12px; color: var(--muted-soft); }
 
 .post-author {
   font-size: 12px;
   font-weight: 500;
-  color: #333;
+  color: var(--ink-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -513,9 +622,9 @@ defineExpose({ loadPosts })
 .repost-tag {
   padding: 1px 5px;
   border-radius: 2px;
-  background: #F5F5F5;
-  color: #888;
-  font-size: 9px;
+  background: var(--surface-2);
+  color: var(--muted-soft);
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -523,7 +632,7 @@ defineExpose({ loadPosts })
 .row-content {
   font-size: 12px;
   line-height: 1.55;
-  color: #555;
+  color: var(--ink-3);
   margin-bottom: 8px;
   word-break: break-word;
 }
@@ -532,8 +641,8 @@ defineExpose({ loadPosts })
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 11px;
-  color: #999;
+  font-size: 12px;
+  color: var(--muted-soft);
 }
 
 .metric {
@@ -544,7 +653,131 @@ defineExpose({ loadPosts })
 
 .metric.up { color: #1A936F; }
 .metric.down { color: #C1666B; }
-.metric.time { margin-left: auto; color: #CCC; font-size: 10px; }
+.metric.time { margin-left: auto; color: var(--muted-soft); font-size: 12px; }
+
+/* --- Info Plaza rows: X layout --- */
+.x-repost-banner {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 5px;
+  padding-left: 40px;
+  font-size: 12px;
+  color: var(--muted-soft);
+}
+
+.x-body { display: flex; gap: 10px; }
+
+.x-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.x-main { flex: 1; min-width: 0; }
+
+.x-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  margin-bottom: 3px;
+  min-width: 0;
+}
+
+.x-name {
+  font-weight: 600;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.x-handle, .x-dot, .x-time { color: var(--muted-soft); }
+.x-handle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.x-text {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-3);
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+
+/* X spreads the action bar across the post width rather than bunching it. */
+.x-actions {
+  display: flex;
+  gap: 8px;
+  max-width: 320px;
+  font-size: 12px;
+  color: var(--muted-soft);
+}
+
+.x-action {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.x-action.reply { color: #55707F; }
+.x-action.repost { color: #1A936F; }
+.x-action.like { color: #C1666B; }
+
+/* --- Topic Community rows: Reddit layout --- */
+.r-body { display: flex; gap: 10px; }
+
+.r-votes {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+  width: 26px;
+  font-size: 12px;
+  color: var(--muted-soft);
+}
+
+.vote-arrow.up { color: #1A936F; }
+.vote-arrow.down { color: #C1666B; }
+.vote-score { color: var(--ink-2); font-weight: 600; }
+
+.r-main { flex: 1; min-width: 0; }
+
+.r-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+  font-size: 12px;
+  color: var(--muted-soft);
+}
+
+.r-author {
+  font-weight: 500;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.r-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--muted-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
 
 /* --- Empty state --- */
 .empty-state {
@@ -556,8 +789,8 @@ defineExpose({ loadPosts })
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  color: #CCC;
-  font-size: 11px;
+  color: var(--muted-soft);
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   text-align: center;
@@ -568,13 +801,13 @@ defineExpose({ loadPosts })
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  border: 1px solid #EAEAEA;
+  border: 1px solid var(--border-soft);
   animation: ripple 2s infinite;
 }
 
 @keyframes ripple {
-  0% { transform: scale(0.8); opacity: 1; border-color: #CCC; }
-  100% { transform: scale(2.5); opacity: 0; border-color: #EAEAEA; }
+  0% { transform: scale(0.8); opacity: 1; border-color: var(--border-strong); }
+  100% { transform: scale(2.5); opacity: 0; border-color: var(--border-soft); }
 }
 
 /* --- Pagination --- */
@@ -584,27 +817,27 @@ defineExpose({ loadPosts })
   justify-content: center;
   gap: 14px;
   padding: 10px;
-  border-top: 1px solid #EAEAEA;
-  background: #FAFAFA;
+  border-top: 1px solid var(--border-soft);
+  background: var(--surface);
   flex-shrink: 0;
 }
 
 .page-btn {
   width: 26px;
   height: 26px;
-  border: 1px solid #EAEAEA;
+  border: 1px solid var(--border-soft);
   border-radius: 4px;
-  background: #FFF;
-  color: #555;
+  background: var(--white);
+  color: var(--ink-3);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.15s;
 }
 
-.page-btn:hover:not(:disabled) { border-color: #333; color: #111; }
+.page-btn:hover:not(:disabled) { border-color: var(--ink-2); color: var(--ink); }
 .page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-.page-info { font-size: 11px; color: #888; }
+.page-info { font-size: 12px; color: var(--muted-soft); }
 
 /* --- Detail --- */
 .post-detail {
@@ -620,8 +853,8 @@ defineExpose({ loadPosts })
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #CCC;
-  font-size: 11px;
+  color: var(--muted-soft);
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
@@ -632,7 +865,7 @@ defineExpose({ loadPosts })
   justify-content: space-between;
   gap: 12px;
   padding: 14px 20px;
-  border-bottom: 1px solid #EAEAEA;
+  border-bottom: 1px solid var(--border-soft);
   flex-shrink: 0;
 }
 
@@ -647,13 +880,13 @@ defineExpose({ loadPosts })
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: #F5F5F5;
-  border: 1px solid #EAEAEA;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 12px;
-  color: #666;
+  color: var(--muted);
   flex-shrink: 0;
 }
 
@@ -670,12 +903,12 @@ defineExpose({ loadPosts })
   color: #222;
 }
 
-.author-sub { font-size: 10px; color: #AAA; }
+.author-sub { font-size: 12px; color: var(--muted-soft); }
 
 .close-detail {
   border: none;
   background: transparent;
-  color: #CCC;
+  color: var(--muted-soft);
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
@@ -683,7 +916,7 @@ defineExpose({ loadPosts })
   transition: color 0.15s;
 }
 
-.close-detail:hover { color: #333; }
+.close-detail:hover { color: var(--ink-2); }
 
 .detail-scroll {
   flex: 1;
@@ -695,7 +928,7 @@ defineExpose({ loadPosts })
 .detail-content {
   font-size: 13px;
   line-height: 1.7;
-  color: #333;
+  color: var(--ink-2);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -703,33 +936,34 @@ defineExpose({ loadPosts })
 .quoted-block {
   margin-top: 14px;
   padding: 10px 12px;
-  border-left: 2px solid #EAEAEA;
-  background: #FAFAFA;
+  border-left: 2px solid var(--border-soft);
+  background: var(--surface);
   border-radius: 0 4px 4px 0;
 }
 
 .quote-label {
-  font-size: 9px;
-  color: #AAA;
+  font-size: 12px;
+  color: var(--muted-soft);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin-bottom: 5px;
 }
 
-.quote-text { font-size: 12px; line-height: 1.6; color: #666; }
+.quote-text { font-size: 12px; line-height: 1.6; color: var(--muted); }
 
 .detail-metrics {
   display: flex;
   gap: 16px;
   margin-top: 16px;
   padding-top: 12px;
-  border-top: 1px solid #F5F5F5;
-  font-size: 11px;
-  color: #999;
+  border-top: 1px solid var(--surface-2);
+  font-size: 12px;
+  color: var(--muted-soft);
 }
 
 .detail-metric.up { color: #1A936F; }
 .detail-metric.down { color: #C1666B; }
+.detail-metric.like { color: #C1666B; }
 
 /* --- Comments --- */
 .comments-section { margin-top: 22px; }
@@ -738,20 +972,20 @@ defineExpose({ loadPosts })
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
-  color: #888;
+  font-size: 12px;
+  color: var(--muted-soft);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   padding-bottom: 8px;
-  border-bottom: 1px solid #EAEAEA;
+  border-bottom: 1px solid var(--border-soft);
   margin-bottom: 12px;
 }
 
-.loading-dot { color: #CCC; }
+.loading-dot { color: var(--muted-soft); }
 
 .comment-item {
   padding: 10px 0;
-  border-bottom: 1px solid #F8F8F8;
+  border-bottom: 1px solid var(--surface);
 }
 
 .comment-head {
@@ -762,20 +996,20 @@ defineExpose({ loadPosts })
   margin-bottom: 4px;
 }
 
-.comment-author { font-size: 12px; font-weight: 500; color: #444; }
-.comment-metrics { font-size: 10px; color: #BBB; }
+.comment-author { font-size: 12px; font-weight: 500; color: var(--ink-3); }
+.comment-metrics { font-size: 12px; color: var(--muted-soft); }
 
 .comment-body {
   font-size: 12px;
   line-height: 1.6;
-  color: #666;
+  color: var(--muted);
   word-break: break-word;
 }
 
 .no-comments {
   padding: 16px 0;
-  color: #CCC;
-  font-size: 11px;
+  color: var(--muted-soft);
+  font-size: 12px;
   text-align: center;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -789,10 +1023,10 @@ defineExpose({ loadPosts })
 .detail-scroll::-webkit-scrollbar-track { background: transparent; }
 
 .list-scroll::-webkit-scrollbar-thumb,
-.detail-scroll::-webkit-scrollbar-thumb { background: #EAEAEA; border-radius: 3px; }
+.detail-scroll::-webkit-scrollbar-thumb { background: var(--border-soft); border-radius: 3px; }
 
 .list-scroll::-webkit-scrollbar-thumb:hover,
-.detail-scroll::-webkit-scrollbar-thumb:hover { background: #CCC; }
+.detail-scroll::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
 
 /* Narrow viewports: stack master over detail */
 @media (max-width: 900px) {
@@ -802,7 +1036,7 @@ defineExpose({ loadPosts })
     width: 100%;
     min-width: 0;
     border-right: none;
-    border-bottom: 1px solid #EAEAEA;
+    border-bottom: 1px solid var(--border-soft);
     max-height: 50%;
   }
 }

@@ -14,8 +14,10 @@ from datetime import datetime
 from enum import Enum
 
 from ..config import Config
+from ..models.project import ProjectManager
 from ..utils.logger import get_logger
 from ..utils.pipeline_logger import pipeline_log
+from .agent_population import MAX_AGENTS, derive_population_hints, plan_population
 from .zep_entity_reader import ZepEntityReader
 from .oasis_profile_generator import OasisProfileGenerator
 from .simulation_config_generator import SimulationConfigGenerator
@@ -282,7 +284,8 @@ class SimulationManager:
         defined_entity_types: Optional[List[str]] = None,
         use_llm_for_profiles: bool = True,
         progress_callback: Optional[callable] = None,
-        parallel_profile_count: int = 3
+        parallel_profile_count: int = 3,
+        max_agents: int = MAX_AGENTS
     ) -> SimulationState:
         """
         Prepare the simulation environment end to end.
@@ -304,10 +307,13 @@ class SimulationManager:
             use_llm_for_profiles: Whether to build detailed personas with the LLM
             progress_callback: Progress callback (stage, progress, message)
             parallel_profile_count: Number of personas generated in parallel, default 3
-            
+            max_agents: Cast size. Fewer entities than this are cloned up to it,
+                more are truncated to it. Capped at MAX_AGENTS
+
         Returns:
             SimulationState
         """
+        max_agents = max(1, min(int(max_agents or MAX_AGENTS), MAX_AGENTS))
         with pipeline_log.run(
             run_id=simulation_id,
             kind='simulation_prepare',
@@ -315,6 +321,7 @@ class SimulationManager:
             document_chars=len(document_text or ''),
             use_llm_for_profiles=use_llm_for_profiles,
             parallel_profile_count=parallel_profile_count,
+            max_agents=max_agents,
         ):
             return self._prepare_simulation_impl(
                 simulation_id=simulation_id,
@@ -324,6 +331,7 @@ class SimulationManager:
                 use_llm_for_profiles=use_llm_for_profiles,
                 progress_callback=progress_callback,
                 parallel_profile_count=parallel_profile_count,
+                max_agents=max_agents,
             )
 
     def _prepare_simulation_impl(
@@ -334,7 +342,8 @@ class SimulationManager:
         defined_entity_types: Optional[List[str]] = None,
         use_llm_for_profiles: bool = True,
         progress_callback: Optional[callable] = None,
-        parallel_profile_count: int = 3
+        parallel_profile_count: int = 3,
+        max_agents: int = MAX_AGENTS
     ) -> SimulationState:
         """Run the preparation stages. See prepare_simulation for the contract."""
         state = self._load_simulation_state(simulation_id)
@@ -430,8 +439,18 @@ class SimulationManager:
                     total=total_entities
                 )
             
+            # Audience priors harvested during the graph build, apportioned
+            # across the agent pool so the population matches how this audience
+            # already argues about the category. Absent on projects built
+            # before the corpus ran, which just means no priors.
+            project = ProjectManager.get_project(state.project_id)
+            corpus_distribution = project.corpus_distribution if project else None
+
             # Pass graph_id to enable Zep retrieval and get richer context
-            generator = OasisProfileGenerator(graph_id=state.graph_id)
+            generator = OasisProfileGenerator(
+                graph_id=state.graph_id,
+                corpus_distribution=corpus_distribution,
+            )
             
             def profile_progress(current, total, msg):
                 if progress_callback:
@@ -444,6 +463,52 @@ class SimulationManager:
                         item_name=msg
                     )
             
+            # Plan the cast before any persona is generated: the entity count
+            # is whatever the source material yielded, the cast is bounded and
+            # evenly spread. One LLM call supplies the age bands and the
+            # markets the brief names; everything else is sampled.
+            with pipeline_log.step(
+                'AgentPopulation', 'plan_population',
+                target=state.graph_id,
+                entities=total_entities,
+                max_agents=max_agents,
+            ) as step:
+                # The ontology already said what each type stands for, and it
+                # said so while holding the type's own description. Its answer
+                # wins; the hints call only fills in types it left blank, which
+                # for an ontology built before the field existed is all of them.
+                ontology_kinds = {
+                    entity["name"]: entity["kind"]
+                    for entity in ((project.ontology or {}).get("entity_types") or [])
+                    if isinstance(entity, dict) and entity.get("kind") and entity.get("name")
+                } if project else {}
+
+                age_ranges, markets, hinted_kinds = derive_population_hints(
+                    entity_types=[e.get_entity_type() or "Entity" for e in filtered.entities],
+                    brief=simulation_requirement,
+                )
+                kinds = {**hinted_kinds, **ontology_kinds}
+                slots = plan_population(
+                    filtered.entities,
+                    max_agents=max_agents,
+                    age_ranges=age_ranges,
+                    markets=markets,
+                    kinds=kinds,
+                )
+                # The same classification decides the persona prompt, so a
+                # segment is not written up as if it were an institution.
+                generator.entity_kinds = kinds
+                step.output(age_ranges=age_ranges, markets=markets, kinds=kinds)
+                step.metric(
+                    agents=len(slots),
+                    clones=sum(1 for s in slots if s.is_clone),
+                    markets=len(markets),
+                )
+            logger.info(
+                f"population planned: {total_entities} entities -> {len(slots)} agents "
+                f"(cap {max_agents}, {sum(1 for s in slots if s.is_clone)} clones)"
+            )
+
             # Path used for incremental saves (Reddit JSON format preferred)
             realtime_output_path = None
             realtime_platform = "reddit"
@@ -454,8 +519,8 @@ class SimulationManager:
                 realtime_output_path = os.path.join(sim_dir, "twitter_profiles.csv")
                 realtime_platform = "twitter"
             
-            profiles = generator.generate_profiles_from_entities(
-                entities=filtered.entities,
+            profiles = generator.generate_profiles_from_slots(
+                slots=slots,
                 use_llm=use_llm_for_profiles,
                 progress_callback=profile_progress,
                 graph_id=state.graph_id,  # graph_id enables Zep retrieval
@@ -542,7 +607,9 @@ class SimulationManager:
                 document_text=document_text,
                 entities=filtered.entities,
                 enable_twitter=state.enable_twitter,
-                enable_reddit=state.enable_reddit
+                enable_reddit=state.enable_reddit,
+                corpus_distribution=corpus_distribution,
+                slots=slots
             )
             
             if progress_callback:
@@ -698,15 +765,15 @@ class SimulationManager:
             "scripts_dir": scripts_dir,
             "config_file": config_path,
             "commands": {
-                "twitter": f"python {scripts_dir}/run_twitter_simulation.py --config {config_path}",
-                "reddit": f"python {scripts_dir}/run_reddit_simulation.py --config {config_path}",
+                "twitter": f"python {scripts_dir}/run_parallel_simulation.py --config {config_path} --twitter-only",
+                "reddit": f"python {scripts_dir}/run_parallel_simulation.py --config {config_path} --reddit-only",
                 "parallel": f"python {scripts_dir}/run_parallel_simulation.py --config {config_path}",
             },
             "instructions": (
                 f"1. Activate the conda environment: conda activate Spiegel\n"
-                f"2. Run the simulation (scripts live in {scripts_dir}):\n"
-                f"   - Twitter only: python {scripts_dir}/run_twitter_simulation.py --config {config_path}\n"
-                f"   - Reddit only: python {scripts_dir}/run_reddit_simulation.py --config {config_path}\n"
+                f"2. Run the simulation (the script lives in {scripts_dir}):\n"
+                f"   - Twitter only: python {scripts_dir}/run_parallel_simulation.py --config {config_path} --twitter-only\n"
+                f"   - Reddit only: python {scripts_dir}/run_parallel_simulation.py --config {config_path} --reddit-only\n"
                 f"   - Both platforms in parallel: python {scripts_dir}/run_parallel_simulation.py --config {config_path}"
             )
         }

@@ -6,12 +6,19 @@ from app.models.project import ProjectManager, ProjectStatus
 from app.utils.llm_client import LLMResponseError
 
 
+# Long enough to clear the empty-extraction guard in the upload handler; these
+# tests are about how a failing generator is reported, not about the document.
+_SOURCE_DOCUMENT = (
+    b"A source document for the campaign brief. " * 8
+)
+
+
 def _post_ontology(client):
     return client.post(
         "/api/graph/ontology/generate",
         data={
             "simulation_requirement": "Simulate the discussion.",
-            "files": (io.BytesIO(b"A short source document."), "source.md"),
+            "files": (io.BytesIO(_SOURCE_DOCUMENT), "source.md"),
         },
         content_type="multipart/form-data",
     )

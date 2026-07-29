@@ -42,6 +42,20 @@ export function getTaskStatus(taskId) {
 }
 
 /**
+ * Ask a running task to stop.
+ * Cancellation is cooperative: this only requests the stop, so keep polling
+ * the task until it reports a terminal status.
+ * @param {String} taskId - the task ID
+ * @returns {Promise}
+ */
+export function cancelTask(taskId) {
+  return service({
+    url: `/api/graph/task/${taskId}/cancel`,
+    method: 'post'
+  })
+}
+
+/**
  * Get the graph data.
  * @param {String} graphId - the graph ID
  * @returns {Promise}
@@ -56,12 +70,16 @@ export function getGraphData(graphId) {
 /**
  * Get the project.
  * @param {String} projectId - the project ID
+ * @param {Boolean} includeText - also return the extracted document text.
+ *   Off by default: it is the whole brief, and only the source-text viewer
+ *   needs it.
  * @returns {Promise}
  */
-export function getProject(projectId) {
+export function getProject(projectId, includeText = false) {
   return service({
     url: `/api/graph/project/${projectId}`,
-    method: 'get'
+    method: 'get',
+    params: includeText ? { include_text: 1 } : undefined
   })
 }
 

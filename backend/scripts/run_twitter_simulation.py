@@ -413,6 +413,9 @@ class TwitterSimulationRunner:
         ActionType.FOLLOW,
         ActionType.DO_NOTHING,
         ActionType.QUOTE_POST,
+        # Replies on X. DISLIKE_COMMENT is left out: X has no downvote.
+        ActionType.CREATE_COMMENT,
+        ActionType.LIKE_COMMENT,
     ]
     
     def __init__(

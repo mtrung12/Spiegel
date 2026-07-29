@@ -10,6 +10,7 @@ from flask import request, jsonify, send_file
 
 from . import simulation_bp
 from ..config import Config
+from ..services.agent_population import MAX_AGENTS, planned_population_size
 from ..services.zep_entity_reader import ZepEntityReader
 from ..services.oasis_profile_generator import OasisProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
@@ -425,6 +426,9 @@ def prepare_simulation():
             "entity_types": ["Student", "PublicFigure"],  // optional, restrict the entity types
             "use_llm_for_profiles": true,                 // optional, build personas with the LLM
             "parallel_profile_count": 5,                  // optional, personas generated in parallel, default 5
+            "max_agents": 500,                            // optional, cast size, capped at MAX_AGENTS.
+                                                          // Fewer entities are cloned up to it,
+                                                          // more are truncated to it
             "force_regenerate": false                     // optional, force a regeneration, default false
         }
     
@@ -496,20 +500,38 @@ def prepare_simulation():
                 "error": t('api.projectNotFound', id=state.project_id)
             }), 404
         
-        # Read the simulation requirement
-        simulation_requirement = project.simulation_requirement or ""
+        # Read the document text
+        document_text = ProjectManager.get_extracted_text(state.project_id) or ""
+
+        # The brief. No longer a field of its own, so it falls back to the
+        # documents - which is what a project created since the field was
+        # removed already stores. Only a project with neither is unusable.
+        simulation_requirement = project.simulation_requirement or document_text
         if not simulation_requirement:
             return jsonify({
                 "success": False,
                 "error": t('api.projectMissingRequirement')
             }), 400
         
-        # Read the document text
-        document_text = ProjectManager.get_extracted_text(state.project_id) or ""
-        
         entity_types_list = data.get('entity_types')
         use_llm_for_profiles = data.get('use_llm_for_profiles', True)
         parallel_profile_count = data.get('parallel_profile_count', 5)
+
+        # Cast size. Fewer entities than this are cloned up to it, more are
+        # truncated to it. Hard-capped at MAX_AGENTS whatever the caller asks.
+        try:
+            max_agents = int(data.get('max_agents') or MAX_AGENTS)
+        except (TypeError, ValueError):
+            return jsonify({
+                "success": False,
+                "error": t('api.maxAgentsInvalid')
+            }), 400
+        if max_agents <= 0:
+            return jsonify({
+                "success": False,
+                "error": t('api.maxAgentsPositive')
+            }), 400
+        max_agents = min(max_agents, MAX_AGENTS)
         
         # ===== Count the entities synchronously, before the background task starts =====
         # so the frontend knows the expected agent total as soon as prepare returns
@@ -525,10 +547,26 @@ def prepare_simulation():
             # Store the count on the state so the frontend can read it right away
             state.entities_count = filtered_preview.filtered_count
             state.entity_types = list(filtered_preview.entity_types)
-            logger.info(f"expected entity count: {filtered_preview.filtered_count}, types: {filtered_preview.entity_types}")
+            # Same classification the real run uses, minus the hints LLM call:
+            # without it every campaign-specific type falls back to
+            # "specific_company" (never cloned), so the preview under-reports
+            # the cast badly.
+            ontology_kinds = {
+                entity["name"]: entity["kind"]
+                for entity in ((project.ontology or {}).get("entity_types") or [])
+                if isinstance(entity, dict) and entity.get("kind") and entity.get("name")
+            }
+            expected_agent_count = planned_population_size(
+                filtered_preview.entities, max_agents, kinds=ontology_kinds
+            )
+            logger.info(
+                f"expected entity count: {filtered_preview.filtered_count} "
+                f"-> {expected_agent_count} agents, types: {filtered_preview.entity_types}"
+            )
         except Exception as e:
             logger.warning(f"synchronous entity count failed (the background task will retry): {e}")
             # A failure here is harmless; the background task will fetch it again
+            expected_agent_count = None
         
         # Create the background task
         task_manager = TaskManager()
@@ -630,7 +668,8 @@ def prepare_simulation():
                     defined_entity_types=entity_types_list,
                     use_llm_for_profiles=use_llm_for_profiles,
                     progress_callback=progress_callback,
-                    parallel_profile_count=parallel_profile_count
+                    parallel_profile_count=parallel_profile_count,
+                    max_agents=max_agents
                 )
 
                 if result_state.status == SimulationStatus.FAILED:
@@ -667,7 +706,9 @@ def prepare_simulation():
                 "status": "preparing",
                 "message": t('api.prepareStarted'),
                 "already_prepared": False,
-                "expected_entities_count": state.entities_count,  # Expected agent total
+                "expected_entities_count": state.entities_count,  # Segments read from the graph
+                "expected_agent_count": expected_agent_count,     # Cast size after planning
+                "max_agents": max_agents,
                 "entity_types": state.entity_types  # The entity types
             }
         })
@@ -1208,8 +1249,6 @@ def download_simulation_script(script_name: str):
     Download a simulation runner script from backend/scripts/.
     
     Valid script_name values:
-        - run_twitter_simulation.py
-        - run_reddit_simulation.py
         - run_parallel_simulation.py
         - action_logger.py
     """
@@ -1219,8 +1258,6 @@ def download_simulation_script(script_name: str):
         
         # Validate the script name
         allowed_scripts = [
-            "run_twitter_simulation.py",
-            "run_reddit_simulation.py", 
             "run_parallel_simulation.py",
             "action_logger.py"
         ]
@@ -1265,7 +1302,10 @@ def generate_profiles():
             "graph_id": "spiegel_xxxx",     // required
             "entity_types": ["Student"],      // optional
             "use_llm": true,                  // optional
-            "platform": "reddit"              // optional
+            "platform": "reddit",             // optional
+            "max_agents": 500                 // optional, capped at MAX_AGENTS.
+                                              // Defaults to the entity count,
+                                              // so no entity is cloned here.
         }
     """
     try:
@@ -1295,10 +1335,16 @@ def generate_profiles():
                 "error": t('api.noMatchingEntities')
             }), 400
         
+        # Standalone generation is a preview of the entities themselves, so it
+        # does not clone by default - it only applies the cap. Pass max_agents
+        # to plan a full cast here as the simulation pipeline does.
+        max_agents = int(data.get('max_agents') or min(MAX_AGENTS, filtered.filtered_count))
+
         generator = OasisProfileGenerator()
         profiles = generator.generate_profiles_from_entities(
             entities=filtered.entities,
-            use_llm=use_llm
+            use_llm=use_llm,
+            max_agents=min(max_agents, MAX_AGENTS)
         )
         
         if platform == "reddit":
@@ -2108,6 +2154,10 @@ def get_simulation_posts(simulation_id: str):
             # num_comments is aggregated here rather than in a second query so
             # it can be sorted on. The author join lets the board show the
             # persona name instead of a bare user_id.
+            # OASIS stores a repost as a row with content NULL pointing at the
+            # original, so the original is joined in here. Without it the board
+            # shows a screenful of blank rows - which is what a repost looks
+            # like when only its own content is read.
             cursor.execute(f"""
                 SELECT
                     p.post_id, p.user_id, p.original_post_id, p.content,
@@ -2115,9 +2165,14 @@ def get_simulation_posts(simulation_id: str):
                     p.num_shares, p.num_reports,
                     u.user_name AS author_user_name,
                     u.name AS author_name,
+                    o.content AS original_content,
+                    ou.user_name AS original_author_user_name,
+                    ou.name AS original_author_name,
                     COUNT(c.comment_id) AS num_comments
                 FROM post p
                 LEFT JOIN user u ON u.user_id = p.user_id
+                LEFT JOIN post o ON o.post_id = p.original_post_id
+                LEFT JOIN user ou ON ou.user_id = o.user_id
                 LEFT JOIN comment c ON c.post_id = p.post_id
                 GROUP BY p.post_id
                 ORDER BY {sort_column} {order}
