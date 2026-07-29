@@ -1,48 +1,25 @@
 <template>
   <div class="main-view">
-    <!-- Header -->
-    <header class="app-header">
-      <div class="header-left">
-        <div class="brand" @click="router.push('/')">CAMPAIGN REACTION</div>
-      </div>
-      
-      <div class="header-center">
-        <div class="view-switcher">
-          <button 
-            v-for="mode in ['graph', 'split', 'workbench']" 
-            :key="mode"
-            class="switch-btn"
-            :class="{ active: viewMode === mode }"
-            @click="viewMode = mode"
-          >
-            {{ { graph: $t('main.layoutGraph'), split: $t('main.layoutSplit'), workbench: $t('main.layoutWorkbench') }[mode] }}
-          </button>
-        </div>
-      </div>
-
-      <div class="header-right">
-        <LanguageSwitcher />
-        <div class="step-divider"></div>
+    <AppHeader
+      :currentStep="5"
+      :status="currentStatus"
+      :statusText="statusText"
+      v-model="viewMode"
+      :projectId="projectData?.project_id"
+      :simulationId="simulationId"
+      :reportId="currentReportId"
+    >
+      <template #actions>
         <button class="workspace-btn" :disabled="!projectData?.project_id" @click="goToWorkspace">
           {{ $t('workspace.openWorkspace') }}
         </button>
-        <div class="step-divider"></div>
-        <div class="workflow-step">
-          <span class="step-num">Step 5/5</span>
-          <span class="step-name">{{ $tm('main.stepNames')[4] }}</span>
-        </div>
-        <div class="step-divider"></div>
-        <span class="status-indicator" :class="statusClass">
-          <span class="dot"></span>
-          {{ statusText }}
-        </span>
-      </div>
-    </header>
+      </template>
+    </AppHeader>
 
     <!-- Main Content Area -->
-    <main class="content-area">
+    <main id="main-content" class="content-area" :data-mode="viewMode">
       <!-- Left Panel: Graph -->
-      <div class="panel-wrapper left" :style="leftPanelStyle">
+      <div class="panel-wrapper left">
         <GraphPanel 
           :graphData="graphData"
           :loading="graphLoading"
@@ -54,7 +31,7 @@
       </div>
 
       <!-- Right panel: step 5, deep interaction -->
-      <div class="panel-wrapper right" :style="rightPanelStyle">
+      <div class="panel-wrapper right">
         <Step5Interaction
           :reportId="currentReportId"
           :simulationId="simulationId"
@@ -76,7 +53,8 @@ import Step5Interaction from '../components/Step5Interaction.vue'
 import { getProject, getGraphData } from '../api/graph'
 import { getSimulation } from '../api/simulation'
 import { getReport } from '../api/report'
-import LanguageSwitcher from '../components/LanguageSwitcher.vue'
+import AppHeader from '../components/AppHeader.vue'
+import { useSplitLayout, useSystemLog } from '../composables/useWorkbench'
 
 const route = useRoute()
 const router = useRouter()
@@ -88,7 +66,7 @@ const props = defineProps({
 })
 
 // Layout state - defaults to the workbench view
-const viewMode = ref('workbench')
+const { viewMode, toggleMaximize } = useSplitLayout('workbench')
 
 // Data State
 const currentReportId = ref(route.params.reportId)
@@ -96,42 +74,15 @@ const simulationId = ref(null)
 const projectData = ref(null)
 const graphData = ref(null)
 const graphLoading = ref(false)
-const systemLogs = ref([])
+const { systemLogs, addLog } = useSystemLog(200)
 const currentStatus = ref('ready') // ready | processing | completed | error
 
-// --- Computed Layout Styles ---
-const leftPanelStyle = computed(() => {
-  if (viewMode.value === 'graph') return { width: '100%', opacity: 1, transform: 'translateX(0)' }
-  if (viewMode.value === 'workbench') return { width: '0%', opacity: 0, transform: 'translateX(-20px)' }
-  return { width: '50%', opacity: 1, transform: 'translateX(0)' }
-})
-
-const rightPanelStyle = computed(() => {
-  if (viewMode.value === 'workbench') return { width: '100%', opacity: 1, transform: 'translateX(0)' }
-  if (viewMode.value === 'graph') return { width: '0%', opacity: 0, transform: 'translateX(20px)' }
-  return { width: '50%', opacity: 1, transform: 'translateX(0)' }
-})
-
-// --- Status Computed ---
-const statusClass = computed(() => {
-  return currentStatus.value
-})
-
 const statusText = computed(() => {
-  if (currentStatus.value === 'error') return 'Error'
-  if (currentStatus.value === 'completed') return 'Completed'
-  if (currentStatus.value === 'processing') return 'Processing'
-  return 'Ready'
+  if (currentStatus.value === 'error') return t('main.statusError')
+  if (currentStatus.value === 'completed') return t('main.statusCompleted')
+  if (currentStatus.value === 'processing') return t('main.statusProcessing')
+  return t('main.statusReady')
 })
-
-// --- Helpers ---
-const addLog = (msg) => {
-  const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + new Date().getMilliseconds().toString().padStart(3, '0')
-  systemLogs.value.push({ time, msg })
-  if (systemLogs.value.length > 200) {
-    systemLogs.value.shift()
-  }
-}
 
 const updateStatus = (status) => {
   currentStatus.value = status
@@ -140,15 +91,6 @@ const updateStatus = (status) => {
 const goToWorkspace = () => {
   if (projectData.value?.project_id) {
     router.push({ name: 'Workspace', params: { projectId: projectData.value.project_id } })
-  }
-}
-
-// --- Layout Methods ---
-const toggleMaximize = (target) => {
-  if (viewMode.value === target) {
-    viewMode.value = 'split'
-  } else {
-    viewMode.value = target
   }
 }
 
@@ -229,160 +171,25 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.main-view {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #FFF;
-  overflow: hidden;
-  font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
-}
-
-/* Header */
-.app-header {
-  height: 60px;
-  border-bottom: 1px solid #E5E5E5;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  background: #FFF;
-  color: #111111;
-  z-index: 100;
-  position: relative;
-}
-
-.header-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.brand {
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: 1px;
-  cursor: pointer;
-}
-
-.view-switcher {
-  display: flex;
-  background: #F5F5F5;
-  padding: 4px;
-  border-radius: 6px;
-  gap: 4px;
-}
-
-.switch-btn {
-  border: none;
-  background: transparent;
-  padding: 6px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #666666;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.switch-btn.active {
-  background: #FFF;
-  color: #111111;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.workflow-step {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-}
-
-.step-num {
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 700;
-  color: #A3A3A3;
-}
-
-.step-name {
-  font-weight: 700;
-  color: #111111;
-}
-
-.step-divider {
-  width: 1px;
-  height: 14px;
-  background-color: #E5E5E5;
-}
-
 .workspace-btn {
-  border: 1px solid #E5E5E5;
-  background: #FFF;
-  border-radius: 6px;
-  padding: 6px 14px;
+  border: 1px solid var(--border);
+  background: var(--white);
+  padding: 7px 14px;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
-  color: #333333;
-  cursor: pointer;
-  transition: all 0.2s;
+  color: var(--ink);
+  white-space: nowrap;
+  transition: background 0.2s, border-color 0.2s;
 }
 
 .workspace-btn:hover:not(:disabled) {
-  background: #FAFAFA;
-  border-color: #D4D4D4;
+  background: var(--surface-2);
+  border-color: var(--border-strong);
 }
 
 .workspace-btn:disabled {
-  opacity: 0.4;
+  color: var(--muted-soft);
   cursor: not-allowed;
-}
-
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: #666666;
-  font-weight: 500;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #CCC;
-}
-
-.status-indicator.ready .dot { background: #4CAF50; }
-.status-indicator.processing .dot { background: #FF9800; animation: pulse 1s infinite; }
-.status-indicator.completed .dot { background: #4CAF50; }
-.status-indicator.error .dot { background: #F44336; }
-
-@keyframes pulse { 50% { opacity: 0.5; } }
-
-/* Content */
-.content-area {
-  flex: 1;
-  display: flex;
-  position: relative;
-  overflow: hidden;
-}
-
-.panel-wrapper {
-  height: 100%;
-  overflow: hidden;
-  transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.3s ease, transform 0.3s ease;
-  will-change: width, opacity, transform;
-}
-
-.panel-wrapper.left {
-  border-right: 1px solid #EAEAEA;
 }
 </style>

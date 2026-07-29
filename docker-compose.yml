@@ -20,3 +20,6 @@ services:
       # Uploads, projects, simulations and reports live here; the image runs as
       # uid 10001, which needs write access to this path on the host.
       - ./backend/uploads:/app/backend/uploads
+      # File logs, so they survive a container recreate. stdout still goes to
+      # `docker logs` either way.
+      - ./backend/logs:/app/backend/logs

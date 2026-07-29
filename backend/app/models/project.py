@@ -47,6 +47,12 @@ class Project:
     zep_batch_id: Optional[str] = None
     zep_batch_operation_id: Optional[str] = None
     
+    # Audience priors harvested from public discussion during the graph build.
+    # Absent when no source was configured or the harvest found nothing; the
+    # rest of the pipeline treats that as "no priors", not as an error.
+    corpus_distribution: Optional[Dict[str, Any]] = None
+    corpus_summary: Optional[Dict[str, Any]] = None
+
     # Configuration
     simulation_requirement: Optional[str] = None
     chunk_size: int = 500
@@ -71,6 +77,8 @@ class Project:
             "graph_build_task_id": self.graph_build_task_id,
             "zep_batch_id": self.zep_batch_id,
             "zep_batch_operation_id": self.zep_batch_operation_id,
+            "corpus_distribution": self.corpus_distribution,
+            "corpus_summary": self.corpus_summary,
             "simulation_requirement": self.simulation_requirement,
             "chunk_size": self.chunk_size,
             "chunk_overlap": self.chunk_overlap,
@@ -98,6 +106,8 @@ class Project:
             graph_build_task_id=data.get('graph_build_task_id'),
             zep_batch_id=data.get('zep_batch_id'),
             zep_batch_operation_id=data.get('zep_batch_operation_id'),
+            corpus_distribution=data.get('corpus_distribution'),
+            corpus_summary=data.get('corpus_summary'),
             simulation_requirement=data.get('simulation_requirement'),
             chunk_size=data.get('chunk_size', 500),
             chunk_overlap=data.get('chunk_overlap', 50),

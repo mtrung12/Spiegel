@@ -69,7 +69,9 @@ def test_normalized_profile_serializes_to_twitter_and_reddit(tmp_path):
     reddit = json.loads(reddit_path.read_text(encoding="utf-8"))[0]
 
     assert twitter["description"] == "public bio"
-    assert twitter["user_char"] == "public bio detailed, persona"
+    # The Twitter system message has no demographics slot, so the sampled
+    # attributes are appended to user_char instead of being dropped.
+    assert twitter["user_char"] == "public bio detailed, persona MBTI type ENFP."
     assert reddit["bio"] == "public bio"
     assert reddit["persona"] == "detailed, persona"
     assert reddit["mbti"] == "ENFP"

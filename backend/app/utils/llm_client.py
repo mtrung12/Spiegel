@@ -133,10 +133,19 @@ class LLMClient:
             model=Config.CHATBOT_LLM_MODEL_NAME,
         )
 
+    @classmethod
+    def for_vision(cls) -> "LLMClient":
+        """Client for reading page images, which needs a model that can see."""
+        return cls(
+            api_key=Config.VISION_LLM_API_KEY,
+            base_url=Config.VISION_LLM_BASE_URL,
+            model=Config.VISION_LLM_MODEL_NAME,
+        )
+
     def _create_completion(
         self,
         *,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         temperature: Optional[float],
         max_tokens: Optional[int],
         response_format: Optional[Dict[str, Any]],
@@ -201,7 +210,7 @@ class LLMClient:
     
     def chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = 4096,
         response_format: Optional[Dict] = None
@@ -229,7 +238,7 @@ class LLMClient:
     
     def chat_json(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         temperature: float = 0.3,
         max_tokens: Optional[int] = 4096,
         max_attempts: int = 1,

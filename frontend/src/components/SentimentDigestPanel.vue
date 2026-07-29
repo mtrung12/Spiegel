@@ -272,8 +272,8 @@ ThemeList.emits = ['toggle']
 
 <style scoped>
 .sd-panel {
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
+  border: 1px solid var(--border);
+  background: var(--white);
   padding: 24px;
   margin-bottom: 32px;
 }
@@ -293,13 +293,13 @@ ThemeList.emits = ['toggle']
 .sd-title {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #111111;
+  color: var(--ink);
   margin: 0;
 }
 
 .sd-subtitle {
   font-size: 0.78rem;
-  color: #A3A3A3;
+  color: var(--muted-soft);
   margin: 4px 0 0;
 }
 
@@ -310,9 +310,9 @@ ThemeList.emits = ['toggle']
 }
 
 .sd-btn {
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   background: transparent;
-  color: #666666;
+  color: var(--muted);
   font-size: 0.75rem;
   padding: 6px 12px;
   cursor: pointer;
@@ -325,12 +325,12 @@ ThemeList.emits = ['toggle']
 
 .sd-state {
   font-size: 0.82rem;
-  color: #A3A3A3;
+  color: var(--muted-soft);
   padding: 12px 0;
 }
 
 .sd-state--error {
-  color: #DC2626;
+  color: var(--danger);
 }
 
 .sd-group {
@@ -342,16 +342,16 @@ ThemeList.emits = ['toggle']
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: #A3A3A3;
+  color: var(--muted-soft);
   margin-bottom: 10px;
 }
 
 .sd-group-hint {
   font-size: 0.75rem;
-  color: #A3A3A3;
+  color: var(--muted-soft);
   margin: -4px 0 10px;
 }
 
@@ -363,10 +363,10 @@ ThemeList.emits = ['toggle']
 }
 
 .sd-scope-btn {
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   background: transparent;
-  color: #666666;
-  font-size: 0.68rem;
+  color: var(--muted);
+  font-size: 0.75rem;
   letter-spacing: 0.5px;
   text-transform: uppercase;
   padding: 4px 10px;
@@ -374,12 +374,12 @@ ThemeList.emits = ['toggle']
 }
 
 .sd-scope-btn.active {
-  border-color: #111111;
-  color: #111111;
+  border-color: var(--ink);
+  color: var(--ink);
 }
 
 .sd-scope-count {
-  color: #A3A3A3;
+  color: var(--muted-soft);
   margin-left: 4px;
 }
 
@@ -388,7 +388,7 @@ ThemeList.emits = ['toggle']
 .sd-bar {
   display: flex;
   height: 34px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   overflow: hidden;
 }
 
@@ -400,17 +400,17 @@ ThemeList.emits = ['toggle']
   min-width: 0;
 }
 
-.sd-bar-seg.is-positive { background: #111111; }
-.sd-bar-seg.is-neutral { background: #E5E5E5; }
-.sd-bar-seg.is-negative { background: #DC2626; }
+.sd-bar-seg.is-positive { background: var(--ink); }
+.sd-bar-seg.is-neutral { background: var(--border); }
+.sd-bar-seg.is-negative { background: var(--danger); }
 
 .sd-bar-text {
-  font-size: 0.7rem;
-  color: #FFFFFF;
+  font-size: 0.75rem;
+  color: var(--white);
 }
 
 .sd-bar-seg.is-neutral .sd-bar-text {
-  color: #666666;
+  color: var(--muted);
 }
 
 .sd-legend {
@@ -419,7 +419,7 @@ ThemeList.emits = ['toggle']
   gap: 16px;
   margin-top: 10px;
   font-size: 0.75rem;
-  color: #666666;
+  color: var(--muted);
 }
 
 .sd-legend-item {
@@ -430,7 +430,7 @@ ThemeList.emits = ['toggle']
 
 .sd-legend-net {
   margin-left: auto;
-  color: #111111;
+  color: var(--ink);
 }
 
 .sd-dot {
@@ -439,9 +439,9 @@ ThemeList.emits = ['toggle']
   display: inline-block;
 }
 
-.sd-dot.is-positive { background: #111111; }
-.sd-dot.is-neutral { background: #E5E5E5; }
-.sd-dot.is-negative { background: #DC2626; }
+.sd-dot.is-positive { background: var(--ink); }
+.sd-dot.is-neutral { background: var(--border); }
+.sd-dot.is-negative { background: var(--danger); }
 
 /* ── Highlight cards ──────────────────────────────────── */
 
@@ -452,17 +452,17 @@ ThemeList.emits = ['toggle']
 }
 
 .sd-card {
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   border-left-width: 3px;
-  background: #FAFAFA;
+  background: var(--surface);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.sd-card.is-positive { border-left-color: #111111; }
-.sd-card.is-negative { border-left-color: #DC2626; }
+.sd-card.is-positive { border-left-color: var(--ink); }
+.sd-card.is-negative { border-left-color: var(--danger); }
 
 .sd-card-head {
   display: flex;
@@ -472,22 +472,22 @@ ThemeList.emits = ['toggle']
 }
 
 .sd-card-label {
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  color: #A3A3A3;
+  color: var(--muted-soft);
 }
 
 .sd-card-stats {
-  font-size: 0.72rem;
-  color: #666666;
+  font-size: 0.75rem;
+  color: var(--muted);
   white-space: nowrap;
 }
 
 .sd-card-body {
   font-size: 0.85rem;
   line-height: 1.5;
-  color: #111111;
+  color: var(--ink);
   margin: 0;
 }
 
@@ -496,20 +496,20 @@ ThemeList.emits = ['toggle']
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  font-size: 0.72rem;
-  color: #666666;
+  font-size: 0.75rem;
+  color: var(--muted);
 }
 
 .sd-card-meta {
-  color: #A3A3A3;
+  color: var(--muted-soft);
 }
 
 .sd-tag {
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
+  border: 1px solid var(--border);
+  background: var(--white);
   padding: 1px 7px;
-  font-size: 0.68rem;
-  color: #666666;
+  font-size: 0.75rem;
+  color: var(--muted);
 }
 
 /* ── Theme lists ──────────────────────────────────────── */
@@ -527,7 +527,7 @@ ThemeList.emits = ['toggle']
 }
 
 .sd-theme {
-  border-bottom: 1px solid #F5F5F5;
+  border-bottom: 1px solid var(--surface-2);
 }
 
 .sd-theme-row {
@@ -542,11 +542,11 @@ ThemeList.emits = ['toggle']
   cursor: pointer;
   text-align: left;
   font-size: 0.8rem;
-  color: #111111;
+  color: var(--ink);
 }
 
 .sd-theme-row:hover {
-  color: #DC2626;
+  color: var(--danger);
 }
 
 .sd-theme-name {
@@ -557,7 +557,7 @@ ThemeList.emits = ['toggle']
 
 .sd-theme-bar {
   height: 6px;
-  background: #F5F5F5;
+  background: var(--surface-2);
   display: block;
 }
 
@@ -566,25 +566,25 @@ ThemeList.emits = ['toggle']
   height: 100%;
 }
 
-.sd-theme-fill.is-negative { background: #DC2626; }
-.sd-theme-fill.is-positive { background: #111111; }
+.sd-theme-fill.is-negative { background: var(--danger); }
+.sd-theme-fill.is-positive { background: var(--ink); }
 
 .sd-theme-count,
 .sd-theme-share {
-  font-size: 0.72rem;
-  color: #666666;
+  font-size: 0.75rem;
+  color: var(--muted);
   text-align: right;
 }
 
 .sd-theme-share {
-  color: #A3A3A3;
+  color: var(--muted-soft);
 }
 
 .sd-example-list {
   list-style: none;
   margin: 0 0 10px;
   padding: 0 0 0 12px;
-  border-left: 1px solid #E5E5E5;
+  border-left: 1px solid var(--border);
 }
 
 .sd-example {
@@ -594,19 +594,19 @@ ThemeList.emits = ['toggle']
 .sd-example-text {
   font-size: 0.78rem;
   line-height: 1.5;
-  color: #666666;
+  color: var(--muted);
   margin: 0 0 2px;
 }
 
 .sd-example-meta {
-  font-size: 0.68rem;
-  color: #A3A3A3;
+  font-size: 0.75rem;
+  color: var(--muted-soft);
 }
 
 .sd-foot {
-  font-size: 0.7rem;
-  color: #A3A3A3;
-  border-top: 1px solid #F5F5F5;
+  font-size: 0.75rem;
+  color: var(--muted-soft);
+  border-top: 1px solid var(--surface-2);
   padding-top: 12px;
 }
 </style>

@@ -106,6 +106,24 @@ class Config:
     )
     CHATBOT_LLM_MODEL_NAME = os.environ.get('CHATBOT_LLM_MODEL_NAME') or LLM_MODEL_NAME
 
+    # Vision LLM - reads the pages of an uploaded PDF that carry no text layer.
+    # A creative deck exported from Figma or Keynote is one image per slide, so
+    # without this the brief extracts to nothing. Inherits LLM_* when unset, on
+    # the same key rule as the chatbot above; leave it inherited only when the
+    # main model can actually see images.
+    VISION_LLM_BASE_URL = os.environ.get('VISION_LLM_BASE_URL') or LLM_BASE_URL
+    VISION_LLM_API_KEY = resolve_llm_api_key(
+        os.environ.get('VISION_LLM_API_KEY')
+        or (LLM_API_KEY if VISION_LLM_BASE_URL == LLM_BASE_URL else None),
+        VISION_LLM_BASE_URL,
+    )
+    VISION_LLM_MODEL_NAME = os.environ.get('VISION_LLM_MODEL_NAME') or LLM_MODEL_NAME
+
+    # Rasterisation DPI for those pages, and the cap on how many get sent. The
+    # cap is a bill guard: a 300-page scan would otherwise be 300 vision calls.
+    VISION_PDF_DPI = int(os.environ.get('VISION_PDF_DPI', '150'))
+    VISION_PDF_MAX_PAGES = int(os.environ.get('VISION_PDF_MAX_PAGES', '40'))
+
     # Zep settings
     ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
 
@@ -138,6 +156,18 @@ class Config:
     DEFAULT_CHUNK_SIZE = 500  # Default chunk size
     DEFAULT_CHUNK_OVERLAP = 50  # Default chunk overlap
     
+    # How the cloned part of the cast splits between generic company accounts
+    # and generic personal ones: 10% companies, 90% people. Applied to the
+    # slots left after every specific (named) entity has taken its one agent.
+    #
+    # A calibration knob, not a measured constant. The nearest public figures
+    # are account-registration shares - Instagram ~200M business accounts of
+    # 2B+ users (~10%), LinkedIn 67.1M company pages of ~1B members (~6.7%) -
+    # and what this actually governs is the share of accounts that post a
+    # reaction in one category, which nobody publishes. Raise it for B2B or
+    # trade-press-heavy categories, lower it where brands barely speak.
+    GENERAL_COMPANY_SHARE = float(os.environ.get('GENERAL_COMPANY_SHARE', '0.10'))
+
     # OASIS simulation settings
     OASIS_DEFAULT_MAX_ROUNDS = int(os.environ.get('OASIS_DEFAULT_MAX_ROUNDS', '10'))
     OASIS_SIMULATION_DATA_DIR = os.path.join(os.path.dirname(__file__), '../uploads/simulations')
@@ -234,6 +264,15 @@ class Config:
             errors.append(
                 "CHATBOT_LLM_API_KEY is not configured"
                 " (CHATBOT_LLM_BASE_URL differs from LLM_BASE_URL, so it needs its own key)"
+            )
+        # Same rule for the vision model. Only reached when the operator pointed
+        # VISION_LLM_BASE_URL at its own host, which is a misconfiguration rather
+        # than an opt-out: leaving every VISION_LLM_* unset inherits the main
+        # endpoint and its key, and reports nothing here.
+        if cls.VISION_LLM_BASE_URL != cls.LLM_BASE_URL and not cls.VISION_LLM_API_KEY:
+            errors.append(
+                "VISION_LLM_API_KEY is not configured"
+                " (VISION_LLM_BASE_URL differs from LLM_BASE_URL, so it needs its own key)"
             )
         if not cls.ZEP_API_KEY:
             errors.append("ZEP_API_KEY is not configured")

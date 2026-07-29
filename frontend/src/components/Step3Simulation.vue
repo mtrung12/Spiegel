@@ -21,7 +21,7 @@
             <svg class="platform-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
             </svg>
-            <span class="platform-name">Info Plaza</span>
+            <span class="platform-name">{{ $t('step3.platformInfoPlaza') }}</span>
             <span v-if="runStatus.twitter_completed" class="status-badge">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3">
                 <polyline points="20 6 9 17 4 12"></polyline>
@@ -30,28 +30,29 @@
           </div>
           <div class="platform-stats">
             <span class="stat">
-              <span class="stat-label">ROUND</span>
+              <span class="stat-label">{{ $t('step3.statRound') }}</span>
               <span class="stat-value mono">{{ runStatus.twitter_current_round || 0 }}<span class="stat-total">/{{ runStatus.total_rounds || maxRounds || '-' }}</span></span>
             </span>
             <span class="stat">
-              <span class="stat-label">TIME</span>
+              <span class="stat-label">{{ $t('step3.statTime') }}</span>
               <span class="stat-value mono">{{ twitterElapsedTime }}</span>
             </span>
             <span class="stat">
-              <span class="stat-label">ACTS</span>
+              <span class="stat-label">{{ $t('step3.statActs') }}</span>
               <span class="stat-value mono">{{ runStatus.twitter_actions_count || 0 }}</span>
             </span>
           </div>
           <!-- Available actions -->
           <div class="actions-tooltip">
-            <div class="tooltip-title">Available Actions</div>
+            <div class="tooltip-title">{{ $t('step3.availableActions') }}</div>
             <div class="tooltip-actions">
-              <span class="tooltip-action">POST</span>
-              <span class="tooltip-action">LIKE</span>
-              <span class="tooltip-action">REPOST</span>
-              <span class="tooltip-action">QUOTE</span>
-              <span class="tooltip-action">FOLLOW</span>
-              <span class="tooltip-action">IDLE</span>
+              <span class="tooltip-action">{{ $t('step3.actions.post') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.comment') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.like') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.repost') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.quote') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.follow') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.idle') }}</span>
             </div>
           </div>
         </div>
@@ -62,7 +63,7 @@
             <svg class="platform-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
             </svg>
-            <span class="platform-name">Topic Community</span>
+            <span class="platform-name">{{ $t('step3.platformTopicCommunity') }}</span>
             <span v-if="runStatus.reddit_completed" class="status-badge">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3">
                 <polyline points="20 6 9 17 4 12"></polyline>
@@ -71,32 +72,32 @@
           </div>
           <div class="platform-stats">
             <span class="stat">
-              <span class="stat-label">ROUND</span>
+              <span class="stat-label">{{ $t('step3.statRound') }}</span>
               <span class="stat-value mono">{{ runStatus.reddit_current_round || 0 }}<span class="stat-total">/{{ runStatus.total_rounds || maxRounds || '-' }}</span></span>
             </span>
             <span class="stat">
-              <span class="stat-label">TIME</span>
+              <span class="stat-label">{{ $t('step3.statTime') }}</span>
               <span class="stat-value mono">{{ redditElapsedTime }}</span>
             </span>
             <span class="stat">
-              <span class="stat-label">ACTS</span>
+              <span class="stat-label">{{ $t('step3.statActs') }}</span>
               <span class="stat-value mono">{{ runStatus.reddit_actions_count || 0 }}</span>
             </span>
           </div>
           <!-- Available actions -->
           <div class="actions-tooltip">
-            <div class="tooltip-title">Available Actions</div>
+            <div class="tooltip-title">{{ $t('step3.availableActions') }}</div>
             <div class="tooltip-actions">
-              <span class="tooltip-action">POST</span>
-              <span class="tooltip-action">COMMENT</span>
-              <span class="tooltip-action">LIKE</span>
-              <span class="tooltip-action">DISLIKE</span>
-              <span class="tooltip-action">SEARCH</span>
-              <span class="tooltip-action">TREND</span>
-              <span class="tooltip-action">FOLLOW</span>
-              <span class="tooltip-action">MUTE</span>
-              <span class="tooltip-action">REFRESH</span>
-              <span class="tooltip-action">IDLE</span>
+              <span class="tooltip-action">{{ $t('step3.actions.post') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.comment') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.like') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.dislike') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.search') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.trend') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.follow') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.mute') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.refresh') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.idle') }}</span>
             </div>
           </div>
         </div>
@@ -145,7 +146,7 @@
       <!-- Timeline Header -->
       <div class="timeline-header" v-if="allActions.length > 0">
         <div class="timeline-stats">
-          <span class="total-count">TOTAL EVENTS: <span class="mono">{{ allActions.length }}</span></span>
+          <span class="total-count">{{ $t('step3.totalEvents') }}: <span class="mono">{{ allActions.length }}</span></span>
           <span class="platform-breakdown">
             <span class="breakdown-item twitter">
               <svg class="mini-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
@@ -252,7 +253,7 @@
                 <template v-if="action.action_type === 'SEARCH_POSTS'">
                   <div class="search-info">
                     <svg class="icon-small" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                    <span class="search-label">Search Query:</span>
+                    <span class="search-label">{{ $t('step3.searchQuery') }}:</span>
                     <span class="search-query">"{{ action.action_args?.query || '' }}"</span>
                   </div>
                 </template>
@@ -281,7 +282,7 @@
                 <template v-if="action.action_type === 'DO_NOTHING'">
                   <div class="idle-info">
                     <svg class="icon-small" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                    <span class="idle-label">Action Skipped</span>
+                    <span class="idle-label">{{ $t('step3.actionSkipped') }}</span>
                   </div>
                 </template>
 
@@ -308,10 +309,13 @@
 
     <!-- Bottom Info / Logs -->
     <div class="system-logs">
-      <div class="log-header" @click="showLogs = !showLogs">
-        <span class="log-title">{{ showLogs ? '▾' : '▸' }} SIMULATION MONITOR</span>
-        <span class="log-id">{{ simulationId || 'NO_SIMULATION' }}</span>
-      </div>
+      <button type="button" class="log-header" :aria-expanded="showLogs" @click="showLogs = !showLogs">
+        <span class="log-title">
+          <span aria-hidden="true">{{ showLogs ? '▾' : '▸' }}</span>
+          {{ $t('step3.simulationMonitor') }}
+        </span>
+        <span class="log-id">{{ simulationId || $t('step3.noSimulation') }}</span>
+      </button>
       <div v-show="showLogs" class="log-content" ref="logContent">
         <div class="log-line" v-for="(log, idx) in systemLogs" :key="idx">
           <span class="log-time">{{ log.time }}</span>
@@ -339,6 +343,9 @@ const { t } = useI18n()
 
 const props = defineProps({
   simulationId: String,
+  // True only when step 2's launch button sent us here. Otherwise this panel
+  // attaches to whatever run already exists instead of force-restarting it.
+  startNewRun: { type: Boolean, default: false },
   maxRounds: Number, // Round cap, passed down from step 2
   minutesPerRound: {
     type: Number,
@@ -732,10 +739,54 @@ watch([() => props.systemLogs?.length, showLogs], () => {
   })
 })
 
+// Runner states that mean a run already owns this simulation. Re-entering step
+// 3 (header tab, browser back) must attach to it, not force-restart it.
+const LIVE_RUNNER_STATUSES = ['starting', 'running', 'paused', 'stopping']
+const TERMINAL_RUNNER_STATUSES = ['stopped', 'completed', 'failed']
+
+const attachOrStart = async () => {
+  try {
+    const res = await getRunStatus(props.simulationId)
+    const status = res?.success ? res.data?.runner_status : null
+
+    if (LIVE_RUNNER_STATUSES.includes(status)) {
+      addLog(t('log.attachedToRun'))
+      phase.value = 1
+      runStatus.value = res.data
+      prevTwitterRound.value = res.data.twitter_current_round || 0
+      prevRedditRound.value = res.data.reddit_current_round || 0
+      emit('update-status', 'processing')
+      // Pull the backlog of actions once, then follow along.
+      fetchRunStatusDetail()
+      startStatusPolling()
+      startDetailPolling()
+      return
+    }
+
+    if (TERMINAL_RUNNER_STATUSES.includes(status)) {
+      addLog(t('log.showingFinishedRun'))
+      phase.value = 2
+      runStatus.value = res.data
+      emit('update-status', status === 'failed' ? 'error' : 'completed')
+      fetchRunStatusDetail()
+      return
+    }
+  } catch (err) {
+    // No status to read: fall through and start a run.
+    console.warn('failed to read the run status on mount:', err)
+  }
+
+  doStartSimulation()
+}
+
 onMounted(() => {
   addLog(t('log.step3Init'))
-  if (props.simulationId) {
+  if (!props.simulationId) return
+
+  if (props.startNewRun) {
     doStartSimulation()
+  } else {
+    attachOrStart()
   }
 })
 
@@ -749,19 +800,19 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #FFFFFF;
+  background: var(--white);
   font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
   overflow: hidden;
 }
 
 /* --- Control Bar --- */
 .control-bar {
-  background: #FFF;
+  background: var(--white);
   padding: 12px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #EAEAEA;
+  border-bottom: 1px solid var(--border-soft);
   z-index: 10;
   height: 64px;
   position: relative;
@@ -772,22 +823,22 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   font-size: 12px;
-  color: #333;
+  color: var(--ink-2);
 }
 
 .detail-toggle {
-  border: 1px solid #EAEAEA;
-  background: #FFF;
+  border: 1px solid var(--border-soft);
+  background: var(--white);
   border-radius: 4px;
   width: 22px;
   height: 22px;
   cursor: pointer;
-  color: #666;
-  font-size: 11px;
+  color: var(--muted);
+  font-size: 12px;
   line-height: 1;
 }
 
-.summary-acts { color: #888; }
+.summary-acts { color: var(--muted-soft); }
 
 /* Detail drops below the bar so the 64px control bar keeps its height */
 .status-group {
@@ -796,8 +847,8 @@ onUnmounted(() => {
   position: absolute;
   top: 64px;
   left: 24px;
-  background: #FFF;
-  border: 1px solid #EAEAEA;
+  background: var(--white);
+  border: 1px solid var(--border-soft);
   border-radius: 4px;
   padding: 8px;
   z-index: 20;
@@ -811,8 +862,8 @@ onUnmounted(() => {
   gap: 4px;
   padding: 6px 12px;
   border-radius: 4px;
-  background: #FAFAFA;
-  border: 1px solid #EAEAEA;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
   opacity: 0.7;
   transition: all 0.3s;
   min-width: 140px;
@@ -822,8 +873,8 @@ onUnmounted(() => {
 
 .platform-status.active {
   opacity: 1;
-  border-color: #333;
-  background: #FFF;
+  border-color: var(--ink-2);
+  background: var(--white);
 }
 
 .platform-status.completed {
@@ -840,8 +891,8 @@ onUnmounted(() => {
   transform: translateX(-50%);
   margin-top: 8px;
   padding: 10px 14px;
-  background: #F97316;
-  color: #FFF;
+  background: var(--accent);
+  color: var(--white);
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   opacity: 0;
@@ -860,7 +911,7 @@ onUnmounted(() => {
   transform: translateX(-50%);
   border-left: 6px solid transparent;
   border-right: 6px solid transparent;
-  border-bottom: 6px solid #000;
+  border-bottom: 6px solid var(--black);
 }
 
 .platform-status:hover .actions-tooltip {
@@ -869,9 +920,9 @@ onUnmounted(() => {
 }
 
 .tooltip-title {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  color: #999;
+  color: var(--muted-soft);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 8px;
@@ -884,12 +935,12 @@ onUnmounted(() => {
 }
 
 .tooltip-action {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   padding: 3px 8px;
   background: rgba(255, 255, 255, 0.15);
   border-radius: 2px;
-  color: #FFF;
+  color: var(--white);
   letter-spacing: 0.03em;
 }
 
@@ -901,15 +952,15 @@ onUnmounted(() => {
 }
 
 .platform-name {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  color: #000;
+  color: var(--black);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
-.platform-status.twitter .platform-icon { color: #000; }
-.platform-status.reddit .platform-icon { color: #000; }
+.platform-status.twitter .platform-icon { color: var(--black); }
+.platform-status.reddit .platform-icon { color: var(--black); }
 
 .platform-stats {
   display: flex;
@@ -923,22 +974,22 @@ onUnmounted(() => {
 }
 
 .stat-label {
-  font-size: 8px;
-  color: #999;
+  font-size: 12px;
+  color: var(--muted-soft);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .stat-value {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  color: #333;
+  color: var(--ink-2);
 }
 
 .stat-total, .stat-unit {
-  font-size: 9px;
-  color: #999;
+  font-size: 12px;
+  color: var(--muted-soft);
   font-weight: 400;
 }
 
@@ -963,11 +1014,11 @@ onUnmounted(() => {
 
 .view-btn {
   padding: 6px 14px;
-  border: 1px solid #EAEAEA;
+  border: 1px solid var(--border-soft);
   border-radius: 4px;
-  background: #FFF;
-  color: #888;
-  font-size: 11px;
+  background: var(--white);
+  color: var(--muted-soft);
+  font-size: 12px;
   font-family: inherit;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -976,12 +1027,12 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.view-btn:hover { border-color: #CCC; color: #555; }
+.view-btn:hover { border-color: var(--border-strong); color: var(--ink-3); }
 
 .view-btn.active {
-  border-color: #333;
-  background: #333;
-  color: #FFF;
+  border-color: var(--ink-2);
+  background: var(--ink-2);
+  color: var(--white);
 }
 
 /* The board replaces the timeline, so it takes the same flex slot */
@@ -1007,12 +1058,12 @@ onUnmounted(() => {
 }
 
 .action-btn.primary {
-  background: #F97316;
-  color: #FFF;
+  background: var(--accent);
+  color: var(--white);
 }
 
 .action-btn.primary:hover:not(:disabled) {
-  background: #EA580C;
+  background: var(--accent-strong);
 }
 
 .action-btn:disabled {
@@ -1025,7 +1076,7 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   position: relative;
-  background: #FFF;
+  background: var(--white);
 }
 
 /* Timeline Header */
@@ -1035,7 +1086,7 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(8px);
   padding: 12px 24px;
-  border-bottom: 1px solid #EAEAEA;
+  border-bottom: 1px solid var(--border-soft);
   z-index: 5;
   display: flex;
   justify-content: center;
@@ -1045,16 +1096,16 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 16px;
-  font-size: 11px;
-  color: #666;
-  background: #F5F5F5;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface-2);
   padding: 4px 12px;
   border-radius: 20px;
 }
 
 .total-count {
   font-weight: 600;
-  color: #333;
+  color: var(--ink-2);
 }
 
 .platform-breakdown {
@@ -1069,9 +1120,9 @@ onUnmounted(() => {
   gap: 4px;
 }
 
-.breakdown-divider { color: #DDD; }
-.breakdown-item.twitter { color: #000; }
-.breakdown-item.reddit { color: #000; }
+.breakdown-divider { color: var(--muted-soft); }
+.breakdown-item.twitter { color: var(--black); }
+.breakdown-item.reddit { color: var(--black); }
 
 /* --- Timeline Feed --- */
 .timeline-feed {
@@ -1088,7 +1139,7 @@ onUnmounted(() => {
   top: 0;
   bottom: 0;
   width: 1px;
-  background: #EAEAEA; /* Cleaner line */
+  background: var(--border-soft); /* Cleaner line */
   transform: translateX(-50%);
 }
 
@@ -1106,8 +1157,8 @@ onUnmounted(() => {
   top: 24px;
   width: 10px;
   height: 10px;
-  background: #FFF;
-  border: 1px solid #CCC;
+  background: var(--white);
+  border: 1px solid var(--border-strong);
   border-radius: 50%;
   transform: translateX(-50%);
   z-index: 2;
@@ -1119,22 +1170,22 @@ onUnmounted(() => {
 .marker-dot {
   width: 4px;
   height: 4px;
-  background: #CCC;
+  background: var(--border-strong);
   border-radius: 50%;
 }
 
-.timeline-item.twitter .marker-dot { background: #000; }
-.timeline-item.reddit .marker-dot { background: #000; }
-.timeline-item.twitter .timeline-marker { border-color: #000; }
-.timeline-item.reddit .timeline-marker { border-color: #000; }
+.timeline-item.twitter .marker-dot { background: var(--black); }
+.timeline-item.reddit .marker-dot { background: var(--black); }
+.timeline-item.twitter .timeline-marker { border-color: var(--black); }
+.timeline-item.reddit .timeline-marker { border-color: var(--black); }
 
 /* Card Layout */
 .timeline-card {
   width: calc(100% - 48px);
-  background: #FFF;
+  background: var(--white);
   border-radius: 2px;
   padding: 16px 20px;
-  border: 1px solid #EAEAEA;
+  border: 1px solid var(--border-soft);
   box-shadow: 0 2px 10px rgba(0,0,0,0.02);
   position: relative;
   transition: all 0.2s;
@@ -1142,7 +1193,7 @@ onUnmounted(() => {
 
 .timeline-card:hover {
   box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-  border-color: #DDD;
+  border-color: var(--border-strong);
 }
 
 /* Left side (Twitter) */
@@ -1172,7 +1223,7 @@ onUnmounted(() => {
   align-items: flex-start;
   margin-bottom: 12px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #F5F5F5;
+  border-bottom: 1px solid var(--surface-2);
 }
 
 .agent-info {
@@ -1184,8 +1235,8 @@ onUnmounted(() => {
 .avatar-placeholder {
   width: 24px;
   height: 24px;
-  background: #000;
-  color: #FFF;
+  background: var(--black);
+  color: var(--white);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1198,7 +1249,7 @@ onUnmounted(() => {
 .agent-name {
   font-size: 13px;
   font-weight: 600;
-  color: #000;
+  color: var(--black);
 }
 
 .header-meta {
@@ -1208,13 +1259,13 @@ onUnmounted(() => {
 }
 
 .platform-indicator {
-  color: #999;
+  color: var(--muted-soft);
   display: flex;
   align-items: center;
 }
 
 .action-badge {
-  font-size: 9px;
+  font-size: 12px;
   padding: 2px 6px;
   border-radius: 2px;
   font-weight: 600;
@@ -1224,33 +1275,33 @@ onUnmounted(() => {
 }
 
 /* Monochromatic Badges */
-.badge-post { background: #F0F0F0; color: #333; border-color: #E0E0E0; }
-.badge-comment { background: #F0F0F0; color: #666; border-color: #E0E0E0; }
-.badge-action { background: #FFF; color: #666; border: 1px solid #E0E0E0; }
-.badge-meta { background: #FAFAFA; color: #999; border: 1px dashed #DDD; }
+.badge-post { background: var(--surface-3); color: var(--ink-2); border-color: var(--border-soft); }
+.badge-comment { background: var(--surface-3); color: var(--muted); border-color: var(--border-soft); }
+.badge-action { background: var(--white); color: var(--muted); border: 1px solid var(--border-soft); }
+.badge-meta { background: var(--surface); color: var(--muted-soft); border: 1px dashed var(--border-strong); }
 .badge-idle { opacity: 0.5; }
 
 .content-text {
   font-size: 13px;
   line-height: 1.6;
-  color: #333;
+  color: var(--ink-2);
   margin-bottom: 10px;
 }
 
 .content-text.main-text {
   font-size: 14px;
-  color: #000;
+  color: var(--black);
 }
 
 /* Info Blocks (Quote, Repost, etc) */
 .quoted-block, .repost-content {
-  background: #F9F9F9;
-  border: 1px solid #EEE;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
   padding: 10px 12px;
   border-radius: 2px;
   margin-top: 8px;
   font-size: 12px;
-  color: #555;
+  color: var(--ink-3);
 }
 
 .quote-header, .repost-info, .like-info, .search-info, .follow-info, .vote-info, .idle-info, .comment-context {
@@ -1258,20 +1309,20 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   margin-bottom: 6px;
-  font-size: 11px;
-  color: #666;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .icon-small {
-  color: #999;
+  color: var(--muted-soft);
 }
 .icon-small.filled {
-  color: #999; /* Keep icons neutral unless highlighted */
+  color: var(--muted-soft); /* Keep icons neutral unless highlighted */
 }
 
 .search-query {
   font-family: 'JetBrains Mono', monospace;
-  background: #F0F0F0;
+  background: var(--surface-3);
   padding: 0 4px;
   border-radius: 2px;
 }
@@ -1280,8 +1331,8 @@ onUnmounted(() => {
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
-  font-size: 10px;
-  color: #BBB;
+  font-size: 12px;
+  color: var(--muted-soft);
   font-family: 'JetBrains Mono', monospace;
 }
 
@@ -1295,7 +1346,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  color: #CCC;
+  color: var(--muted-soft);
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -1305,13 +1356,13 @@ onUnmounted(() => {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  border: 1px solid #EAEAEA;
+  border: 1px solid var(--border-soft);
   animation: ripple 2s infinite;
 }
 
 @keyframes ripple {
-  0% { transform: scale(0.8); opacity: 1; border-color: #CCC; }
-  100% { transform: scale(2.5); opacity: 0; border-color: #EAEAEA; }
+  0% { transform: scale(0.8); opacity: 1; border-color: var(--border-strong); }
+  100% { transform: scale(2.5); opacity: 0; border-color: var(--border-soft); }
 }
 
 /* Animation */
@@ -1331,22 +1382,30 @@ onUnmounted(() => {
 
 /* Logs */
 .system-logs {
-  background: #FAFAFA;
-  color: #333333;
+  background: var(--surface);
+  color: var(--ink-2);
   padding: 16px;
   font-family: 'JetBrains Mono', monospace;
-  border-top: 1px solid #E5E5E5;
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .log-header {
+  /* Now a <button>: reset the inherited control styling. */
+  font: inherit;
+  text-align: left;
+  appearance: none;
+  border: none;
+  background: none;
+  color: inherit;
+  width: 100%;
   display: flex;
   justify-content: space-between;
-  border-bottom: 1px solid #E5E5E5;
+  border-bottom: 1px solid var(--border);
   padding-bottom: 8px;
   margin-bottom: 8px;
-  font-size: 10px;
-  color: #999999;
+  font-size: 12px;
+  color: var(--muted-soft);
   cursor: pointer;
   user-select: none;
 }
@@ -1361,17 +1420,17 @@ onUnmounted(() => {
 }
 
 .log-content::-webkit-scrollbar { width: 4px; }
-.log-content::-webkit-scrollbar-thumb { background: #D4D4D4; border-radius: 2px; }
+.log-content::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
 
 .log-line {
-  font-size: 11px;
+  font-size: 12px;
   display: flex;
   gap: 12px;
   line-height: 1.5;
 }
 
-.log-time { color: #999999; min-width: 75px; }
-.log-msg { color: #333333; word-break: break-all; }
+.log-time { color: var(--muted-soft); min-width: 75px; }
+.log-msg { color: var(--ink-2); word-break: break-all; }
 .mono { font-family: 'JetBrains Mono', monospace; }
 
 /* Loading spinner for button */
@@ -1380,7 +1439,7 @@ onUnmounted(() => {
   width: 14px;
   height: 14px;
   border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #FFF;
+  border-top-color: var(--white);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin-right: 6px;

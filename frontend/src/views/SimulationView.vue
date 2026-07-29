@@ -1,44 +1,19 @@
 <template>
   <div class="main-view">
-    <!-- Header -->
-    <header class="app-header">
-      <div class="header-left">
-        <div class="brand" @click="router.push('/')">CAMPAIGN REACTION</div>
-      </div>
-      
-      <div class="header-center">
-        <div class="view-switcher">
-          <button 
-            v-for="mode in ['graph', 'split', 'workbench']" 
-            :key="mode"
-            class="switch-btn"
-            :class="{ active: viewMode === mode }"
-            @click="viewMode = mode"
-          >
-            {{ { graph: $t('main.layoutGraph'), split: $t('main.layoutSplit'), workbench: $t('main.layoutWorkbench') }[mode] }}
-          </button>
-        </div>
-      </div>
-
-      <div class="header-right">
-        <LanguageSwitcher />
-        <div class="step-divider"></div>
-        <div class="workflow-step">
-          <span class="step-num">Step 2/5</span>
-          <span class="step-name">{{ $tm('main.stepNames')[1] }}</span>
-        </div>
-        <div class="step-divider"></div>
-        <span class="status-indicator" :class="statusClass">
-          <span class="dot"></span>
-          {{ statusText }}
-        </span>
-      </div>
-    </header>
+    <AppHeader
+      :currentStep="2"
+      :status="currentStatus"
+      :statusText="statusText"
+      v-model="viewMode"
+      :projectId="projectData?.project_id"
+      :simulationId="currentSimulationId"
+      :reportId="null"
+    />
 
     <!-- Main Content Area -->
-    <main class="content-area">
+    <main id="main-content" class="content-area" :data-mode="viewMode">
       <!-- Left Panel: Graph -->
-      <div class="panel-wrapper left" :style="leftPanelStyle">
+      <div class="panel-wrapper left">
         <GraphPanel 
           :graphData="graphData"
           :loading="graphLoading"
@@ -49,7 +24,7 @@
       </div>
 
       <!-- Right panel: step 2, environment setup -->
-      <div class="panel-wrapper right" :style="rightPanelStyle">
+      <div class="panel-wrapper right">
         <Step2EnvSetup
           :simulationId="currentSimulationId"
           :projectData="projectData"
@@ -66,13 +41,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GraphPanel from '../components/GraphPanel.vue'
 import Step2EnvSetup from '../components/Step2EnvSetup.vue'
 import { getProject, getGraphData } from '../api/graph'
 import { getSimulation, stopSimulation, getEnvStatus, closeSimulationEnv } from '../api/simulation'
-import LanguageSwitcher from '../components/LanguageSwitcher.vue'
+import AppHeader from '../components/AppHeader.vue'
+import { useSplitLayout, useSystemLog } from '../composables/useWorkbench'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -80,65 +56,28 @@ const route = useRoute()
 const router = useRouter()
 
 // Props
-const props = defineProps({
+defineProps({
   simulationId: String
 })
 
-// Layout State
-const viewMode = ref('split')
+const { viewMode, toggleMaximize } = useSplitLayout('split')
+const { systemLogs, addLog } = useSystemLog(100)
 
 // Data State
 const currentSimulationId = ref(route.params.simulationId)
 const projectData = ref(null)
 const graphData = ref(null)
 const graphLoading = ref(false)
-const systemLogs = ref([])
 const currentStatus = ref('processing') // processing | completed | error
 
-// --- Computed Layout Styles ---
-const leftPanelStyle = computed(() => {
-  if (viewMode.value === 'graph') return { width: '100%', opacity: 1, transform: 'translateX(0)' }
-  if (viewMode.value === 'workbench') return { width: '0%', opacity: 0, transform: 'translateX(-20px)' }
-  return { width: '50%', opacity: 1, transform: 'translateX(0)' }
-})
-
-const rightPanelStyle = computed(() => {
-  if (viewMode.value === 'workbench') return { width: '100%', opacity: 1, transform: 'translateX(0)' }
-  if (viewMode.value === 'graph') return { width: '0%', opacity: 0, transform: 'translateX(20px)' }
-  return { width: '50%', opacity: 1, transform: 'translateX(0)' }
-})
-
-// --- Status Computed ---
-const statusClass = computed(() => {
-  return currentStatus.value
-})
-
 const statusText = computed(() => {
-  if (currentStatus.value === 'error') return 'Error'
-  if (currentStatus.value === 'completed') return 'Ready'
-  return 'Preparing'
+  if (currentStatus.value === 'error') return t('main.statusError')
+  if (currentStatus.value === 'completed') return t('main.statusReady')
+  return t('main.statusPreparing')
 })
-
-// --- Helpers ---
-const addLog = (msg) => {
-  const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + new Date().getMilliseconds().toString().padStart(3, '0')
-  systemLogs.value.push({ time, msg })
-  if (systemLogs.value.length > 100) {
-    systemLogs.value.shift()
-  }
-}
 
 const updateStatus = (status) => {
   currentStatus.value = status
-}
-
-// --- Layout Methods ---
-const toggleMaximize = (target) => {
-  if (viewMode.value === target) {
-    viewMode.value = 'split'
-  } else {
-    viewMode.value = target
-  }
 }
 
 const handleGoBack = () => {
@@ -150,8 +89,13 @@ const handleGoBack = () => {
   }
 }
 
-const handleNextStep = (params = {}) => {
+const handleNextStep = async (params = {}) => {
   addLog(t('log.enterStep3'))
+
+  // A run left over from a previous visit to step 3 has to go before a new one
+  // starts. This is the only moment that is true: merely opening step 2 to look
+  // at the setup must leave a running simulation alone.
+  await checkAndStopRunningSimulation()
 
   // Record the round count
   if (params.maxRounds) {
@@ -160,15 +104,18 @@ const handleNextStep = (params = {}) => {
     addLog(t('log.useAutoRounds'))
   }
   
-  // Build the route parameters
+  // Build the route parameters. start=1 marks this as "launch a new run":
+  // step 3 reached any other way (header tab, browser back) attaches to the
+  // run already in flight rather than restarting it.
   const routeParams = {
     name: 'SimulationRun',
-    params: { simulationId: currentSimulationId.value }
+    params: { simulationId: currentSimulationId.value },
+    query: { start: '1' }
   }
-  
+
   // Pass a custom round count through the query string
   if (params.maxRounds) {
-    routeParams.query = { maxRounds: params.maxRounds }
+    routeParams.query.maxRounds = params.maxRounds
   }
   
   // Navigate to step 3
@@ -179,7 +126,8 @@ const handleNextStep = (params = {}) => {
 
 /**
  * Check for a running simulation and shut it down.
- * Going back from step 3 to step 2 is taken to mean the user wants out.
+ * Called just before step 3 starts a fresh run, never on mount: navigating to
+ * step 2 to review the setup used to terminate the live run.
  */
 const checkAndStopRunningSimulation = async () => {
   if (!currentSimulationId.value) return
@@ -291,150 +239,12 @@ const refreshGraph = () => {
   }
 }
 
-onMounted(async () => {
+onMounted(() => {
   addLog(t('log.simViewInit'))
-  
-  // Shut down a running simulation when the user comes back from step 3
-  await checkAndStopRunningSimulation()
-  
-  // Load the simulation data
   loadSimulationData()
 })
 </script>
 
-<style scoped>
-.main-view {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #FFF;
-  overflow: hidden;
-  font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
-}
-
-/* Header */
-.app-header {
-  height: 60px;
-  border-bottom: 1px solid #E5E5E5;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  background: #FFF;
-  color: #111111;
-  z-index: 100;
-  position: relative;
-}
-
-.brand {
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: 1px;
-  cursor: pointer;
-}
-
-.header-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.view-switcher {
-  display: flex;
-  background: #F5F5F5;
-  padding: 4px;
-  border-radius: 6px;
-  gap: 4px;
-}
-
-.switch-btn {
-  border: none;
-  background: transparent;
-  padding: 6px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #666666;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.switch-btn.active {
-  background: #FFF;
-  color: #111111;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.workflow-step {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-}
-
-.step-num {
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 700;
-  color: #A3A3A3;
-}
-
-.step-name {
-  font-weight: 700;
-  color: #111111;
-}
-
-.step-divider {
-  width: 1px;
-  height: 14px;
-  background-color: #E5E5E5;
-}
-
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: #666666;
-  font-weight: 500;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #CCC;
-}
-
-.status-indicator.processing .dot { background: #F97316; animation: pulse 1s infinite; }
-.status-indicator.completed .dot { background: #4CAF50; }
-.status-indicator.error .dot { background: #F44336; }
-
-@keyframes pulse { 50% { opacity: 0.5; } }
-
-/* Content */
-.content-area {
-  flex: 1;
-  display: flex;
-  position: relative;
-  overflow: hidden;
-}
-
-.panel-wrapper {
-  height: 100%;
-  overflow: hidden;
-  transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.3s ease, transform 0.3s ease;
-  will-change: width, opacity, transform;
-}
-
-.panel-wrapper.left {
-  border-right: 1px solid #EAEAEA;
-}
-</style>
+<!-- The shell (.main-view / .content-area / .panel-wrapper) is defined once in
+     App.vue; this view adds nothing on top of it. -->
 

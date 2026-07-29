@@ -3,7 +3,10 @@
     <!-- Header -->
     <header class="app-header">
       <div class="header-left">
-        <div class="brand" @click="router.push('/')">CAMPAIGN REACTION</div>
+        <button type="button" class="brand" @click="router.push('/')">
+          <span class="sr-only">{{ $t('a11y.backToProjectList') }}</span>
+          <span aria-hidden="true">CAMPAIGN REACTION</span>
+        </button>
       </div>
 
       <div class="header-center">
@@ -24,7 +27,7 @@
       </div>
     </header>
 
-    <main class="content-area">
+    <main id="main-content" class="content-area">
       <!-- SIDEBAR -->
       <aside class="sidebar">
         <div class="sidebar-block">
@@ -346,7 +349,7 @@ onMounted(async () => {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #FFF;
+  background: var(--white);
   overflow: hidden;
   font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
 }
@@ -358,18 +361,22 @@ onMounted(async () => {
 /* Header */
 .app-header {
   height: 60px;
-  border-bottom: 1px solid #E5E5E5;
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: #FFF;
-  color: #111111;
+  background: var(--white);
+  color: var(--ink);
   position: relative;
   z-index: 100;
 }
 
 .brand {
+  background: none;
+  border: none;
+  padding: 4px;
+  color: inherit;
   font-family: 'JetBrains Mono', monospace;
   font-weight: 800;
   font-size: 18px;
@@ -386,7 +393,7 @@ onMounted(async () => {
 .project-name {
   font-size: 13px;
   font-weight: 600;
-  color: #666666;
+  color: var(--muted);
 }
 
 .header-right {
@@ -398,24 +405,24 @@ onMounted(async () => {
 .header-divider {
   width: 1px;
   height: 14px;
-  background: #E5E5E5;
+  background: var(--border);
 }
 
 .header-btn {
-  border: 1px solid #E5E5E5;
-  background: #FFF;
+  border: 1px solid var(--border);
+  background: var(--white);
   border-radius: 6px;
   padding: 6px 14px;
   font-size: 12px;
   font-weight: 600;
-  color: #333333;
+  color: var(--ink-2);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .header-btn:hover:not(:disabled) {
-  background: #FAFAFA;
-  border-color: #D4D4D4;
+  background: var(--surface);
+  border-color: var(--border-strong);
 }
 
 .header-btn:disabled {
@@ -428,7 +435,7 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #666666;
+  color: var(--muted);
   font-weight: 500;
 }
 
@@ -436,7 +443,7 @@ onMounted(async () => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #CCC;
+  background: var(--border-strong);
 }
 
 .status-indicator.ready .dot { background: #4CAF50; }
@@ -455,8 +462,8 @@ onMounted(async () => {
 .sidebar {
   width: 260px;
   min-width: 260px;
-  border-right: 1px solid #E5E5E5;
-  background: #FAFAFA;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
   overflow-y: auto;
   padding: 20px 16px;
   display: flex;
@@ -468,33 +475,33 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  color: #999999;
+  color: var(--muted-soft);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 10px;
 }
 
 .count {
-  background: #E5E5E5;
-  color: #666666;
+  background: var(--border);
+  color: var(--muted);
   border-radius: 10px;
   padding: 1px 7px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .project-requirement {
   margin: 0;
   font-size: 12px;
   line-height: 1.6;
-  color: #4D4D4D;
+  color: var(--ink-3);
 }
 
 .sidebar-empty,
 .report-empty {
   font-size: 12px;
-  color: #A3A3A3;
+  color: var(--muted-soft);
   padding: 6px 0;
 }
 
@@ -509,28 +516,28 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 8px;
   padding: 8px 10px;
-  background: #FFF;
-  border: 1px solid #E5E5E5;
+  background: var(--white);
+  border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .sim-row:hover {
-  border-color: #D4D4D4;
+  border-color: var(--border-strong);
 }
 
 .sim-id {
-  font-size: 11px;
-  color: #333333;
+  font-size: 12px;
+  color: var(--ink-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .sim-status {
-  font-size: 10px;
-  color: #666666;
+  font-size: 12px;
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   flex-shrink: 0;
@@ -543,7 +550,7 @@ onMounted(async () => {
 .report-list {
   padding-left: 10px;
   margin-top: 4px;
-  border-left: 1px solid #E5E5E5;
+  border-left: 1px solid var(--border);
 }
 
 .report-row {
@@ -561,15 +568,15 @@ onMounted(async () => {
 }
 
 .report-row:hover {
-  background: #F0F0F0;
+  background: var(--surface-3);
 }
 
 .report-row.active {
-  background: #111111;
+  background: var(--ink);
 }
 
 .report-row.active .report-title {
-  color: #FFFFFF;
+  color: var(--white);
 }
 
 .report-dot {
@@ -577,7 +584,7 @@ onMounted(async () => {
   height: 6px;
   min-width: 6px;
   border-radius: 50%;
-  background: #CCCCCC;
+  background: var(--border-strong);
 }
 
 .report-dot.completed { background: #4CAF50; }
@@ -586,7 +593,7 @@ onMounted(async () => {
 
 .report-title {
   font-size: 12px;
-  color: #333333;
+  color: var(--ink-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -597,7 +604,7 @@ onMounted(async () => {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  background: #FFFFFF;
+  background: var(--white);
   padding: 30px 50px 60px;
 }
 
@@ -618,9 +625,9 @@ onMounted(async () => {
 }
 
 .report-tag {
-  background: #000000;
-  color: #FFFFFF;
-  font-size: 11px;
+  background: var(--black);
+  color: var(--white);
+  font-size: 12px;
   font-weight: 700;
   padding: 4px 8px;
   letter-spacing: 0.05em;
@@ -628,15 +635,15 @@ onMounted(async () => {
 }
 
 .report-id {
-  font-size: 11px;
-  color: #999999;
+  font-size: 12px;
+  color: var(--muted-soft);
 }
 
 .main-title {
   font-family: 'Times New Roman', Times, serif;
   font-size: 36px;
   font-weight: 700;
-  color: #000000;
+  color: var(--black);
   line-height: 1.2;
   margin: 0 0 16px 0;
   letter-spacing: -0.02em;
@@ -645,7 +652,7 @@ onMounted(async () => {
 .sub-title {
   font-family: 'Times New Roman', Times, serif;
   font-size: 16px;
-  color: #666666;
+  color: var(--muted);
   font-style: italic;
   line-height: 1.6;
   margin: 0 0 24px 0;
@@ -653,7 +660,7 @@ onMounted(async () => {
 
 .title-divider {
   height: 1px;
-  background: #E5E5E5;
+  background: var(--border);
 }
 
 .sections-list {
@@ -671,7 +678,7 @@ onMounted(async () => {
 
 .section-number {
   font-size: 16px;
-  color: #CCCCCC;
+  color: var(--muted-soft);
   font-weight: 500;
 }
 
@@ -679,14 +686,14 @@ onMounted(async () => {
   font-family: 'Times New Roman', Times, serif;
   font-size: 24px;
   font-weight: 600;
-  color: #000000;
+  color: var(--black);
   margin: 0;
 }
 
 .section-pending {
   padding-left: 28px;
   font-size: 13px;
-  color: #A3A3A3;
+  color: var(--muted-soft);
 }
 
 .generated-content {
@@ -694,14 +701,14 @@ onMounted(async () => {
   font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.8;
-  color: #333333;
+  color: var(--ink-2);
 }
 
 .generated-content :deep(.md-h2),
 .generated-content :deep(.md-h3),
 .generated-content :deep(.md-h4) {
   font-family: 'Times New Roman', Times, serif;
-  color: #000000;
+  color: var(--black);
   margin: 1.5em 0 0.8em;
   font-weight: 700;
 }
@@ -719,26 +726,26 @@ onMounted(async () => {
 .generated-content :deep(.md-li) { margin-bottom: 0.5em; }
 
 .generated-content :deep(.md-quote) {
-  border-left: 3px solid #E5E5E5;
+  border-left: 3px solid var(--border);
   padding-left: 16px;
   margin: 1.5em 0;
-  color: #666666;
+  color: var(--muted);
   font-style: italic;
 }
 
 .generated-content :deep(.code-block) {
-  background: #FAFAFA;
+  background: var(--surface);
   padding: 12px;
   border-radius: 6px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
   overflow-x: auto;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
 }
 
 .generated-content :deep(strong) {
   font-weight: 600;
-  color: #000000;
+  color: var(--black);
 }
 
 .pane-empty {
@@ -747,18 +754,51 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #A3A3A3;
+  color: var(--muted-soft);
   font-size: 14px;
+}
+
+/* Below this the three columns stop fitting; the shell scrolls as one column. */
+@media (max-width: 1100px) {
+  .workspace-view {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .content-area {
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .sidebar,
+  .chat-pane {
+    width: 100%;
+    min-width: 0;
+    border-right: none;
+    border-left: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .chat-pane {
+    border-top: 1px solid var(--border);
+    border-bottom: none;
+    height: 70vh;
+  }
+
+  .report-pane {
+    padding: 24px 20px 40px;
+  }
 }
 
 /* Chat pane */
 .chat-pane {
   width: 380px;
   min-width: 320px;
-  border-left: 1px solid #E5E5E5;
+  border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  background: #FFFFFF;
+  background: var(--white);
   overflow: hidden;
 }
 
@@ -767,8 +807,8 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   padding: 14px 16px;
-  border-bottom: 1px solid #E5E5E5;
-  background: linear-gradient(180deg, #FFFFFF 0%, #FAFBFC 100%);
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--white) 0%, #FAFBFC 100%);
 }
 
 .chat-avatar {
@@ -776,8 +816,8 @@ onMounted(async () => {
   height: 36px;
   min-width: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #111111 0%, #333333 100%);
-  color: #FFFFFF;
+  background: linear-gradient(135deg, var(--ink) 0%, var(--ink-2) 100%);
+  color: var(--white);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -795,24 +835,24 @@ onMounted(async () => {
 .chat-title {
   font-size: 13px;
   font-weight: 600;
-  color: #111111;
+  color: var(--ink);
 }
 
 .chat-subtitle {
-  font-size: 11px;
-  color: #999999;
+  font-size: 12px;
+  color: var(--muted-soft);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .chat-clear {
-  border: 1px solid #E5E5E5;
-  background: #FFF;
+  border: 1px solid var(--border);
+  background: var(--white);
   border-radius: 4px;
   padding: 4px 10px;
-  font-size: 11px;
-  color: #666666;
+  font-size: 12px;
+  color: var(--muted);
   cursor: pointer;
 }
 
@@ -835,7 +875,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #A3A3A3;
+  color: var(--muted-soft);
   font-size: 13px;
   text-align: center;
   line-height: 1.6;
@@ -851,8 +891,8 @@ onMounted(async () => {
   height: 28px;
   min-width: 28px;
   border-radius: 50%;
-  background: #F0F0F0;
-  color: #333333;
+  background: var(--surface-3);
+  color: var(--ink-2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -861,8 +901,8 @@ onMounted(async () => {
 }
 
 .chat-message.user .message-avatar {
-  background: #111111;
-  color: #FFFFFF;
+  background: var(--ink);
+  color: var(--white);
 }
 
 .message-content {
@@ -873,7 +913,7 @@ onMounted(async () => {
 .message-text {
   font-size: 13px;
   line-height: 1.7;
-  color: #333333;
+  color: var(--ink-2);
   word-break: break-word;
 }
 
@@ -881,7 +921,7 @@ onMounted(async () => {
 .message-text :deep(.md-ul),
 .message-text :deep(.md-ol) { padding-left: 18px; margin: 0 0 0.6em; }
 .message-text :deep(.inline-code) {
-  background: #F5F5F5;
+  background: var(--surface-2);
   padding: 1px 4px;
   border-radius: 3px;
   font-family: 'JetBrains Mono', monospace;
@@ -898,7 +938,7 @@ onMounted(async () => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #CCCCCC;
+  background: var(--border-strong);
   animation: blink 1.2s infinite;
 }
 
@@ -915,13 +955,13 @@ onMounted(async () => {
   align-items: flex-end;
   gap: 8px;
   padding: 12px 16px;
-  border-top: 1px solid #E5E5E5;
+  border-top: 1px solid var(--border);
 }
 
 .chat-input {
   flex: 1;
   resize: none;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 12px;
   font-size: 13px;
@@ -932,11 +972,11 @@ onMounted(async () => {
 }
 
 .chat-input:focus {
-  border-color: #111111;
+  border-color: var(--ink);
 }
 
 .chat-input:disabled {
-  background: #FAFAFA;
+  background: var(--surface);
   cursor: not-allowed;
 }
 
@@ -945,8 +985,8 @@ onMounted(async () => {
   height: 38px;
   border: none;
   border-radius: 8px;
-  background: #111111;
-  color: #FFFFFF;
+  background: var(--ink);
+  color: var(--white);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -955,8 +995,8 @@ onMounted(async () => {
 }
 
 .send-btn:disabled {
-  background: #E5E5E5;
-  color: #A3A3A3;
+  background: var(--border);
+  color: var(--muted-soft);
   cursor: not-allowed;
 }
 </style>

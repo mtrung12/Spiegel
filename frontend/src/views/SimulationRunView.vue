@@ -1,38 +1,19 @@
 <template>
   <div class="main-view">
-    <!-- Header -->
-    <header class="app-header">
-      <div class="header-left">
-        <div class="brand" @click="router.push('/')">CAMPAIGN REACTION</div>
-      </div>
-      
-      <div class="header-center">
-        <select class="view-select" v-model="viewMode">
-          <option value="workbench">{{ $t('main.layoutHideGraph') }}</option>
-          <option value="split">{{ $t('main.layoutSplit') }}</option>
-          <option value="graph">{{ $t('main.layoutGraph') }}</option>
-        </select>
-      </div>
-
-      <div class="header-right">
-        <LanguageSwitcher />
-        <div class="step-divider"></div>
-        <div class="workflow-step">
-          <span class="step-num">Step 3/5</span>
-          <span class="step-name">{{ $tm('main.stepNames')[2] }}</span>
-        </div>
-        <div class="step-divider"></div>
-        <span class="status-indicator" :class="statusClass">
-          <span class="dot"></span>
-          {{ statusText }}
-        </span>
-      </div>
-    </header>
+    <AppHeader
+      :currentStep="3"
+      :status="currentStatus"
+      :statusText="statusText"
+      v-model="viewMode"
+      :projectId="projectData?.project_id"
+      :simulationId="currentSimulationId"
+      :reportId="null"
+    ></AppHeader>
 
     <!-- Main Content Area -->
-    <main class="content-area">
+    <main id="main-content" class="content-area" :data-mode="viewMode">
       <!-- Left Panel: Graph -->
-      <div class="panel-wrapper left" :style="leftPanelStyle">
+      <div class="panel-wrapper left">
         <GraphPanel 
           :graphData="graphData"
           :loading="graphLoading"
@@ -44,9 +25,10 @@
       </div>
 
       <!-- Right panel: step 3, run the simulation -->
-      <div class="panel-wrapper right" :style="rightPanelStyle">
+      <div class="panel-wrapper right">
         <Step3Simulation
           :simulationId="currentSimulationId"
+          :startNewRun="startNewRun"
           :maxRounds="maxRounds"
           :minutesPerRound="minutesPerRound"
           :projectData="projectData"
@@ -68,8 +50,9 @@ import { useRoute, useRouter } from 'vue-router'
 import GraphPanel from '../components/GraphPanel.vue'
 import Step3Simulation from '../components/Step3Simulation.vue'
 import { getProject, getGraphData } from '../api/graph'
-import { getSimulation, getSimulationConfig, stopSimulation, closeSimulationEnv, getEnvStatus } from '../api/simulation'
-import LanguageSwitcher from '../components/LanguageSwitcher.vue'
+import { getSimulation, getSimulationConfig } from '../api/simulation'
+import AppHeader from '../components/AppHeader.vue'
+import { useSplitLayout, useSystemLog } from '../composables/useWorkbench'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -81,114 +64,39 @@ const props = defineProps({
   simulationId: String
 })
 
-// Layout State
-// Graph hidden by default: the run screen is busy enough without it
-const viewMode = ref('workbench')
+const { viewMode, toggleMaximize } = useSplitLayout('workbench')
 
 // Data State
 const currentSimulationId = ref(route.params.simulationId)
 // Read maxRounds from the query string during setup, so child components see it right away
 const maxRounds = ref(route.query.maxRounds ? parseInt(route.query.maxRounds) : null)
+// start=1 is only set by step 2's launch button. Read once during setup, then
+// dropped from the URL below so a reload of this page cannot restart the run.
+const startNewRun = ref(route.query.start === '1')
 const minutesPerRound = ref(30) // 30 simulated minutes per round by default
 const projectData = ref(null)
 const graphData = ref(null)
 const graphLoading = ref(false)
-const systemLogs = ref([])
+const { systemLogs, addLog } = useSystemLog(200)
 const currentStatus = ref('processing') // processing | completed | error
 
-// --- Computed Layout Styles ---
-const leftPanelStyle = computed(() => {
-  if (viewMode.value === 'graph') return { width: '100%', opacity: 1, transform: 'translateX(0)' }
-  if (viewMode.value === 'workbench') return { width: '0%', opacity: 0, transform: 'translateX(-20px)' }
-  return { width: '50%', opacity: 1, transform: 'translateX(0)' }
-})
-
-const rightPanelStyle = computed(() => {
-  if (viewMode.value === 'workbench') return { width: '100%', opacity: 1, transform: 'translateX(0)' }
-  if (viewMode.value === 'graph') return { width: '0%', opacity: 0, transform: 'translateX(20px)' }
-  return { width: '50%', opacity: 1, transform: 'translateX(0)' }
-})
-
-// --- Status Computed ---
-const statusClass = computed(() => {
-  return currentStatus.value
-})
-
 const statusText = computed(() => {
-  if (currentStatus.value === 'error') return 'Error'
-  if (currentStatus.value === 'completed') return 'Completed'
-  return 'Running'
+  if (currentStatus.value === 'error') return t('main.statusError')
+  if (currentStatus.value === 'completed') return t('main.statusCompleted')
+  return t('main.statusRunning')
 })
 
 const isSimulating = computed(() => currentStatus.value === 'processing')
-
-// --- Helpers ---
-const addLog = (msg) => {
-  const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + new Date().getMilliseconds().toString().padStart(3, '0')
-  systemLogs.value.push({ time, msg })
-  if (systemLogs.value.length > 200) {
-    systemLogs.value.shift()
-  }
-}
 
 const updateStatus = (status) => {
   currentStatus.value = status
 }
 
-// --- Layout Methods ---
-const toggleMaximize = (target) => {
-  if (viewMode.value === target) {
-    viewMode.value = 'split'
-  } else {
-    viewMode.value = target
-  }
-}
-
-const handleGoBack = async () => {
-  // Shut a running simulation down before going back to step 2
-  addLog(t('log.preparingGoBack'))
-  
-  // Stop polling
+const handleGoBack = () => {
+  // Navigating away leaves the run alone: it used to be torn down here, which
+  // meant a glance at step 2 cost the whole run. Step 3's Stop button is the
+  // one way to end a run, and starting a new one from step 2 clears the old.
   stopGraphRefresh()
-  
-  try {
-    // Try a graceful shutdown first
-    const envStatusRes = await getEnvStatus({ simulation_id: currentSimulationId.value })
-    
-    if (envStatusRes.success && envStatusRes.data?.env_alive) {
-      addLog(t('log.closingSimEnv'))
-      try {
-        await closeSimulationEnv({ 
-          simulation_id: currentSimulationId.value,
-          timeout: 10
-        })
-        addLog(t('log.simEnvClosed'))
-      } catch (closeErr) {
-        addLog(t('log.closeSimEnvFailed'))
-        try {
-          await stopSimulation({ simulation_id: currentSimulationId.value })
-          addLog(t('log.simForceStopSuccess'))
-        } catch (stopErr) {
-          addLog(t('log.forceStopFailed', { error: stopErr.message }))
-        }
-      }
-    } else {
-      // The environment is down; does the process still need stopping?
-      if (isSimulating.value) {
-        addLog(t('log.stoppingSimProcess'))
-        try {
-          await stopSimulation({ simulation_id: currentSimulationId.value })
-          addLog(t('log.simStopped'))
-        } catch (err) {
-          addLog(t('log.stopSimFailed', { error: err.message }))
-        }
-      }
-    }
-  } catch (err) {
-    addLog(t('log.checkStatusFailed', { error: err.message }))
-  }
-  
-  // Back to step 2 (environment setup)
   router.push({ name: 'Simulation', params: { simulationId: currentSimulationId.value } })
 }
 
@@ -296,6 +204,12 @@ watch(isSimulating, (newValue) => {
 
 onMounted(() => {
   addLog(t('log.simRunViewInit'))
+
+  if (startNewRun.value) {
+    // Strip start=1 so a reload attaches to the run instead of relaunching it.
+    const { start, ...rest } = route.query
+    router.replace({ query: rest })
+  }
   
   // Record maxRounds (already read from the query string during setup)
   if (maxRounds.value) {
@@ -310,125 +224,4 @@ onUnmounted(() => {
 })
 </script>
 
-<style scoped>
-.main-view {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #FFF;
-  overflow: hidden;
-  font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
-}
-
-/* Header */
-.app-header {
-  height: 60px;
-  border-bottom: 1px solid #E5E5E5;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  background: #FFF;
-  color: #111111;
-  z-index: 100;
-  position: relative;
-}
-
-.header-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.brand {
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: 1px;
-  cursor: pointer;
-}
-
-.view-select {
-  border: 1px solid #E5E5E5;
-  background: #F5F5F5;
-  padding: 6px 12px;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  color: #111111;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.workflow-step {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-}
-
-.step-num {
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 700;
-  color: #A3A3A3;
-}
-
-.step-name {
-  font-weight: 700;
-  color: #111111;
-}
-
-.step-divider {
-  width: 1px;
-  height: 14px;
-  background-color: #E5E5E5;
-}
-
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: #666666;
-  font-weight: 500;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #CCC;
-}
-
-.status-indicator.processing .dot { background: #F97316; animation: pulse 1s infinite; }
-.status-indicator.completed .dot { background: #4CAF50; }
-.status-indicator.error .dot { background: #F44336; }
-
-@keyframes pulse { 50% { opacity: 0.5; } }
-
-/* Content */
-.content-area {
-  flex: 1;
-  display: flex;
-  position: relative;
-  overflow: hidden;
-}
-
-.panel-wrapper {
-  height: 100%;
-  overflow: hidden;
-  transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.3s ease, transform 0.3s ease;
-  will-change: width, opacity, transform;
-}
-
-.panel-wrapper.left {
-  border-right: 1px solid #EAEAEA;
-}
-</style>
 

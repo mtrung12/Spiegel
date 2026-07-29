@@ -5,14 +5,16 @@
       <span class="caret">{{ open ? '▲' : '▼' }}</span>
     </button>
     <ul v-if="open" class="switcher-dropdown">
-      <li
-        v-for="loc in availableLocales"
-        :key="loc.key"
-        class="switcher-option"
-        :class="{ active: loc.key === locale }"
-        @click="switchLocale(loc.key)"
-      >
-        {{ loc.label }}
+      <li v-for="loc in availableLocales" :key="loc.key">
+        <button
+          type="button"
+          class="switcher-option"
+          :class="{ active: loc.key === locale }"
+          :aria-current="loc.key === locale ? 'true' : undefined"
+          @click="switchLocale(loc.key)"
+        >
+          {{ loc.label }}
+        </button>
       </li>
     </ul>
   </div>
@@ -69,8 +71,8 @@ onUnmounted(() => {
 /* Light theme (default - for white header backgrounds) */
 .switcher-trigger {
   background: transparent;
-  color: #333;
-  border: 1px solid #CCC;
+  color: var(--ink-2);
+  border: 1px solid var(--border-strong);
   padding: 4px 12px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.8rem;
@@ -82,11 +84,11 @@ onUnmounted(() => {
 }
 
 .switcher-trigger:hover {
-  border-color: #999;
+  border-color: var(--muted-soft);
 }
 
 .caret {
-  font-size: 0.6rem;
+  font-size: 0.75rem;
 }
 
 .switcher-dropdown {
@@ -94,8 +96,8 @@ onUnmounted(() => {
   top: 100%;
   right: 0;
   margin-top: 4px;
-  background: #FFFFFF;
-  border: 1px solid #DDD;
+  background: var(--white);
+  border: 1px solid var(--border-strong);
   list-style: none;
   padding: 4px 0;
   min-width: 100%;
@@ -104,16 +106,22 @@ onUnmounted(() => {
 }
 
 .switcher-option {
+  /* A <button> now; reset the inherited control styling. */
+  font: inherit;
+  text-align: left;
+  appearance: none;
+  color: inherit;
+  width: 100%;
   padding: 6px 12px;
   font-size: 0.8rem;
-  color: #333;
+  color: var(--ink-2);
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s;
 }
 
 .switcher-option:hover {
-  background: #F0F0F0;
+  background: var(--surface-3);
 }
 
 .switcher-option.active {

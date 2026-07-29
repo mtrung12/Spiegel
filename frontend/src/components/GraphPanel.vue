@@ -6,7 +6,7 @@
       <div class="header-tools">
         <button class="tool-btn" @click="$emit('refresh')" :disabled="loading" :title="$t('graph.refreshGraph')">
           <span class="icon-refresh" :class="{ 'spinning': loading }">↻</span>
-          <span class="btn-text">Refresh</span>
+          <span class="btn-text">{{ $t('graph.refresh') }}</span>
         </button>
         <button class="tool-btn" @click="$emit('toggle-maximize')" :title="$t('graph.toggleMaximize')">
           <span class="icon-maximize">⛶</span>
@@ -61,21 +61,21 @@
           <!-- Node detail -->
           <div v-if="selectedItem.type === 'node'" class="detail-content">
             <div class="detail-row">
-              <span class="detail-label">Name:</span>
+              <span class="detail-label">{{ $t('graph.fieldName') }}:</span>
               <span class="detail-value">{{ selectedItem.data.name }}</span>
             </div>
             <div class="detail-row">
-              <span class="detail-label">UUID:</span>
+              <span class="detail-label">{{ $t('graph.fieldUuid') }}:</span>
               <span class="detail-value uuid-text">{{ selectedItem.data.uuid }}</span>
             </div>
             <div class="detail-row" v-if="selectedItem.data.created_at">
-              <span class="detail-label">Created:</span>
+              <span class="detail-label">{{ $t('graph.fieldCreated') }}:</span>
               <span class="detail-value">{{ formatDateTime(selectedItem.data.created_at) }}</span>
             </div>
             
             <!-- Properties -->
             <div class="detail-section" v-if="selectedItem.data.attributes && Object.keys(selectedItem.data.attributes).length > 0">
-              <div class="section-title">Properties:</div>
+              <div class="section-title">{{ $t('graph.fieldProperties') }}:</div>
               <div class="properties-list">
                 <div v-for="(value, key) in selectedItem.data.attributes" :key="key" class="property-item">
                   <span class="property-key">{{ key }}:</span>
@@ -86,13 +86,13 @@
             
             <!-- Summary -->
             <div class="detail-section" v-if="selectedItem.data.summary">
-              <div class="section-title">Summary:</div>
+              <div class="section-title">{{ $t('graph.fieldSummary') }}:</div>
               <div class="summary-text">{{ selectedItem.data.summary }}</div>
             </div>
             
             <!-- Labels -->
             <div class="detail-section" v-if="selectedItem.data.labels && selectedItem.data.labels.length > 0">
-              <div class="section-title">Labels:</div>
+              <div class="section-title">{{ $t('graph.fieldLabels') }}:</div>
               <div class="labels-list">
                 <span v-for="label in selectedItem.data.labels" :key="label" class="label-tag">
                   {{ label }}
@@ -117,34 +117,36 @@
                   class="self-loop-item"
                   :class="{ expanded: expandedSelfLoops.has(loop.uuid || idx) }"
                 >
-                  <div 
+                  <button
+                    type="button"
                     class="self-loop-item-header"
+                    :aria-expanded="expandedSelfLoops.has(loop.uuid || idx)"
                     @click="toggleSelfLoop(loop.uuid || idx)"
                   >
                     <span class="self-loop-index">#{{ idx + 1 }}</span>
                     <span class="self-loop-name">{{ loop.name || loop.fact_type || 'RELATED' }}</span>
-                    <span class="self-loop-toggle">{{ expandedSelfLoops.has(loop.uuid || idx) ? '−' : '+' }}</span>
-                  </div>
+                    <span class="self-loop-toggle" aria-hidden="true">{{ expandedSelfLoops.has(loop.uuid || idx) ? '−' : '+' }}</span>
+                  </button>
                   
                   <div class="self-loop-item-content" v-show="expandedSelfLoops.has(loop.uuid || idx)">
                     <div class="detail-row" v-if="loop.uuid">
-                      <span class="detail-label">UUID:</span>
+                      <span class="detail-label">{{ $t('graph.fieldUuid') }}:</span>
                       <span class="detail-value uuid-text">{{ loop.uuid }}</span>
                     </div>
                     <div class="detail-row" v-if="loop.fact">
-                      <span class="detail-label">Fact:</span>
+                      <span class="detail-label">{{ $t('graph.fieldFact') }}:</span>
                       <span class="detail-value fact-text">{{ loop.fact }}</span>
                     </div>
                     <div class="detail-row" v-if="loop.fact_type">
-                      <span class="detail-label">Type:</span>
+                      <span class="detail-label">{{ $t('graph.fieldType') }}:</span>
                       <span class="detail-value">{{ loop.fact_type }}</span>
                     </div>
                     <div class="detail-row" v-if="loop.created_at">
-                      <span class="detail-label">Created:</span>
+                      <span class="detail-label">{{ $t('graph.fieldCreated') }}:</span>
                       <span class="detail-value">{{ formatDateTime(loop.created_at) }}</span>
                     </div>
                     <div v-if="loop.episodes && loop.episodes.length > 0" class="self-loop-episodes">
-                      <span class="detail-label">Episodes:</span>
+                      <span class="detail-label">{{ $t('graph.fieldEpisodes') }}:</span>
                       <div class="episodes-list compact">
                         <span v-for="ep in loop.episodes" :key="ep" class="episode-tag small">{{ ep }}</span>
                       </div>
@@ -161,25 +163,25 @@
               </div>
               
               <div class="detail-row">
-                <span class="detail-label">UUID:</span>
+                <span class="detail-label">{{ $t('graph.fieldUuid') }}:</span>
                 <span class="detail-value uuid-text">{{ selectedItem.data.uuid }}</span>
               </div>
               <div class="detail-row">
-                <span class="detail-label">Label:</span>
+                <span class="detail-label">{{ $t('graph.fieldLabel') }}:</span>
                 <span class="detail-value">{{ selectedItem.data.name || 'RELATED_TO' }}</span>
               </div>
               <div class="detail-row">
-                <span class="detail-label">Type:</span>
+                <span class="detail-label">{{ $t('graph.fieldType') }}:</span>
                 <span class="detail-value">{{ selectedItem.data.fact_type || 'Unknown' }}</span>
               </div>
               <div class="detail-row" v-if="selectedItem.data.fact">
-                <span class="detail-label">Fact:</span>
+                <span class="detail-label">{{ $t('graph.fieldFact') }}:</span>
                 <span class="detail-value fact-text">{{ selectedItem.data.fact }}</span>
               </div>
               
               <!-- Episodes -->
               <div class="detail-section" v-if="selectedItem.data.episodes && selectedItem.data.episodes.length > 0">
-                <div class="section-title">Episodes:</div>
+                <div class="section-title">{{ $t('graph.fieldEpisodes') }}:</div>
                 <div class="episodes-list">
                   <span v-for="ep in selectedItem.data.episodes" :key="ep" class="episode-tag">
                     {{ ep }}
@@ -188,11 +190,11 @@
               </div>
               
               <div class="detail-row" v-if="selectedItem.data.created_at">
-                <span class="detail-label">Created:</span>
+                <span class="detail-label">{{ $t('graph.fieldCreated') }}:</span>
                 <span class="detail-value">{{ formatDateTime(selectedItem.data.created_at) }}</span>
               </div>
               <div class="detail-row" v-if="selectedItem.data.valid_at">
-                <span class="detail-label">Valid From:</span>
+                <span class="detail-label">{{ $t('graph.fieldValidFrom') }}:</span>
                 <span class="detail-value">{{ formatDateTime(selectedItem.data.valid_at) }}</span>
               </div>
             </template>
@@ -215,7 +217,7 @@
 
     <!-- Legend (bottom left) -->
     <div v-if="graphData && entityTypes.length" class="graph-legend">
-      <span class="legend-title">Entity Types</span>
+      <span class="legend-title">{{ $t('graph.entityTypes') }}</span>
       <div class="legend-items">
         <div class="legend-item" v-for="type in entityTypes" :key="type.name">
           <span class="legend-dot" :style="{ background: type.color }"></span>
@@ -230,7 +232,7 @@
         <input type="checkbox" v-model="showEdgeLabels" />
         <span class="slider"></span>
       </label>
-      <span class="toggle-label">Show Edge Labels</span>
+      <span class="toggle-label">{{ $t('graph.showEdgeLabels') }}</span>
     </div>
   </div>
 </template>
@@ -818,8 +820,8 @@ onUnmounted(() => {
   position: relative;
   width: 100%;
   height: 100%;
-  background-color: #FAFAFA;
-  background-image: radial-gradient(#D0D0D0 1.5px, transparent 1.5px);
+  background-color: var(--surface);
+  background-image: radial-gradient(var(--border-strong) 1.5px, transparent 1.5px);
   background-size: 24px 24px;
   overflow: hidden;
 }
@@ -841,7 +843,7 @@ onUnmounted(() => {
 .panel-title {
   font-size: 14px;
   font-weight: 600;
-  color: #333;
+  color: var(--ink-2);
   pointer-events: auto;
 }
 
@@ -855,24 +857,24 @@ onUnmounted(() => {
 .tool-btn {
   height: 32px;
   padding: 0 12px;
-  border: 1px solid #E0E0E0;
-  background: #FFF;
+  border: 1px solid var(--border-soft);
+  background: var(--white);
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   cursor: pointer;
-  color: #666;
+  color: var(--muted);
   transition: all 0.2s;
   box-shadow: 0 2px 4px rgba(0,0,0,0.02);
   font-size: 13px;
 }
 
 .tool-btn:hover {
-  background: #F5F5F5;
-  color: #000;
-  border-color: #CCC;
+  background: var(--surface-2);
+  color: var(--black);
+  border-color: var(--border-strong);
 }
 
 .tool-btn .btn-text {
@@ -902,7 +904,7 @@ onUnmounted(() => {
   left: 50%;
   transform: translate(-50%, -50%);
   text-align: center;
-  color: #999;
+  color: var(--muted-soft);
 }
 
 .empty-icon {
@@ -919,14 +921,14 @@ onUnmounted(() => {
   background: rgba(255,255,255,0.95);
   padding: 12px 16px;
   border-radius: 8px;
-  border: 1px solid #EAEAEA;
+  border: 1px solid var(--border-soft);
   box-shadow: 0 4px 16px rgba(0,0,0,0.06);
   z-index: 10;
 }
 
 .legend-title {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: #E91E63;
   margin-bottom: 10px;
@@ -946,7 +948,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #555;
+  color: var(--ink-3);
 }
 
 .legend-dot {
@@ -968,10 +970,10 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #FFF;
+  background: var(--white);
   padding: 8px 14px;
   border-radius: 20px;
-  border: 1px solid #E0E0E0;
+  border: 1px solid var(--border-soft);
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
   z-index: 10;
 }
@@ -996,7 +998,7 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #E0E0E0;
+  background-color: var(--border-soft);
   border-radius: 22px;
   transition: 0.3s;
 }
@@ -1023,7 +1025,7 @@ input:checked + .slider:before {
 
 .toggle-label {
   font-size: 12px;
-  color: #666;
+  color: var(--muted);
 }
 
 /* Detail Panel - Right Side */
@@ -1031,10 +1033,10 @@ input:checked + .slider:before {
   position: absolute;
   top: 60px;
   right: 20px;
-  width: 320px;
+  width: min(320px, calc(100% - 40px));
   max-height: calc(100% - 100px);
-  background: #FFF;
-  border: 1px solid #EAEAEA;
+  background: var(--white);
+  border: 1px solid var(--border-soft);
   border-radius: 10px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.1);
   overflow: hidden;
@@ -1050,21 +1052,21 @@ input:checked + .slider:before {
   justify-content: space-between;
   align-items: center;
   padding: 14px 16px;
-  background: #FAFAFA;
-  border-bottom: 1px solid #EEE;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-soft);
   flex-shrink: 0;
 }
 
 .detail-title {
   font-weight: 600;
-  color: #333;
+  color: var(--ink-2);
   font-size: 14px;
 }
 
 .detail-type-badge {
   padding: 4px 10px;
   border-radius: 12px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   margin-left: auto;
   margin-right: 12px;
@@ -1075,14 +1077,14 @@ input:checked + .slider:before {
   border: none;
   font-size: 20px;
   cursor: pointer;
-  color: #999;
+  color: var(--muted-soft);
   line-height: 1;
   padding: 0;
   transition: color 0.2s;
 }
 
 .detail-close:hover {
-  color: #333;
+  color: var(--ink-2);
 }
 
 .detail-content {
@@ -1099,39 +1101,39 @@ input:checked + .slider:before {
 }
 
 .detail-label {
-  color: #888;
+  color: var(--muted-soft);
   font-size: 12px;
   font-weight: 500;
   min-width: 80px;
 }
 
 .detail-value {
-  color: #333;
+  color: var(--ink-2);
   flex: 1;
   word-break: break-word;
 }
 
 .detail-value.uuid-text {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: #666;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .detail-value.fact-text {
   line-height: 1.5;
-  color: #444;
+  color: var(--ink-3);
 }
 
 .detail-section {
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid #F0F0F0;
+  border-top: 1px solid var(--surface-3);
 }
 
 .section-title {
   font-size: 12px;
   font-weight: 600;
-  color: #666;
+  color: var(--muted);
   margin-bottom: 10px;
 }
 
@@ -1147,19 +1149,19 @@ input:checked + .slider:before {
 }
 
 .property-key {
-  color: #888;
+  color: var(--muted-soft);
   font-weight: 500;
   min-width: 90px;
 }
 
 .property-value {
-  color: #333;
+  color: var(--ink-2);
   flex: 1;
 }
 
 .summary-text {
   line-height: 1.6;
-  color: #444;
+  color: var(--ink-3);
   font-size: 12px;
 }
 
@@ -1172,11 +1174,11 @@ input:checked + .slider:before {
 .label-tag {
   display: inline-block;
   padding: 4px 12px;
-  background: #F5F5F5;
-  border: 1px solid #E0E0E0;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
   border-radius: 16px;
-  font-size: 11px;
-  color: #555;
+  font-size: 12px;
+  color: var(--ink-3);
 }
 
 .episodes-list {
@@ -1188,24 +1190,24 @@ input:checked + .slider:before {
 .episode-tag {
   display: inline-block;
   padding: 6px 10px;
-  background: #F8F8F8;
-  border: 1px solid #E8E8E8;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
   border-radius: 6px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  color: #666;
+  font-size: 12px;
+  color: var(--muted);
   word-break: break-all;
 }
 
 /* Edge relation header */
 .edge-relation-header {
-  background: #F8F8F8;
+  background: var(--surface);
   padding: 12px;
   border-radius: 8px;
   margin-bottom: 16px;
   font-size: 13px;
   font-weight: 500;
-  color: #333;
+  color: var(--ink-2);
   line-height: 1.5;
   word-break: break-word;
 }
@@ -1218,7 +1220,7 @@ input:checked + .slider:before {
   transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(8px);
-  color: #fff;
+  color: var(--white);
   padding: 10px 20px;
   border-radius: 30px;
   font-size: 13px;
@@ -1265,7 +1267,7 @@ input:checked + .slider:before {
 .finished-hint .hint-icon {
   width: 18px;
   height: 18px;
-  color: #FFF;
+  color: var(--white);
 }
 
 .finished-hint .hint-text {
@@ -1283,7 +1285,7 @@ input:checked + .slider:before {
   border: none;
   border-radius: 50%;
   cursor: pointer;
-  color: #FFF;
+  color: var(--white);
   transition: all 0.2s;
   margin-left: 8px;
   flex-shrink: 0;
@@ -1298,7 +1300,7 @@ input:checked + .slider:before {
 .loading-spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid #E0E0E0;
+  border: 3px solid var(--border-soft);
   border-top-color: #7B2D8E;
   border-radius: 50%;
   animation: spin 1s linear infinite;
@@ -1316,8 +1318,8 @@ input:checked + .slider:before {
 
 .self-loop-count {
   margin-left: auto;
-  font-size: 11px;
-  color: #666;
+  font-size: 12px;
+  color: var(--muted);
   background: rgba(255,255,255,0.8);
   padding: 2px 8px;
   border-radius: 10px;
@@ -1330,34 +1332,40 @@ input:checked + .slider:before {
 }
 
 .self-loop-item {
-  background: #FAFAFA;
-  border: 1px solid #EAEAEA;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
   border-radius: 8px;
 }
 
 .self-loop-item-header {
+  /* A <button> now; reset the inherited control styling. */
+  font: inherit;
+  text-align: left;
+  appearance: none;
+  color: inherit;
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  background: #F5F5F5;
+  background: var(--surface-2);
   cursor: pointer;
   transition: background 0.2s;
 }
 
 .self-loop-item-header:hover {
-  background: #EEEEEE;
+  background: var(--border-soft);
 }
 
 .self-loop-item.expanded .self-loop-item-header {
-  background: #E8E8E8;
+  background: var(--border-soft);
 }
 
 .self-loop-index {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  color: #888;
-  background: #E0E0E0;
+  color: var(--muted-soft);
+  background: var(--border-soft);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -1365,7 +1373,7 @@ input:checked + .slider:before {
 .self-loop-name {
   font-size: 12px;
   font-weight: 500;
-  color: #333;
+  color: var(--ink-2);
   flex: 1;
 }
 
@@ -1377,20 +1385,20 @@ input:checked + .slider:before {
   justify-content: center;
   font-size: 14px;
   font-weight: 600;
-  color: #888;
-  background: #E0E0E0;
+  color: var(--muted-soft);
+  background: var(--border-soft);
   border-radius: 4px;
   transition: all 0.2s;
 }
 
 .self-loop-item.expanded .self-loop-toggle {
-  background: #D0D0D0;
-  color: #666;
+  background: var(--border-strong);
+  color: var(--muted);
 }
 
 .self-loop-item-content {
   padding: 12px;
-  border-top: 1px solid #EAEAEA;
+  border-top: 1px solid var(--border-soft);
 }
 
 .self-loop-item-content .detail-row {
@@ -1398,7 +1406,7 @@ input:checked + .slider:before {
 }
 
 .self-loop-item-content .detail-label {
-  font-size: 11px;
+  font-size: 12px;
   min-width: 60px;
 }
 
@@ -1418,6 +1426,6 @@ input:checked + .slider:before {
 
 .episode-tag.small {
   padding: 3px 6px;
-  font-size: 9px;
+  font-size: 12px;
 }
 </style>

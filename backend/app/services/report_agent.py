@@ -378,6 +378,7 @@ class ReportSection:
     """A report section."""
     title: str
     content: str = ""
+    brief: str = ""  # what the section must cover; prompt-only, never serialised
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -582,6 +583,61 @@ than by keyword. Every other search tool returns the knowledge graph's
 - kind: "post" or "comment" (optional, omit for both)
 - platform: "twitter" or "reddit" (optional, omit for both)"""
 
+# -- Fixed report structure --
+# The outline is fixed: a marketing lead reads the same report every time, and
+# the five sections map onto the KPI groups campaign_metrics.py measures.
+# Section ids are stable; the headings they print come from the locale files.
+REPORT_SECTION_IDS = [
+    "whoSawIt",
+    "howTheyReacted",
+    "howFarItSpread",
+    "whichGroups",
+    "whatToFix",
+]
+
+# What each fixed section is responsible for, so sections do not overlap.
+# Prompt text, so English regardless of the report language.
+REPORT_SECTION_BRIEFS = {
+    "whoSawIt": (
+        "How far the campaign travelled and who it actually reached: audience "
+        "size, reached agents and reach rate, impressions, the channel split, "
+        "and how exposure built across the rounds observed."
+    ),
+    "howTheyReacted": (
+        "Whether the audience acted, ignored it, or pushed back: engagement "
+        "rate, the passive share that saw it and did nothing, the action "
+        "breakdown (posts, comments, likes, dislikes, follows), and the "
+        "positive / negative split with the net sentiment score - each backed "
+        "by what the audience actually wrote."
+    ),
+    "howFarItSpread": (
+        "Whether the message spread on its own or had to be pushed: "
+        "amplifications (reposts and quotes), amplifier agents and "
+        "amplification rate, the virality ratio, cascade depth, the peak round, "
+        "and the loudest voices carrying the conversation."
+    ),
+    "whichGroups": (
+        "Which segments bought into the message and which resisted: per-segment "
+        "reach, engagement, net sentiment, amplifications and share of voice, "
+        "plus the purchase-intent and conversion signals visible in what those "
+        "segments said."
+    ),
+    "whatToFix": (
+        "The specific objections and message risks the audience raised, quoted "
+        "verbatim, and the concrete changes to make before spending the budget. "
+        "End with prioritised, actionable recommendations."
+    ),
+}
+
+
+def _fixed_sections() -> List['ReportSection']:
+    """The five sections, headed in the report language."""
+    return [
+        ReportSection(title=t(f'report.sections.{sid}'), brief=REPORT_SECTION_BRIEFS[sid])
+        for sid in REPORT_SECTION_IDS
+    ]
+
+
 # -- Outline planning prompts --
 
 PLAN_SYSTEM_PROMPT = """\
@@ -615,37 +671,22 @@ before spending the budget:
 - NO: a description of the brand or the market as it exists today
 - NO: vague conclusions with no number attached
 
-[Sections to draw from]
-Pick the ones the evidence actually supports. Candidates:
-- Reach and exposure
-- Sentiment split (positive / negative / indifferent)
-- Engagement quality
-- Virality and the share cascade
-- Purchase intent and conversion signals
-- Key objections and message risks
-- Segment breakdown
-- Recommendations before launch
+[The report structure is fixed]
+The title and the sections are already decided - you do not design them:
+1. Who saw it
+2. How they reacted
+3. How far it spread
+4. Which groups liked it, which did not
+5. What to fix before launch
 
-[Section count]
-- At least 2 sections, at most 5
-- No sub-sections; write each section as one complete piece
-- Merge related KPIs into one section rather than spreading them thin
-- Always reserve one section for actionable recommendations
-- You design the section structure yourself, based on what the results show
+[Your only output here]
+The one-sentence headline result of the campaign: did it land, and how hard.
+Anchor it to a measured number, not an adjective.
 
-Output the report outline as JSON, in this shape:
+Output JSON, in this shape:
 {
-    "title": "report title",
-    "summary": "report summary (one sentence stating the campaign's headline result)",
-    "sections": [
-        {
-            "title": "section title",
-            "description": "what the section covers"
-        }
-    ]
-}
-
-Note: the sections array must hold at least 2 and at most 5 elements."""
+    "summary": "one sentence stating the campaign's headline result"
+}"""
 
 PLAN_USER_PROMPT_TEMPLATE = """\
 [Campaign under assessment]
@@ -663,17 +704,9 @@ The campaign brief and target audience we released into the simulated market: {s
 [A sample of the audience reactions the simulation produced]
 {related_facts_json}
 
-Assess this campaign the way a marketing lead would before signing off the spend:
-1. What is the headline result - did this campaign land, and how hard?
-2. Where did reach, engagement and virality actually come from?
-3. Which segments converted, which stayed indifferent, and which pushed back?
-4. What has to change before launch?
-
-Design the section structure that best fits what the results show. Lead with the
-KPIs that moved, not with a fixed template.
-
-[Reminder] Section count: at least 2, at most 5. Keep every section anchored to
-evidence, and reserve one for recommendations."""
+State the headline result the way a marketing lead would want it before signing
+off the spend: did this campaign land, and how hard? One sentence, with the
+number that carries it."""
 
 # -- Section generation prompts --
 
@@ -686,6 +719,7 @@ Report summary: {report_summary}
 Campaign under assessment (brief and target audience): {simulation_requirement}
 
 The section you are writing now: {section_title}
+What this section must cover: {section_brief}
 
 ═══════════════════════════════════════════════════════════════
 [Core idea]
@@ -1415,17 +1449,12 @@ class ReportAgent:
                 if progress_callback:
                     progress_callback("planning", 80, t('progress.parsingOutline'))
 
-                # Parse the outline
-                sections = []
-                for section_data in response.get("sections", []):
-                    sections.append(ReportSection(
-                        title=section_data.get("title", ""),
-                        content=""
-                    ))
+                # Title and sections are fixed; the LLM only writes the summary.
+                sections = _fixed_sections()
 
                 outline = ReportOutline(
-                    title=response.get("title", "Campaign assessment report"),
-                    summary=response.get("summary", ""),
+                    title=t('report.docTitle'),
+                    summary=response.get("summary") or t('report.docSummary'),
                     sections=sections
                 )
                 step.output(
@@ -1447,15 +1476,11 @@ class ReportAgent:
                 status='warn', target=self.simulation_id,
                 error=f"{type(e).__name__}: {e}",
             )
-            # Fall back to a default 3-section outline
+            # Same fixed structure; only the generated summary is lost
             return ReportOutline(
-                title="Campaign assessment report",
-                summary="Simulated audience reaction to the campaign, measured against marketing KPIs",
-                sections=[
-                    ReportSection(title="Reach, engagement and sentiment"),
-                    ReportSection(title="Virality and segment breakdown"),
-                    ReportSection(title="Key objections and recommendations")
-                ]
+                title=t('report.docTitle'),
+                summary=t('report.docSummary'),
+                sections=_fixed_sections()
             )
     
     def _generate_section_react(
@@ -1497,6 +1522,7 @@ class ReportAgent:
             report_summary=outline.summary,
             simulation_requirement=self.simulation_requirement,
             section_title=section.title,
+            section_brief=section.brief or "the KPIs and audience reactions its title names",
             tools_description=self._get_tools_description(),
         )
         system_prompt = f"{system_prompt}\n\n{get_language_instruction()}"

@@ -13,6 +13,8 @@ from zep_cloud import NotFoundError
 
 from . import graph_bp
 from ..config import Config
+from ..services.corpus import render_distribution
+from ..services.corpus_ingest import ingest_corpus
 from ..services.ontology_generator import OntologyGenerator
 from ..services.graph_builder import BatchSubmission, GraphBuilderService
 from ..services.text_processor import TextProcessor
@@ -21,7 +23,7 @@ from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
 from ..utils.pipeline_logger import pipeline_log
 from ..utils.zep_lifecycle import get_graph_readers, graph_lifecycle_lock
-from ..models.task import TaskManager, TaskStatus
+from ..models.task import TaskCancelled, TaskManager, TaskStatus
 from ..models.project import ProjectManager, ProjectStatus
 from ..services.simulation_manager import SimulationManager
 from ..services.simulation_runner import SimulationRunner, RunnerStatus
@@ -31,6 +33,12 @@ from ..utils.llm_client import LLMResponseError
 
 # Logger
 logger = get_logger('spiegel.api')
+
+# A brief shorter than this carries no usable content. Its real job is catching
+# the image-only PDF that extracted to nothing, which otherwise passes silently
+# and produces an ontology, an audience and a report built on an empty string.
+MIN_DOCUMENT_CHARS = 200
+
 _build_locks: dict[str, threading.Lock] = {}
 _build_locks_guard = threading.Lock()
 
@@ -225,18 +233,26 @@ def allowed_file(filename: str) -> bool:
 def get_project(project_id: str):
     """
     Return the project detail.
+
+    ``?include_text=1`` adds the extracted document text. It is opt-in because
+    it is the whole brief - tens to hundreds of KB - and most callers of this
+    endpoint only want the ontology and the status.
     """
     project = ProjectManager.get_project(project_id)
-    
+
     if not project:
         return jsonify({
             "success": False,
             "error": t('api.projectNotFound', id=project_id)
         }), 404
 
+    data = project.to_dict()
+    if request.args.get('include_text') in ('1', 'true'):
+        data['extracted_text'] = ProjectManager.get_extracted_text(project_id) or ''
+
     return jsonify({
         "success": True,
-        "data": project.to_dict()
+        "data": data
     })
 
 
@@ -428,20 +444,16 @@ def generate_ontology():
     try:
         logger.info("=== generating ontology definition ===")
         
-        # Read the parameters
+        # Read the parameters. The audience description is no longer a field of
+        # its own: a campaign brief already contains it, and two sources for one
+        # fact only gave them a way to disagree. It is taken from the documents
+        # below instead, so the ontology and the graph read the same words.
         simulation_requirement = request.form.get('simulation_requirement', '')
         project_name = request.form.get('project_name', 'Unnamed Project')
         additional_context = request.form.get('additional_context', '')
-        
+
         logger.debug(f"project name: {project_name}")
-        logger.debug(f"simulation requirement: {simulation_requirement[:100]}...")
-        
-        if not simulation_requirement:
-            return jsonify({
-                "success": False,
-                "error": t('api.requireSimulationRequirement')
-            }), 400
-        
+
         # Read the uploaded files
         uploaded_files = request.files.getlist('files')
         if not uploaded_files or all(not f.filename for f in uploaded_files):
@@ -452,7 +464,6 @@ def generate_ontology():
         
         # Create the project
         project = ProjectManager.create_project(name=project_name)
-        project.simulation_requirement = simulation_requirement
         logger.info(f"created project: {project.project_id}")
         
         # Save the files and extract their text
@@ -482,6 +493,20 @@ def generate_ontology():
                     text = TextProcessor.preprocess_text(text)
                     step.output_text(text)
                     step.metric(chars=len(text))
+                # An empty extraction is worse than an error: the ontology, the
+                # personas and the whole report would still be generated, from
+                # nothing. Refuse the file instead of building on air.
+                if len(text) < MIN_DOCUMENT_CHARS:
+                    ProjectManager.delete_project(project.project_id)
+                    return jsonify({
+                        "success": False,
+                        "error": t(
+                            'api.documentHasNoText',
+                            filename=file_info["original_filename"],
+                            chars=len(text),
+                        ),
+                    }), 400
+
                 document_texts.append(text)
                 all_text += f"\n\n=== {file_info['original_filename']} ===\n{text}"
 
@@ -496,7 +521,15 @@ def generate_ontology():
         project.total_text_length = len(all_text)
         ProjectManager.save_extracted_text(project.project_id, all_text)
         logger.info(f"text extraction complete, {len(all_text)} characters")
-        
+
+        # Everything downstream - the ontology prompt, the population hints, the
+        # config generator, the report agent - reads this as "the brief". With
+        # no field of its own it is the documents, which is what a caller who
+        # pasted their brief into the old box was providing anyway.
+        if not simulation_requirement:
+            simulation_requirement = all_text.strip()
+        project.simulation_requirement = simulation_requirement
+
         # Generate the ontology
         logger.info("calling the LLM to generate the ontology definition...")
         generator = OntologyGenerator()
@@ -761,6 +794,21 @@ def _build_graph_impl():
                 "success": False,
                 "error": t('api.textNotFound')
             }), 400
+
+        # Projects created since the audience field was removed carry the
+        # documents themselves as the requirement, so this is a no-op for them.
+        # It still matters for older projects, where someone typed an audience
+        # description the uploaded deck never contained: that text reached the
+        # ontology prompt but never the graph, so a segment the deck named once
+        # in a layout table had nothing to reinforce it and was not extracted.
+        # Both sides are normalised before the comparison - otherwise the
+        # requirement, which is now a preprocessed copy of the documents, would
+        # fail a raw substring test and prepend the whole brief twice.
+        requirement = TextProcessor.preprocess_text(
+            project.simulation_requirement or ""
+        )
+        if requirement and requirement not in TextProcessor.preprocess_text(text):
+            text = f"=== Campaign brief and target audience ===\n{requirement}\n\n{text}"
         
         # Load the ontology
         ontology = project.ontology
@@ -805,17 +853,83 @@ def _build_graph_impl():
             # run scope is opened here rather than inherited from the request.
             set_locale(current_locale)
             build_logger = get_logger('spiegel.build')
+
+            def check_cancelled():
+                """Stop here if the user pressed stop. Safe between stages only."""
+                task_manager.raise_if_cancelled(task_id)
+
+            def set_corpus_state(state, **fields):
+                """Publish the crawler's coarse state for the build card."""
+                task_manager.update_task(
+                    task_id,
+                    progress_detail={'corpus': {'state': state, **fields}},
+                )
+
             try:
                 build_logger.info(f"[{task_id}] building graph...")
                 task_manager.update_task(
-                    task_id, 
+                    task_id,
                     status=TaskStatus.PROCESSING,
                     message=t('progress.initGraphService')
                 )
+                check_cancelled()
                 
                 # Create the graph build service
                 builder = GraphBuilderService(api_key=Config.ZEP_API_KEY)
                 
+                # Harvest public discussion about the category and code it into
+                # a theme distribution. Best-effort: a build that cannot reach
+                # the sources still proceeds on the brief alone.
+                build_text = text
+                if resume_existing_batch:
+                    # Resuming matches a batch by hashing the chunks, so the text
+                    # has to be byte-identical to the original run. Re-render the
+                    # stored distribution instead of re-harvesting, which would
+                    # produce different wording and break the match.
+                    stored_text = render_distribution(project.corpus_distribution)
+                    if stored_text:
+                        build_text = f"{text}\n\n{stored_text}"
+                else:
+                    def corpus_progress(message, state=None, **fields):
+                        task_manager.update_task(task_id, message=message, progress=3)
+                        if state:
+                            set_corpus_state(state, **fields)
+
+                    set_corpus_state('starting')
+                    with pipeline_log.step(
+                        'CorpusIngest', 'ingest_corpus', target=project_id,
+                    ) as step:
+                        corpus = ingest_corpus(
+                            text,
+                            progress=corpus_progress,
+                            should_cancel=lambda: task_manager.is_cancelled(task_id),
+                        )
+                        step.metric(**{
+                            k: v for k, v in corpus['summary'].items()
+                            if isinstance(v, (int, float, str))
+                        })
+
+                    project.corpus_distribution = corpus['distribution']
+                    project.corpus_summary = corpus['summary']
+                    ProjectManager.save_project(project)
+
+                    if corpus['episode_text']:
+                        # Appended as text so the harvested priors travel through
+                        # the same chunk-and-batch path as the brief.
+                        build_text = f"{text}\n\n{corpus['episode_text']}"
+                        set_corpus_state(
+                            'done',
+                            themes=corpus['summary'].get('themes', 0),
+                            coded=corpus['summary'].get('coded', 0),
+                        )
+                    else:
+                        set_corpus_state(
+                            'skipped',
+                            reason=corpus['summary'].get('skipped', 'no_results'),
+                        )
+
+                check_cancelled()
+
                 # Chunk the text
                 task_manager.update_task(
                     task_id,
@@ -826,15 +940,15 @@ def _build_graph_impl():
                     'TextProcessor', 'split_text',
                     chunk_size=chunk_size, chunk_overlap=chunk_overlap,
                 ) as step:
-                    step.input_text(text)
+                    step.input_text(build_text)
                     chunks = TextProcessor.split_text(
-                        text,
+                        build_text,
                         chunk_size=chunk_size,
                         overlap=chunk_overlap
                     )
                     builder.validate_batch_chunks(chunks, batch_size=350)
                     total_chunks = len(chunks)
-                    step.metric(chunks=total_chunks, text_chars=len(text))
+                    step.metric(chunks=total_chunks, text_chars=len(build_text))
                     step.output(first_chunk_preview=chunks[0][:400] if chunks else '')
 
                 if resume_existing_batch:
@@ -856,6 +970,10 @@ def _build_graph_impl():
                         progress=55,
                     )
                 else:
+                    # Last point before anything is created in Zep Cloud, so a
+                    # stop here leaves nothing to clean up.
+                    check_cancelled()
+
                     # Create the graph
                     task_manager.update_task(
                         task_id,
@@ -942,6 +1060,9 @@ def _build_graph_impl():
                         message=msg,
                         progress=progress
                     )
+                    # The longest phase of the build, and the poll loop calls
+                    # this every pass, so a stop lands quickly here.
+                    check_cancelled()
                 
                 with pipeline_log.step(
                     'GraphBuilderService', 'wait_for_batch',
@@ -983,6 +1104,20 @@ def _build_graph_impl():
                         }
                     )
                 
+            except TaskCancelled:
+                # The user stopped the build. Whatever was already created in
+                # Zep Cloud is left in place and the project is marked FAILED,
+                # which is the state reset and force-rebuild already recover
+                # from - a cancelled build needs no recovery path of its own.
+                build_logger.info(f"[{task_id}] graph build stopped by the user")
+
+                with _project_build_lock(project_id):
+                    project.status = ProjectStatus.FAILED
+                    project.error = t('api.buildCancelled')
+                    ProjectManager.save_project(project)
+
+                    task_manager.cancel_task(task_id, t('api.buildCancelled'))
+
             except Exception as e:
                 # Mark the project as failed
                 build_logger.error(f"[{task_id}] graph build failed: {str(e)}")
@@ -1042,6 +1177,41 @@ def get_task(task_id: str):
     return jsonify({
         "success": True,
         "data": task.to_dict()
+    })
+
+
+@graph_bp.route('/task/<task_id>/cancel', methods=['POST'])
+def cancel_task(task_id: str):
+    """
+    Stop a running task.
+
+    Cancellation is cooperative, so this only raises the flag - the worker
+    unwinds at its next checkpoint. The response says the stop was requested,
+    not that the pipeline has already come to rest; the caller keeps polling
+    the task until it reports a terminal status.
+    """
+    task_manager = TaskManager()
+    task = task_manager.get_task(task_id)
+
+    if not task:
+        return jsonify({
+            "success": False,
+            "error": t('api.taskNotFound', id=task_id)
+        }), 404
+
+    if not task_manager.request_cancel(task_id):
+        return jsonify({
+            "success": False,
+            "error": t('api.taskAlreadyFinished')
+        }), 409
+
+    logger.info(f"cancellation requested for task {task_id}")
+    return jsonify({
+        "success": True,
+        "data": {
+            "task_id": task_id,
+            "message": t('api.taskCancelRequested')
+        }
     })
 
 

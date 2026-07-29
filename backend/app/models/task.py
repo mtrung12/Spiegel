@@ -19,6 +19,22 @@ class TaskStatus(str, Enum):
     PROCESSING = "processing"    # In progress
     COMPLETED = "completed"      # Finished
     FAILED = "failed"            # Failed
+    CANCELLED = "cancelled"      # Stopped by the user
+
+
+#: A task is finished once it reaches one of these; cancelling is a no-op.
+TERMINAL_STATUSES = (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED)
+
+
+class TaskCancelled(Exception):
+    """
+    Raised inside a worker thread when the user has asked it to stop.
+
+    A Python thread cannot be killed from outside, so cancellation is
+    cooperative: the worker calls ``raise_if_cancelled`` at points where
+    stopping leaves recoverable state, and unwinds through its normal error
+    path from there.
+    """
 
 
 @dataclass
@@ -35,7 +51,9 @@ class Task:
     error: Optional[str] = None    # Error message
     metadata: Dict = field(default_factory=dict)  # Extra metadata
     progress_detail: Dict = field(default_factory=dict)  # Fine-grained progress info
-    
+    cancel_requested: bool = False  # Set by the user; the worker acts on it
+
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to a dict."""
         return {
@@ -50,6 +68,7 @@ class Task:
             "result": self.result,
             "error": self.error,
             "metadata": self.metadata,
+            "cancel_requested": self.cancel_requested,
         }
 
 
@@ -144,6 +163,42 @@ class TaskManager:
                 if progress_detail is not None:
                     task.progress_detail = progress_detail
     
+    def request_cancel(self, task_id: str) -> bool:
+        """
+        Ask a running task to stop.
+
+        Returns:
+            True when the flag was set, False when the task is unknown or has
+            already finished - in both cases there is nothing left to stop.
+        """
+        with self._task_lock:
+            task = self._tasks.get(task_id)
+            if task is None or task.status in TERMINAL_STATUSES:
+                return False
+            task.cancel_requested = True
+            task.updated_at = datetime.now()
+            return True
+
+    def is_cancelled(self, task_id: str) -> bool:
+        """Whether the user has asked this task to stop."""
+        with self._task_lock:
+            task = self._tasks.get(task_id)
+            return bool(task and task.cancel_requested)
+
+    def raise_if_cancelled(self, task_id: str):
+        """
+        Abort the calling worker when a stop has been requested.
+
+        Call this between stages, where unwinding leaves state the user can
+        recover from rather than a half-written record.
+        """
+        if self.is_cancelled(task_id):
+            raise TaskCancelled(f"task {task_id} was cancelled")
+
+    def cancel_task(self, task_id: str, message: str):
+        """Mark a task as stopped by the user."""
+        self.update_task(task_id, status=TaskStatus.CANCELLED, message=message)
+
     def complete_task(self, task_id: str, result: Dict):
         """Mark a task as completed."""
         self.update_task(

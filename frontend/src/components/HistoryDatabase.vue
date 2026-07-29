@@ -19,9 +19,10 @@
 
     <!-- Card container, shown only when projects exist -->
     <div v-if="projects.length > 0" class="cards-container" :class="{ expanded: isExpanded }" :style="containerStyle">
-      <div 
+      <button
         v-for="(project, index) in projects"
         :key="project.project_id"
+        type="button"
         class="project-card"
         :class="{ expanded: isExpanded, hovering: hoveringCard === index }"
         :style="getCardStyle(index)"
@@ -79,10 +80,10 @@
         </div>
 
         <!-- Card title: the project name, falling back to its requirement -->
-        <h3 class="card-title">{{ getProjectTitle(project) }}</h3>
+        <span class="card-title">{{ getProjectTitle(project) }}</span>
 
         <!-- Card description: the full simulation requirement -->
-        <p class="card-desc">{{ truncateText(project.simulation_requirement, 55) }}</p>
+        <span class="card-desc">{{ truncateText(project.simulation_requirement, 55) }}</span>
 
         <!-- Card footer -->
         <div class="card-footer">
@@ -97,7 +98,7 @@
         
         <!-- Footer rule, which grows on hover -->
         <div class="card-bottom-line"></div>
-      </div>
+      </button>
     </div>
 
     <!-- Loading state -->
@@ -123,21 +124,22 @@
       </button>
     </div>
 
-    <!-- Replay detail dialog -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="selectedProject" class="modal-overlay" @click.self="closeModal">
-          <div class="modal-content">
+    <!-- Replay detail dialog. A native <dialog> already renders in the top
+         layer, so it needs no Teleport and no hand-written focus trap. -->
+    <AppDialog :open="!!selectedProject" size="lg" @close="closeModal">
+      <div v-if="selectedProject" class="modal-content">
             <!-- Dialog header -->
             <div class="modal-header">
               <div class="modal-title-section">
-                <span class="modal-id">{{ formatProjectId(selectedProject.project_id) }}</span>
+                <h2 class="modal-id">{{ formatProjectId(selectedProject.project_id) }}</h2>
                 <span class="modal-progress" :class="getProgressClass(selectedProject)">
-                  <span class="status-dot">●</span> {{ formatRounds(selectedProject) }}
+                  <span class="status-dot" aria-hidden="true">●</span> {{ formatRounds(selectedProject) }}
                 </span>
                 <span class="modal-create-time">{{ formatDate(selectedProject.created_at) }} {{ formatTime(selectedProject.created_at) }}</span>
               </div>
-              <button class="modal-close" @click="closeModal">×</button>
+              <button class="modal-close" :aria-label="$t('common.close')" @click="closeModal">
+                <span aria-hidden="true">×</span>
+              </button>
             </div>
 
             <!-- Dialog body -->
@@ -181,7 +183,7 @@
                 @click="goToProject"
                 :disabled="!selectedProject.project_id"
               >
-                <span class="btn-step">Step1</span>
+                <span class="btn-step">{{ $t('history.stepBadge', { n: 1 }) }}</span>
                 <span class="btn-icon">◇</span>
                 <span class="btn-text">{{ $t('history.step1Button') }}</span>
               </button>
@@ -190,7 +192,7 @@
                 @click="goToSimulation"
                 :disabled="!selectedProject.simulation_id"
               >
-                <span class="btn-step">Step2</span>
+                <span class="btn-step">{{ $t('history.stepBadge', { n: 2 }) }}</span>
                 <span class="btn-icon">◈</span>
                 <span class="btn-text">{{ $t('history.step2Button') }}</span>
               </button>
@@ -199,7 +201,7 @@
                 @click="goToReport"
                 :disabled="!selectedProject.report_id"
               >
-                <span class="btn-step">Step4</span>
+                <span class="btn-step">{{ $t('history.stepBadge', { n: 4 }) }}</span>
                 <span class="btn-icon">◆</span>
                 <span class="btn-text">{{ $t('history.step4Button') }}</span>
               </button>
@@ -208,7 +210,7 @@
                 @click="goToWorkspace"
                 :disabled="!selectedProject.project_id"
               >
-                <span class="btn-step">All</span>
+                <span class="btn-step">{{ $t('history.allBadge') }}</span>
                 <span class="btn-icon">▣</span>
                 <span class="btn-text">{{ $t('history.workspaceButton') }}</span>
               </button>
@@ -216,15 +218,23 @@
             <!-- Notice when replay is unavailable -->
             <div class="modal-playback-hint">
               <span class="hint-text">{{ $t('history.replayHint') }}</span>
-              <button class="delete-btn" :disabled="deleting" @click="handleDelete">
+              <button class="delete-btn" :disabled="deleting" @click="requestDelete">
                 {{ deleting ? $t('common.loading') : $t('history.deleteButton') }}
               </button>
             </div>
-            <p v-if="deleteError" class="modal-delete-error">{{ deleteError }}</p>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
+            <p v-if="deleteError" class="modal-delete-error" role="alert">{{ deleteError }}</p>
+      </div>
+    </AppDialog>
+
+    <ConfirmDialog
+      :open="confirmingDelete"
+      destructive
+      :title="$t('history.deleteButton')"
+      :message="selectedProject ? $t('history.deleteConfirm', { name: getProjectTitle(selectedProject) }) : ''"
+      :confirmLabel="$t('history.deleteButton')"
+      @confirm="handleDelete"
+      @cancel="confirmingDelete = false"
+    />
   </div>
 </template>
 
@@ -233,6 +243,8 @@ import { ref, computed, onMounted, onUnmounted, onActivated, watch, nextTick } f
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { listProjects, deleteProject } from '../api/graph'
+import AppDialog from './AppDialog.vue'
+import ConfirmDialog from './ConfirmDialog.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -456,12 +468,20 @@ const closeModal = () => {
   deleteError.value = ''
 }
 
+// Deleting is irreversible, so it goes through a confirmation step.
+const confirmingDelete = ref(false)
+
+const requestDelete = () => {
+  if (!selectedProject.value || deleting.value) return
+  confirmingDelete.value = true
+}
+
 // Delete the project, its graph and its simulations. The backend refuses with
 // 409 while a simulation is still running, so surface that instead of hiding it.
 const handleDelete = async () => {
   const project = selectedProject.value
+  confirmingDelete.value = false
   if (!project || deleting.value) return
-  if (!window.confirm(t('history.deleteConfirm', { name: getProjectTitle(project) }))) return
 
   deleting.value = true
   deleteError.value = ''
@@ -764,14 +784,14 @@ onUnmounted(() => {
 .section-line {
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, transparent, #E5E5E5, transparent);
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
   max-width: 300px;
 }
 
 .section-title {
   font-size: 0.8rem;
   font-weight: 500;
-  color: #999999;
+  color: var(--muted-soft);
   letter-spacing: 3px;
   text-transform: uppercase;
 }
@@ -789,10 +809,15 @@ onUnmounted(() => {
 
 /* Project card */
 .project-card {
+  /* Now a <button>, so the inherited control styling has to be reset. */
+  font: inherit;
+  text-align: left;
+  appearance: none;
+  display: block;
   position: absolute;
   width: 280px;
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
+  background: var(--white);
+  border: 1px solid var(--border);
   border-radius: 0;
   padding: 14px;
   cursor: pointer;
@@ -817,13 +842,13 @@ onUnmounted(() => {
   align-items: center;
   margin-bottom: 12px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #F5F5F5;
+  border-bottom: 1px solid var(--surface-2);
   font-family: 'JetBrains Mono', 'SF Mono', monospace;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
 }
 
 .card-id {
-  color: #666666;
+  color: var(--muted);
   letter-spacing: 0.5px;
   font-weight: 500;
 }
@@ -846,12 +871,12 @@ onUnmounted(() => {
 }
 
 /* One colour per feature */
-.status-icon:nth-child(1).available { color: #111111; } /* graph build - blue */
-.status-icon:nth-child(2).available { color: #F59E0B; } /* environment setup - orange */
-.status-icon:nth-child(3).available { color: #10B981; } /* analysis report - green */
+.status-icon:nth-child(1).available { color: var(--ink); } /* graph build - blue */
+.status-icon:nth-child(2).available { color: var(--warning); } /* environment setup - orange */
+.status-icon:nth-child(3).available { color: var(--success); } /* analysis report - green */
 
 .status-icon.unavailable {
-  color: #D4D4D4;
+  color: var(--muted-soft);
   opacity: 0.5;
 }
 
@@ -862,18 +887,18 @@ onUnmounted(() => {
   gap: 6px;
   letter-spacing: 0.5px;
   font-weight: 600;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
 }
 
 .status-dot {
-  font-size: 0.5rem;
+  font-size: 0.75rem;
 }
 
 /* Progress state colours */
-.card-progress.completed { color: #10B981; }    /* finished - green */
-.card-progress.in-progress { color: #F59E0B; }  /* in progress - orange */
-.card-progress.not-started { color: #999999; }  /* not started - grey */
-.card-status.pending { color: #999999; }
+.card-progress.completed { color: var(--success); }    /* finished - green */
+.card-progress.in-progress { color: var(--warning); }  /* in progress - orange */
+.card-progress.not-started { color: var(--muted-soft); }  /* not started - grey */
+.card-status.pending { color: var(--muted-soft); }
 
 /* File list */
 .card-files-wrapper {
@@ -902,8 +927,8 @@ onUnmounted(() => {
   justify-content: center;
   padding: 3px 6px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.6rem;
-  color: #666666;
+  font-size: 0.75rem;
+  color: var(--muted);
   background: rgba(255, 255, 255, 0.5);
   border-radius: 3px;
   letter-spacing: 0.3px;
@@ -922,7 +947,7 @@ onUnmounted(() => {
 .file-item:hover {
   background: rgba(255, 255, 255, 1);
   transform: translateX(2px);
-  border-color: #E5E5E5;
+  border-color: var(--border);
 }
 
 /* Minimal file tag styling */
@@ -934,7 +959,7 @@ onUnmounted(() => {
   padding: 0 4px;
   border-radius: 2px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.55rem;
+  font-size: 0.75rem;
   font-weight: 600;
   line-height: 1;
   text-transform: uppercase;
@@ -948,16 +973,16 @@ onUnmounted(() => {
 .file-tag.doc { background: #e6eff5; color: #5a7ea6; }
 .file-tag.xls { background: #e6f2e8; color: #5aa668; }
 .file-tag.ppt { background: #f5efe6; color: #a6815a; }
-.file-tag.txt { background: #f0f0f0; color: #757575; }
+.file-tag.txt { background: var(--surface-3); color: var(--muted-soft); }
 .file-tag.code { background: #eae6f2; color: #815aa6; }
 .file-tag.img { background: #e6f2f2; color: #5aa6a6; }
 .file-tag.zip { background: #f2f0e6; color: #a69b5a; }
-.file-tag.other { background: #F5F5F5; color: #666666; }
+.file-tag.other { background: var(--surface-2); color: var(--muted); }
 
 .file-name {
   font-family: 'Inter', sans-serif;
-  font-size: 0.7rem;
-  color: #4D4D4D;
+  font-size: 0.75rem;
+  color: var(--ink-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -971,7 +996,7 @@ onUnmounted(() => {
   justify-content: center;
   gap: 8px;
   height: 48px;
-  color: #999999;
+  color: var(--muted-soft);
 }
 
 .empty-file-icon {
@@ -981,14 +1006,14 @@ onUnmounted(() => {
 
 .empty-file-text {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   letter-spacing: 0.5px;
 }
 
 /* File area on hover */
 .project-card:hover .card-files-wrapper {
-  border-color: #D4D4D4;
-  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border-color: var(--border-strong);
+  background: linear-gradient(135deg, var(--white) 0%, #f8f9fa 100%);
 }
 
 /* Corner decoration */
@@ -1006,10 +1031,11 @@ onUnmounted(() => {
 
 /* Card title */
 .card-title {
+  display: block;
   font-family: 'Inter', -apple-system, sans-serif;
   font-size: 0.9rem;
   font-weight: 700;
-  color: #000000;
+  color: var(--black);
   margin: 0 0 6px 0;
   line-height: 1.4;
   white-space: nowrap;
@@ -1019,14 +1045,15 @@ onUnmounted(() => {
 }
 
 .project-card:hover .card-title {
-  color: #F97316;
+  color: var(--accent);
 }
 
 /* Card description */
 .card-desc {
+  display: block;
   font-family: 'Inter', sans-serif;
   font-size: 0.75rem;
-  color: #666666;
+  color: var(--muted);
   margin: 0 0 16px 0;
   line-height: 1.5;
   height: 34px;
@@ -1043,10 +1070,10 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding-top: 12px;
-  border-top: 1px solid #F5F5F5;
+  border-top: 1px solid var(--surface-2);
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.65rem;
-  color: #999999;
+  font-size: 0.75rem;
+  color: var(--muted-soft);
   font-weight: 500;
 }
 
@@ -1064,17 +1091,17 @@ onUnmounted(() => {
   gap: 6px;
   letter-spacing: 0.5px;
   font-weight: 600;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
 }
 
 .card-footer .status-dot {
-  font-size: 0.5rem;
+  font-size: 0.75rem;
 }
 
 /* Progress state colours, footer */
-.card-footer .card-progress.completed { color: #10B981; }
-.card-footer .card-progress.in-progress { color: #F59E0B; }
-.card-footer .card-progress.not-started { color: #999999; }
+.card-footer .card-progress.completed { color: var(--success); }
+.card-footer .card-progress.in-progress { color: var(--warning); }
+.card-footer .card-progress.not-started { color: var(--muted-soft); }
 
 /* Footer rule */
 .card-bottom-line {
@@ -1083,7 +1110,7 @@ onUnmounted(() => {
   left: 0;
   height: 2px;
   width: 0;
-  background-color: #000;
+  background-color: var(--black);
   transition: width 0.5s cubic-bezier(0.23, 1, 0.32, 1);
   z-index: 20;
 }
@@ -1099,47 +1126,47 @@ onUnmounted(() => {
   align-items: center;
   gap: 14px;
   padding: 48px;
-  color: #999999;
+  color: var(--muted-soft);
 }
 
 .empty-icon {
   font-size: 28px;
-  color: #D4D4D4;
+  color: var(--muted-soft);
 }
 
 .empty-title {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: #333333;
+  color: var(--ink-2);
 }
 
 .empty-hint {
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
-  color: #999999;
+  color: var(--muted-soft);
   text-align: center;
   max-width: 420px;
 }
 
 .empty-action {
   margin-top: 4px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
+  border: 1px solid var(--border);
+  background: var(--white);
   border-radius: 6px;
   padding: 9px 20px;
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
-  color: #333333;
+  color: var(--ink-2);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .empty-action:hover {
-  background: #FAFAFA;
-  border-color: #D4D4D4;
+  background: var(--surface);
+  border-color: var(--border-strong);
 }
 
 .empty-icon {
@@ -1150,8 +1177,8 @@ onUnmounted(() => {
 .loading-spinner {
   width: 24px;
   height: 24px;
-  border: 2px solid #E5E5E5;
-  border-top-color: #666666;
+  border: 2px solid var(--border);
+  border-top-color: var(--muted);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -1176,69 +1203,20 @@ onUnmounted(() => {
   }
 }
 
-/* ===== Replay detail dialog ===== */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  backdrop-filter: blur(4px);
-}
-
+/* ===== Replay detail dialog =====
+   The overlay, sizing and enter/leave transitions used to live here; the
+   native <dialog> in AppDialog now provides the backdrop and the top layer. */
 .modal-content {
-  background: #FFFFFF;
-  width: 560px;
-  max-width: 90vw;
-  max-height: 85vh;
-  overflow-y: auto;
-  border: 1px solid #E5E5E5;
-  border-radius: 8px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  background: var(--white);
 }
 
-/* Transitions */
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity 0.3s ease;
-}
-
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
-}
-
-.modal-enter-active .modal-content {
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.modal-leave-active .modal-content {
-  transition: all 0.2s ease-in;
-}
-
-.modal-enter-from .modal-content {
-  transform: scale(0.95) translateY(10px);
-  opacity: 0;
-}
-
-.modal-leave-to .modal-content {
-  transform: scale(0.95) translateY(10px);
-  opacity: 0;
-}
-
-/* Dialog header */
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 20px 32px;
-  border-bottom: 1px solid #F5F5F5;
-  background: #FFFFFF;
+  border-bottom: 1px solid var(--surface-2);
+  background: var(--white);
 }
 
 .modal-title-section {
@@ -1251,7 +1229,7 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', monospace;
   font-size: 1rem;
   font-weight: 600;
-  color: #000000;
+  color: var(--black);
   letter-spacing: 0.5px;
 }
 
@@ -1264,17 +1242,17 @@ onUnmounted(() => {
   font-weight: 600;
   padding: 4px 8px;
   border-radius: 4px;
-  background: #FAFAFA;
+  background: var(--surface);
 }
 
-.modal-progress.completed { color: #10B981; background: rgba(16, 185, 129, 0.1); }
-.modal-progress.in-progress { color: #F59E0B; background: rgba(245, 158, 11, 0.1); }
-.modal-progress.not-started { color: #999999; background: #F5F5F5; }
+.modal-progress.completed { color: var(--success); background: rgba(16, 185, 129, 0.1); }
+.modal-progress.in-progress { color: var(--warning); background: rgba(245, 158, 11, 0.1); }
+.modal-progress.not-started { color: var(--muted-soft); background: var(--surface-2); }
 
 .modal-create-time {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.75rem;
-  color: #999999;
+  color: var(--muted-soft);
   letter-spacing: 0.3px;
 }
 
@@ -1284,7 +1262,7 @@ onUnmounted(() => {
   border: none;
   background: transparent;
   font-size: 1.5rem;
-  color: #999999;
+  color: var(--muted-soft);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1294,8 +1272,8 @@ onUnmounted(() => {
 }
 
 .modal-close:hover {
-  background: #F5F5F5;
-  color: #000000;
+  background: var(--surface-2);
+  color: var(--black);
 }
 
 /* Dialog body */
@@ -1314,7 +1292,7 @@ onUnmounted(() => {
 .modal-label {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.75rem;
-  color: #666666;
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-bottom: 10px;
@@ -1323,11 +1301,11 @@ onUnmounted(() => {
 
 .modal-requirement {
   font-size: 0.95rem;
-  color: #333333;
+  color: var(--ink-2);
   line-height: 1.6;
   padding: 16px;
-  background: #FAFAFA;
-  border: 1px solid #F5F5F5;
+  background: var(--surface);
+  border: 1px solid var(--surface-2);
   border-radius: 8px;
 }
 
@@ -1346,17 +1324,17 @@ onUnmounted(() => {
 }
 
 .modal-files::-webkit-scrollbar-track {
-  background: #F5F5F5;
+  background: var(--surface-2);
   border-radius: 2px;
 }
 
 .modal-files::-webkit-scrollbar-thumb {
-  background: #D4D4D4;
+  background: var(--border-strong);
   border-radius: 2px;
 }
 
 .modal-files::-webkit-scrollbar-thumb:hover {
-  background: #999999;
+  background: var(--muted-soft);
 }
 
 .modal-file-item {
@@ -1364,20 +1342,20 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
+  background: var(--white);
+  border: 1px solid var(--border);
   border-radius: 6px;
   transition: all 0.2s ease;
 }
 
 .modal-file-item:hover {
-  border-color: #D4D4D4;
+  border-color: var(--border-strong);
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 .modal-file-name {
   font-size: 0.85rem;
-  color: #4D4D4D;
+  color: var(--ink-3);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1386,10 +1364,10 @@ onUnmounted(() => {
 
 .modal-empty {
   font-size: 0.85rem;
-  color: #999999;
+  color: var(--muted-soft);
   padding: 16px;
-  background: #FAFAFA;
-  border: 1px dashed #E5E5E5;
+  background: var(--surface);
+  border: 1px dashed var(--border);
   border-radius: 6px;
   text-align: center;
 }
@@ -1404,14 +1382,14 @@ onUnmounted(() => {
   margin: 16px 32px 0;
   padding: 16px 20px;
   border: none;
-  background: #F97316;
-  color: #FFFFFF;
+  background: var(--accent);
+  color: var(--white);
   cursor: pointer;
   transition: background 0.2s ease;
 }
 
 .modal-continue:hover {
-  background: #EA580C;
+  background: var(--accent-strong);
 }
 
 .continue-text {
@@ -1432,19 +1410,19 @@ onUnmounted(() => {
   align-items: center;
   gap: 16px;
   padding: 10px 32px 0;
-  background: #FFFFFF;
+  background: var(--white);
 }
 
 .divider-line {
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, transparent, #E5E5E5, transparent);
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
 }
 
 .divider-text {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.7rem;
-  color: #999999;
+  font-size: 0.75rem;
+  color: var(--muted-soft);
   letter-spacing: 2px;
   text-transform: uppercase;
   white-space: nowrap;
@@ -1455,7 +1433,7 @@ onUnmounted(() => {
   display: flex;
   gap: 16px;
   padding: 20px 32px;
-  background: #FFFFFF;
+  background: var(--white);
 }
 
 .modal-btn {
@@ -1465,9 +1443,9 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 16px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #FFFFFF;
+  background: var(--white);
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
@@ -1475,7 +1453,7 @@ onUnmounted(() => {
 }
 
 .modal-btn:hover:not(:disabled) {
-  border-color: #000000;
+  border-color: var(--black);
   transform: translateY(-2px);
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
@@ -1483,14 +1461,14 @@ onUnmounted(() => {
 .modal-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  background: #FAFAFA;
+  background: var(--surface);
 }
 
 .btn-step {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   font-weight: 500;
-  color: #999999;
+  color: var(--muted-soft);
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
@@ -1506,16 +1484,16 @@ onUnmounted(() => {
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.5px;
-  color: #4D4D4D;
+  color: var(--ink-3);
 }
 
-.modal-btn.btn-project .btn-icon { color: #111111; }
-.modal-btn.btn-simulation .btn-icon { color: #F59E0B; }
-.modal-btn.btn-report .btn-icon { color: #10B981; }
+.modal-btn.btn-project .btn-icon { color: var(--ink); }
+.modal-btn.btn-simulation .btn-icon { color: var(--warning); }
+.modal-btn.btn-report .btn-icon { color: var(--success); }
 .modal-btn.btn-workspace .btn-icon { color: #6366F1; }
 
 .modal-btn:hover:not(:disabled) .btn-text {
-  color: #000000;
+  color: var(--black);
 }
 
 /* Replay-unavailable notice */
@@ -1525,25 +1503,25 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 16px;
   padding: 0 32px 20px;
-  background: #FFFFFF;
+  background: var(--white);
 }
 
 .delete-btn {
   flex-shrink: 0;
   background: none;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   padding: 8px 14px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   letter-spacing: 0.5px;
-  color: #999999;
+  color: var(--muted-soft);
   cursor: pointer;
   transition: color 0.2s ease, border-color 0.2s ease;
 }
 
 .delete-btn:hover:not(:disabled) {
-  color: #DC2626;
-  border-color: #DC2626;
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 .delete-btn:disabled {
@@ -1554,15 +1532,15 @@ onUnmounted(() => {
 .modal-delete-error {
   margin: 0;
   padding: 0 32px 20px;
-  background: #FFFFFF;
-  color: #DC2626;
+  background: var(--white);
+  color: var(--danger);
   font-size: 0.8rem;
 }
 
 .hint-text {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.7rem;
-  color: #999999;
+  font-size: 0.75rem;
+  color: var(--muted-soft);
   letter-spacing: 0.3px;
   text-align: center;
   line-height: 1.5;

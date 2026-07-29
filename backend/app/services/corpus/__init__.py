@@ -25,6 +25,12 @@ Typical use::
     print(result.summary_line())
 """
 
+from .extract import (
+    CorpusThemeExtractor,
+    ThemeGroup,
+    normalize_theme,
+    render_distribution,
+)
 from .filters import (
     CorpusFilter,
     FilterStats,
@@ -46,6 +52,7 @@ from .models import (
     SourceQuery,
     pseudonymize_author,
 )
+from .query_builder import DerivedQuery, derive_query
 from .sources import (
     BROWSER_SOURCES,
     CREDENTIALED_SOURCES,
@@ -59,6 +66,12 @@ from .sources import (
 __all__ = [
     'CorpusHarvester',
     'HarvestResult',
+    'CorpusThemeExtractor',
+    'ThemeGroup',
+    'normalize_theme',
+    'render_distribution',
+    'DerivedQuery',
+    'derive_query',
     'CorpusFilter',
     'FilterStats',
     'FilterVerdict',
