@@ -23,3 +23,7 @@ services:
       # File logs, so they survive a container recreate. stdout still goes to
       # `docker logs` either way.
       - ./backend/logs:/app/backend/logs
+      # The pipeline ledger (per-LLM-call payloads and token counts). Without
+      # this mount it is written inside the container and lost on every
+      # rebuild, which is exactly when it is needed to explain a token bill.
+      - ./local-doc/logs:/app/local-doc/logs

@@ -35,6 +35,15 @@ export const getReport = (reportId) => {
 }
 
 /**
+ * Get the report belonging to a simulation, if one exists.
+ * Rejects (404) when the simulation has no report yet, so callers must catch.
+ * @param {string} simulationId
+ */
+export const getReportBySimulation = (simulationId) => {
+  return service.get(`/api/report/by-simulation/${simulationId}`)
+}
+
+/**
  * List reports, newest first.
  * @param {string} [simulationId] - optional, filter by simulation
  * @param {number} limit - page size

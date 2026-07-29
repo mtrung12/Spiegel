@@ -77,15 +77,22 @@ class PlatformActionLogger:
         with open(self.log_path, 'a', encoding='utf-8') as f:
             f.write(json.dumps(entry, ensure_ascii=False) + '\n')
     
-    def log_round_end(self, round_num: int, actions_count: int):
-        """Record the end of a round."""
+    def log_round_end(self, round_num: int, actions_count: int, simulated_hours: int = 0):
+        """
+        Record the end of a round.
+
+        `simulated_hours` is carried here because the run state is advanced off
+        round_end, not round_start. Without it the state's simulated-time
+        fields stay pinned at zero for the whole run.
+        """
         entry = {
             "round": round_num,
             "timestamp": datetime.now().isoformat(),
             "event_type": "round_end",
             "actions_count": actions_count,
+            "simulated_hours": simulated_hours,
         }
-        
+
         with open(self.log_path, 'a', encoding='utf-8') as f:
             f.write(json.dumps(entry, ensure_ascii=False) + '\n')
     

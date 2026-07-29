@@ -947,7 +947,13 @@ class SimulationRunner:
                                 # Update the round from the round_end event
                                 elif event_type == "round_end":
                                     round_num = action_data.get("round", 0)
-                                    simulated_hours = action_data.get("simulated_hours", 0)
+                                    # Older runs wrote the singular key, and only
+                                    # on round_start; accept both so a mid-flight
+                                    # upgrade does not zero the clock.
+                                    simulated_hours = action_data.get(
+                                        "simulated_hours",
+                                        action_data.get("simulated_hour", 0),
+                                    )
 
                                     pipeline_log.action(
                                         f'agent.{platform}', 'round_end',

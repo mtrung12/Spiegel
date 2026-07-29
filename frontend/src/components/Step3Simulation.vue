@@ -336,7 +336,7 @@ import {
   getRunStatus,
   getRunStatusDetail
 } from '../api/simulation'
-import { generateReport } from '../api/report'
+import { generateReport, getReportBySimulation } from '../api/report'
 import FeedBoard from './FeedBoard.vue'
 
 const { t } = useI18n()
@@ -693,6 +693,27 @@ const formatActionTime = (timestamp) => {
   }
 }
 
+// The report_id of a completed report that already covers the current run, or
+// null when there is none and one has to be generated. A 404 here is the
+// normal "no report yet" answer.
+const findReusableReport = async () => {
+  try {
+    const res = await getReportBySimulation(props.simulationId)
+    const report = res?.data
+    if (!report || report.status !== 'completed') return null
+
+    const runFinishedAt = runStatus.value.completed_at
+    // No run timestamp to compare against: treat the report as stale rather
+    // than risk showing one that predates this run.
+    if (!runFinishedAt) return null
+    if (new Date(report.created_at) < new Date(runFinishedAt)) return null
+
+    return report.report_id
+  } catch {
+    return null
+  }
+}
+
 const handleNextStep = async () => {
   if (!props.simulationId) {
     addLog(t('log.errorMissingSimId'))
@@ -705,14 +726,24 @@ const handleNextStep = async () => {
   }
   
   isGeneratingReport.value = true
-  addLog(t('log.startingReportGen'))
-  
+
   try {
+    // Coming back to step 3 from step 4 must not cost another full report
+    // pipeline run. A report generated after this run finished still describes
+    // it, so reuse it; only a report older than the run is actually stale.
+    const reusableId = await findReusableReport()
+    if (reusableId) {
+      addLog(t('log.reportReused', { reportId: reusableId }))
+      router.push({ name: 'Report', params: { reportId: reusableId } })
+      return
+    }
+
+    addLog(t('log.startingReportGen'))
     const res = await generateReport({
       simulation_id: props.simulationId,
       force_regenerate: true
     })
-    
+
     if (res.success && res.data) {
       const reportId = res.data.report_id
       addLog(t('log.reportGenTaskStarted', { reportId }))

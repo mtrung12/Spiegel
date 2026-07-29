@@ -38,6 +38,8 @@ _project_root = os.path.abspath(os.path.join(_backend_dir, '..'))
 sys.path.insert(0, _scripts_dir)
 sys.path.insert(0, _backend_dir)
 
+from agent_activity import normalize_active_hours
+
 # Load the .env file from the project root (LLM_API_KEY and friends)
 from dotenv import load_dotenv
 _env_file = os.path.join(_project_root, '.env')
@@ -536,9 +538,12 @@ class TwitterSimulationRunner:
         candidates = []
         for cfg in agent_configs:
             agent_id = cfg.get("agent_id", 0)
-            active_hours = cfg.get("active_hours", list(range(8, 23)))
+            # The config is LLM-written, so this field arrives as ints, as
+            # "18:00" strings or as a window. Compared raw against an int hour
+            # it matches nothing and the run goes silent.
+            active_hours = normalize_active_hours(cfg.get("active_hours"))
             activity_level = cfg.get("activity_level", 0.5)
-            
+
             # Is the agent inside its active hours?
             if current_hour not in active_hours:
                 continue

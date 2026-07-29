@@ -7,7 +7,7 @@
       v-model="viewMode"
       :projectId="projectData?.project_id"
       :simulationId="currentSimulationId"
-      :reportId="null"
+      :reportId="existingReportId"
     ></AppHeader>
 
     <!-- Main Content Area -->
@@ -51,6 +51,7 @@ import GraphPanel from '../components/GraphPanel.vue'
 import Step3Simulation from '../components/Step3Simulation.vue'
 import { getProject, getGraphData } from '../api/graph'
 import { getSimulation, getSimulationConfig } from '../api/simulation'
+import { getReportBySimulation } from '../api/report'
 import AppHeader from '../components/AppHeader.vue'
 import { useSplitLayout, useSystemLog } from '../composables/useWorkbench'
 import { useI18n } from 'vue-i18n'
@@ -79,6 +80,10 @@ const graphData = ref(null)
 const graphLoading = ref(false)
 const { systemLogs, addLog } = useSystemLog(200)
 const currentStatus = ref('processing') // processing | completed | error
+// A report this simulation already produced. Without it the stepper's step 4
+// stays disabled after coming back here, and the only way forward is the
+// generate button - which re-runs the whole report pipeline.
+const existingReportId = ref(null)
 
 const statusText = computed(() => {
   if (currentStatus.value === 'error') return t('main.statusError')
@@ -176,6 +181,17 @@ const refreshGraph = () => {
   }
 }
 
+// 404 here is the normal "no report yet" answer, not a failure worth logging.
+const loadExistingReport = async () => {
+  if (!currentSimulationId.value) return
+  try {
+    const res = await getReportBySimulation(currentSimulationId.value)
+    existingReportId.value = res?.data?.report_id || null
+  } catch {
+    existingReportId.value = null
+  }
+}
+
 // --- Auto Refresh Logic ---
 let graphRefreshTimer = null
 
@@ -217,6 +233,7 @@ onMounted(() => {
   }
   
   loadSimulationData()
+  loadExistingReport()
 })
 
 onUnmounted(() => {

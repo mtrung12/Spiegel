@@ -32,6 +32,99 @@ from .zep_entity_reader import EntityNode
 logger = get_logger('spiegel.simulation_config')
 
 
+def _normalize_active_hours(value: Any, default: List[int]) -> List[int]:
+    """
+    Coerce the LLM's `active_hours` into ints in 0-23.
+
+    The model writes this field as [9, 10], as ["18:00", "23:00"] or as
+    "18:00-23:00" depending on the run. The simulation runner compares it
+    against an int hour, so an uncoerced string list matches nothing and every
+    agent stays asleep for the whole run. The runner normalises defensively as
+    well, for configs written before this existed.
+    """
+    if value is None:
+        return list(default)
+
+    if isinstance(value, str):
+        parts = [p for p in value.replace('~', '-').split('-') if p.strip()]
+        value = parts if len(parts) == 2 else [value]
+
+    if not isinstance(value, (list, tuple)):
+        value = [value]
+
+    hours: List[int] = []
+    for item in value:
+        if isinstance(item, bool):
+            continue
+        try:
+            if isinstance(item, (int, float)):
+                hour = int(item)
+            elif isinstance(item, str) and item.strip():
+                hour = int(item.strip().split(':', 1)[0])
+            else:
+                continue
+        except (TypeError, ValueError):
+            continue
+        if 0 <= hour <= 23:
+            hours.append(hour)
+
+    if not hours:
+        logger.warning(f"unusable active_hours {value!r}; falling back to the default window")
+        return list(default)
+
+    # Two entries describe a window, not two isolated hours. Windows may wrap
+    # past midnight (22:00-02:00), so walk forward from the start.
+    if len(hours) == 2 and hours[0] != hours[1]:
+        start, end = hours
+        span = (end - start) % 24
+        return [(start + offset) % 24 for offset in range(span)]
+
+    return sorted(set(hours))
+
+
+def _coerce_int(value: Any, default: int) -> int:
+    """Read an int out of the LLM's answer, which may be a numeric string."""
+    if isinstance(value, bool) or value is None:
+        return default
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        logger.warning(f"expected a number, got {value!r}; using {default}")
+        return default
+
+
+def _coerce_hour_list(value: Any, default: List[int]) -> List[int]:
+    """
+    Coerce a time band to hour-of-day ints.
+
+    Unlike an agent's `active_hours`, these bands are always literal hour
+    lists, never a start/end window - [21, 22] means exactly those two hours.
+    """
+    if not isinstance(value, (list, tuple)):
+        return list(default)
+
+    hours: List[int] = []
+    for item in value:
+        if isinstance(item, bool):
+            continue
+        try:
+            if isinstance(item, (int, float)):
+                hour = int(item)
+            elif isinstance(item, str) and item.strip():
+                hour = int(item.strip().split(':', 1)[0])
+            else:
+                continue
+        except (TypeError, ValueError):
+            continue
+        if 0 <= hour <= 23:
+            hours.append(hour)
+
+    if not hours:
+        logger.warning(f"unusable hour band {value!r}; using {default}")
+        return list(default)
+    return sorted(set(hours))
+
+
 def _usage_dict(response: Any) -> Dict[str, Any]:
     """Pull the token counts off a completion, when the provider reports them."""
     usage = getattr(response, "usage", None)
@@ -738,17 +831,20 @@ Field reference:
             agents_per_hour_min = max(1, agents_per_hour_max // 2)
             logger.warning(f"agents_per_hour_min >= max; clamped to {agents_per_hour_min}")
         
+        # Every band below is compared against an int hour by the runner. A
+        # band the model wrote as "19:00" would match nothing and silently
+        # flatten that part of the daily rhythm to the neutral multiplier.
         return TimeSimulationConfig(
-            total_simulation_hours=result.get("total_simulation_hours", 72),
-            minutes_per_round=result.get("minutes_per_round", 60),  # One simulated hour per round by default
+            total_simulation_hours=_coerce_int(result.get("total_simulation_hours"), 72),
+            minutes_per_round=_coerce_int(result.get("minutes_per_round"), 60),  # One simulated hour per round by default
             agents_per_hour_min=agents_per_hour_min,
             agents_per_hour_max=agents_per_hour_max,
-            peak_hours=result.get("peak_hours", [19, 20, 21, 22]),
-            off_peak_hours=result.get("off_peak_hours", [0, 1, 2, 3, 4, 5]),
+            peak_hours=_coerce_hour_list(result.get("peak_hours"), [19, 20, 21, 22]),
+            off_peak_hours=_coerce_hour_list(result.get("off_peak_hours"), [0, 1, 2, 3, 4, 5]),
             off_peak_activity_multiplier=0.05,  # Overnight, almost nobody
-            morning_hours=result.get("morning_hours", [6, 7, 8]),
+            morning_hours=_coerce_hour_list(result.get("morning_hours"), [6, 7, 8]),
             morning_activity_multiplier=0.4,
-            work_hours=result.get("work_hours", list(range(9, 19))),
+            work_hours=_coerce_hour_list(result.get("work_hours"), list(range(9, 19))),
             work_activity_multiplier=0.7,
             peak_activity_multiplier=1.5
         )
@@ -1090,7 +1186,7 @@ Return JSON (no markdown):
             "activity_level": <0.0-1.0>,
             "posts_per_hour": <posting frequency>,
             "comments_per_hour": <commenting frequency>,
-            "active_hours": [<active hours, matching the audience's daily rhythm>],
+            "active_hours": [<active hours as integers 0-23, e.g. [18, 19, 20, 21, 22], matching the audience's daily rhythm>],
             "response_delay_min": <minimum response delay in minutes>,
             "response_delay_max": <maximum response delay in minutes>,
             "sentiment_bias": <-1.0 to 1.0, prior disposition to the brand>,
@@ -1129,7 +1225,9 @@ Return JSON (no markdown):
                 activity_level=cfg.get("activity_level", 0.5),
                 posts_per_hour=cfg.get("posts_per_hour", 0.5),
                 comments_per_hour=cfg.get("comments_per_hour", 1.0),
-                active_hours=cfg.get("active_hours", list(range(9, 23))),
+                active_hours=_normalize_active_hours(
+                    cfg.get("active_hours"), default=list(range(9, 23))
+                ),
                 response_delay_min=cfg.get("response_delay_min", 5),
                 response_delay_max=cfg.get("response_delay_max", 60),
                 sentiment_bias=cfg.get("sentiment_bias", 0.0),

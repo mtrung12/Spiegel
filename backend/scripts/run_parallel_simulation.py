@@ -159,6 +159,8 @@ def init_logging_for_simulation(simulation_dir: str):
 
 
 from action_logger import SimulationLogManager, PlatformActionLogger
+from agent_activity import normalize_active_hours
+from token_meter import METER as TOKEN_METER, instrument_model
 
 try:
     from camel.models import ModelFactory
@@ -1014,10 +1016,10 @@ def _get_comment_info(
     return None
 
 
-def create_model(config: Dict[str, Any], use_boost: bool = False):
+def create_model(config: Dict[str, Any], use_boost: bool = False, label: str = "simulation"):
     """
     Create the LLM model.
-    
+
     Two LLM configurations are supported, to speed a parallel run up:
     - General: LLM_API_KEY, LLM_BASE_URL, LLM_MODEL_NAME
     - Boost (optional): LLM_BOOST_API_KEY, LLM_BOOST_BASE_URL, LLM_BOOST_MODEL_NAME
@@ -1070,10 +1072,76 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
     
     print(f"{config_label} model={llm_model}, base_url={llm_base_url[:40] if llm_base_url else 'default'}...")
     
-    return ModelFactory.create(
-        model_platform=ModelPlatformType.OPENAI,
-        model_type=llm_model,
+    # Agent steps and interviews run here, not in the Flask process, so this is
+    # the only place their token spend can be counted.
+    return instrument_model(
+        ModelFactory.create(
+            model_platform=ModelPlatformType.OPENAI,
+            model_type=llm_model,
+        ),
+        label,
     )
+
+
+def warn_if_no_agent_activity(
+    log_info,
+    total_rounds: int,
+    agent_activations: int,
+    total_actions: int,
+    seeded_actions: int,
+) -> None:
+    """
+    Shout when a run completed without the agents doing anything.
+
+    A run where every round finds zero active agents finishes in seconds,
+    reports `completed`, and leaves only the seeded posts behind - it looks
+    like a successful simulation of a silent audience. It is almost always a
+    config-shape problem instead, so name the usual suspects here rather than
+    leaving it to be spotted in the post count days later.
+    """
+    if agent_activations > 0:
+        return
+
+    log_info("=" * 60)
+    log_info(
+        f"WARNING: {total_rounds} rounds ran and no agent was ever activated. "
+        f"The only actions logged are the {seeded_actions} seeded post(s) "
+        f"(total actions: {total_actions})."
+    )
+    log_info("Usual causes, in order:")
+    log_info(
+        "  1. agent_configs[].active_hours does not overlap the simulated "
+        "clock, or is not hour-of-day integers"
+    )
+    log_info("  2. time_config.agents_per_hour_min/max are zero or negative")
+    log_info("  3. agent_configs[].activity_level is zero for every agent")
+    log_info("  4. agent ids in the config do not exist in the agent graph")
+    log_info("=" * 60)
+
+
+def log_token_usage(log_manager, simulation_dir: str, stage: str) -> None:
+    """
+    Report what this process has spent so far and persist it.
+
+    Interviews arrive after the simulation loop has finished, so the totals are
+    written at both points rather than only at exit - a run killed in
+    command-wait mode still leaves its accounting behind.
+    """
+    snapshot = TOKEN_METER.snapshot()
+    total = snapshot["total"]
+    if not total["calls"]:
+        return
+
+    log_manager.info(
+        f"LLM tokens after {stage}: calls={total['calls']} "
+        f"prompt={total['prompt_tokens']} completion={total['completion_tokens']}"
+    )
+    for label, bucket in sorted(snapshot["by_label"].items()):
+        log_manager.info(
+            f"  - {label}: calls={bucket['calls']} "
+            f"prompt={bucket['prompt_tokens']} completion={bucket['completion_tokens']}"
+        )
+    TOKEN_METER.write(simulation_dir)
 
 
 def get_active_agents_for_round(
@@ -1104,9 +1172,12 @@ def get_active_agents_for_round(
     candidates = []
     for cfg in agent_configs:
         agent_id = cfg.get("agent_id", 0)
-        active_hours = cfg.get("active_hours", list(range(8, 23)))
+        # The config is LLM-written, so this field arrives as ints, as "18:00"
+        # strings or as a window. Compared raw against an int hour it matches
+        # nothing and the run goes silent.
+        active_hours = normalize_active_hours(cfg.get("active_hours"))
         activity_level = cfg.get("activity_level", 0.5)
-        
+
         if current_hour not in active_hours:
             continue
         
@@ -1119,13 +1190,23 @@ def get_active_agents_for_round(
     ) if candidates else []
     
     active_agents = []
+    lookup_errors = []
     for agent_id in selected_ids:
         try:
             agent = env.agent_graph.get_agent(agent_id)
             active_agents.append((agent_id, agent))
-        except Exception:
-            pass
-    
+        except Exception as e:
+            # Swallowing this silently turns a broken id mapping into a run
+            # that completes with no activity and no explanation.
+            lookup_errors.append(f"{agent_id}: {type(e).__name__}")
+
+    if lookup_errors:
+        logging.getLogger(__name__).warning(
+            f"round {round_num}: {len(lookup_errors)} of {len(selected_ids)} "
+            f"agent lookups failed ({', '.join(lookup_errors[:3])}"
+            f"{', ...' if len(lookup_errors) > 3 else ''})"
+        )
+
     return active_agents
 
 
@@ -1166,7 +1247,7 @@ async def run_twitter_simulation(
     log_info("Initialising...")
     
     # Twitter uses the general LLM configuration
-    model = create_model(config, use_boost=False)
+    model = create_model(config, use_boost=False, label="twitter")
     
     # OASIS Twitter wants CSV
     profile_path = os.path.join(simulation_dir, "twitter_profiles.csv")
@@ -1247,7 +1328,7 @@ async def run_twitter_simulation(
     
     # Log the end of round 0
     if action_logger:
-        action_logger.log_round_end(0, initial_action_count)
+        action_logger.log_round_end(0, initial_action_count, 0)
     
     # Main simulation loop
     time_config = config.get("time_config", {})
@@ -1263,7 +1344,8 @@ async def run_twitter_simulation(
             log_info(f"Round count truncated: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})")
     
     start_time = datetime.now()
-    
+    agent_activations = 0
+
     for round_num in range(total_rounds):
         # Has a shutdown signal arrived?
         if _shutdown_event and _shutdown_event.is_set():
@@ -1286,10 +1368,11 @@ async def run_twitter_simulation(
         if not active_agents:
             # With no active agent, still log the round end (actions_count=0)
             if action_logger:
-                action_logger.log_round_end(round_num + 1, 0)
+                action_logger.log_round_end(round_num + 1, 0, simulated_hour)
             continue
         
         actions = {agent: LLMAction() for _, agent in active_agents}
+        agent_activations += len(actions)
         await result.env.step(actions)
         
         # Read the actions that actually ran out of the database and log them
@@ -1311,7 +1394,7 @@ async def run_twitter_simulation(
                 round_action_count += 1
         
         if action_logger:
-            action_logger.log_round_end(round_num + 1, round_action_count)
+            action_logger.log_round_end(round_num + 1, round_action_count, simulated_hour)
         
         if (round_num + 1) % 20 == 0:
             progress = (round_num + 1) / total_rounds * 100
@@ -1325,7 +1408,10 @@ async def run_twitter_simulation(
     result.total_actions = total_actions
     elapsed = (datetime.now() - start_time).total_seconds()
     log_info(f"Simulation loop complete. Elapsed: {elapsed:.1f}s, total actions: {total_actions}")
-    
+    warn_if_no_agent_activity(
+        log_info, total_rounds, agent_activations, total_actions, initial_action_count
+    )
+
     return result
 
 
@@ -1358,7 +1444,7 @@ async def run_reddit_simulation(
     log_info("Initialising...")
     
     # Reddit uses the boost LLM configuration when available, else the general one
-    model = create_model(config, use_boost=True)
+    model = create_model(config, use_boost=True, label="reddit")
     
     profile_path = os.path.join(simulation_dir, "reddit_profiles.json")
     if not os.path.exists(profile_path):
@@ -1446,7 +1532,7 @@ async def run_reddit_simulation(
     
     # Log the end of round 0
     if action_logger:
-        action_logger.log_round_end(0, initial_action_count)
+        action_logger.log_round_end(0, initial_action_count, 0)
     
     # Main simulation loop
     time_config = config.get("time_config", {})
@@ -1462,7 +1548,8 @@ async def run_reddit_simulation(
             log_info(f"Round count truncated: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})")
     
     start_time = datetime.now()
-    
+    agent_activations = 0
+
     for round_num in range(total_rounds):
         # Has a shutdown signal arrived?
         if _shutdown_event and _shutdown_event.is_set():
@@ -1485,10 +1572,11 @@ async def run_reddit_simulation(
         if not active_agents:
             # With no active agent, still log the round end (actions_count=0)
             if action_logger:
-                action_logger.log_round_end(round_num + 1, 0)
+                action_logger.log_round_end(round_num + 1, 0, simulated_hour)
             continue
         
         actions = {agent: LLMAction() for _, agent in active_agents}
+        agent_activations += len(actions)
         await result.env.step(actions)
         
         # Read the actions that actually ran out of the database and log them
@@ -1510,7 +1598,7 @@ async def run_reddit_simulation(
                 round_action_count += 1
         
         if action_logger:
-            action_logger.log_round_end(round_num + 1, round_action_count)
+            action_logger.log_round_end(round_num + 1, round_action_count, simulated_hour)
         
         if (round_num + 1) % 20 == 0:
             progress = (round_num + 1) / total_rounds * 100
@@ -1524,7 +1612,10 @@ async def run_reddit_simulation(
     result.total_actions = total_actions
     elapsed = (datetime.now() - start_time).total_seconds()
     log_info(f"Simulation loop complete. Elapsed: {elapsed:.1f}s, total actions: {total_actions}")
-    
+    warn_if_no_agent_activity(
+        log_info, total_rounds, agent_activations, total_actions, initial_action_count
+    )
+
     return result
 
 
@@ -1641,7 +1732,8 @@ async def main():
     total_elapsed = (datetime.now() - start_time).total_seconds()
     log_manager.info("=" * 60)
     log_manager.info(f"Simulation loop complete. Total elapsed: {total_elapsed:.1f}s")
-    
+    log_token_usage(log_manager, simulation_dir, "simulation loop")
+
     # Enter command-wait mode?
     if wait_for_commands:
         log_manager.info("")
@@ -1706,6 +1798,8 @@ async def main():
         await reddit_result.env.close()
         log_manager.info("[Reddit] Environment closed")
     
+    log_token_usage(log_manager, simulation_dir, "whole process")
+
     log_manager.info("=" * 60)
     log_manager.info(f"All done.")
     log_manager.info(f"Log files:")
