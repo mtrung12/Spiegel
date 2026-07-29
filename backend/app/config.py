@@ -183,6 +183,34 @@ class Config:
     REDDIT_CLIENT_ID = os.environ.get('REDDIT_CLIENT_ID')
     REDDIT_CLIENT_SECRET = os.environ.get('REDDIT_CLIENT_SECRET')
 
+    # Threads has no public search API, so that source renders pages in a
+    # headless browser. It is off in config/corpus.yml and these settings only
+    # matter once it is switched on.
+    #
+    # Threads' robots.txt disallows the paths this source reads. Left true, the
+    # adapter declines to fetch and says so; setting it false is a
+    # terms-of-service decision that belongs to whoever runs the deployment.
+    THREADS_RESPECT_ROBOTS = (
+        os.environ.get('THREADS_RESPECT_ROBOTS', 'true').strip().lower()
+        not in ('false', '0', 'no')
+    )
+    # A signed-out client gets a login wall, so a session cookie is required.
+    # Accepts a browser cookie export (list) or a flat {name: value} map.
+    THREADS_COOKIES_FILE = os.environ.get(
+        'THREADS_COOKIES_FILE',
+        os.path.expanduser('~/.config/threads-auth/credential.json'),
+    )
+    # headless-new keeps the real graphics pipeline, which is what pages that
+    # branch on canvas/WebGL support need. 'headed'/'headless' are for debugging.
+    THREADS_BROWSER_MODE = os.environ.get('THREADS_BROWSER_MODE', 'headless-new')
+    # Scroll passes per page. Threads lazy-loads roughly 5-10 items per pass, so
+    # this is the real cap on how much one search returns.
+    THREADS_SCROLLS = int(os.environ.get('THREADS_SCROLLS', '4'))
+    THREADS_REPLY_SCROLLS = int(os.environ.get('THREADS_REPLY_SCROLLS', '5'))
+    # How many posts get opened for their reply chains. Each one is a page load
+    # of several seconds, so this is the setting that decides harvest duration.
+    THREADS_MAX_DETAIL_POSTS = int(os.environ.get('THREADS_MAX_DETAIL_POSTS', '10'))
+
     # Report agent settings
     REPORT_AGENT_MAX_TOOL_CALLS = int(os.environ.get('REPORT_AGENT_MAX_TOOL_CALLS', '5'))
     REPORT_AGENT_MAX_REFLECTION_ROUNDS = int(os.environ.get('REPORT_AGENT_MAX_REFLECTION_ROUNDS', '2'))

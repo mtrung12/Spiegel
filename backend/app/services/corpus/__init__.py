@@ -1,13 +1,14 @@
 """
 Public-discussion corpus.
 
-Fetches real posts and comments from official APIs and reduces them to the
-small set that is actually worth spending tokens on. Everything here is
-LLM-free and dependency-free beyond httpx, so it can run over a large corpus
-cheaply.
+Fetches real posts and comments and reduces them to the small set that is
+actually worth spending tokens on. The filtering is LLM-free and needs nothing
+beyond httpx, so it can run over a large corpus cheaply.
 
 Which sources run is decided by config/corpus.yml; passing ``sources`` here
-overrides the file.
+overrides the file. Sources on official APIs are enabled there; browser-rendered
+sources are not, and enabling one is a deliberate decision with terms-of-service
+consequences - see ``sources/threads.py``.
 
 Typical use::
 
@@ -46,6 +47,7 @@ from .models import (
     pseudonymize_author,
 )
 from .sources import (
+    BROWSER_SOURCES,
     CREDENTIALED_SOURCES,
     DEFAULT_SOURCES,
     SOURCE_REGISTRY,
@@ -77,6 +79,7 @@ __all__ = [
     'SourceAdapter',
     'SOURCE_REGISTRY',
     'CREDENTIALED_SOURCES',
+    'BROWSER_SOURCES',
     'DEFAULT_SOURCES',
     'get_source',
     'describe_sources',
