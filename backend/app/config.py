@@ -106,6 +106,21 @@ class Config:
     )
     CHATBOT_LLM_MODEL_NAME = os.environ.get('CHATBOT_LLM_MODEL_NAME') or LLM_MODEL_NAME
 
+    # Simulation LLM - the OASIS agent loop, read by the simulation subprocess
+    # rather than by this process. Worth its own entry because that loop is the
+    # pipeline's dominant cost by a wide margin - rounds x active agents x
+    # platforms, against tens of calls for everything else - while asking the
+    # least of the model: pick one action from a listed action space. A cheap
+    # model here and a stronger one for ontology, profiles and the report saves
+    # a lot for little quality lost. Same inheritance and key rules as above.
+    SIMULATION_LLM_BASE_URL = os.environ.get('SIMULATION_LLM_BASE_URL') or LLM_BASE_URL
+    SIMULATION_LLM_API_KEY = resolve_llm_api_key(
+        os.environ.get('SIMULATION_LLM_API_KEY')
+        or (LLM_API_KEY if SIMULATION_LLM_BASE_URL == LLM_BASE_URL else None),
+        SIMULATION_LLM_BASE_URL,
+    )
+    SIMULATION_LLM_MODEL_NAME = os.environ.get('SIMULATION_LLM_MODEL_NAME') or LLM_MODEL_NAME
+
     # Vision LLM - reads the pages of an uploaded PDF that carry no text layer.
     # A creative deck exported from Figma or Keynote is one image per slide, so
     # without this the brief extracts to nothing. Inherits LLM_* when unset, on
@@ -127,17 +142,36 @@ class Config:
     # Zep settings
     ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
 
-    # Embeddings for the content vector index. Called through the OpenAI format
-    # like every other model, and inherits the LLM_* endpoint when unset. The key
-    # is inherited only when both point at the same endpoint - see the chatbot
-    # note above for why.
-    EMBEDDING_BASE_URL = os.environ.get('EMBEDDING_BASE_URL') or LLM_BASE_URL
+    # Embeddings for the content vector index. Served by the self-hosted LM Studio
+    # box in the OpenAI format, so no per-post bill and no data leaving the LAN.
+    # A private base URL supplies its own key, hence no EMBEDDING_API_KEY below in
+    # the default case - see resolve_llm_api_key.
+    #
+    # Posts and comments are short, so the model choice is about multilingual
+    # coverage (the UI ships en + sk and the agents write in the campaign's
+    # language), not context length. Changing the model changes the vector length,
+    # so the collection is rebuilt on the next search - see
+    # content_index._ensure_collection.
+    EMBEDDING_BASE_URL = os.environ.get(
+        'EMBEDDING_BASE_URL', 'http://172.24.247.130:1234/v1'
+    )
     EMBEDDING_API_KEY = resolve_llm_api_key(
         os.environ.get('EMBEDDING_API_KEY')
         or (LLM_API_KEY if EMBEDDING_BASE_URL == LLM_BASE_URL else None),
         EMBEDDING_BASE_URL,
     )
-    EMBEDDING_MODEL_NAME = os.environ.get('EMBEDDING_MODEL_NAME', 'text-embedding-3-small')
+    # Qwen3-Embedding-4B: 2560 dimensions, multilingual, retrieval-trained and
+    # symmetric, so queries and stored records need no prefixes.
+    #
+    # Chosen over BGE-M3 on a measurement against the live box: bge-m3 as served
+    # there ranked a Slovak price complaint below an unrelated English post, for
+    # an English *and* a Slovak query, while this model ranked the same corpus
+    # correctly in both. Non-English recall matters because the UI ships en + sk.
+    # `text-embedding-bge-m3` (1024d) is also loaded there if you want to compare
+    # again - the index rebuilds itself on the switch.
+    EMBEDDING_MODEL_NAME = os.environ.get(
+        'EMBEDDING_MODEL_NAME', 'text-embedding-qwen3-embedding-4b'
+    )
 
     # Qdrant. Unset QDRANT_URL means embedded local storage under uploads/ -
     # no server to run. Point it at a Qdrant instance for multi-worker setups.

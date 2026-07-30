@@ -20,7 +20,12 @@ class CompletionSequence:
 
 class ProviderError(RuntimeError):
     def __init__(self, *, status_code, body):
-        super().__init__(body.get("error", {}).get("message", "provider error"))
+        details = body.get("error", {}) if isinstance(body, dict) else body
+        message = (
+            details if isinstance(details, str)
+            else details.get("message", "provider error")
+        )
+        super().__init__(message)
         self.status_code = status_code
         self.body = body
 
@@ -171,6 +176,41 @@ def test_chat_json_falls_back_only_for_explicit_response_format_rejection():
     assert result == {"ok": True}
     assert sequence.calls[0]["response_format"] == {"type": "json_object"}
     assert "response_format" not in sequence.calls[1]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # LM Studio: the whole body is the message.
+        "'response_format.type' must be 'json_schema' or 'text'",
+        # Same server, message nested under "error".
+        {"error": "'response_format.type' must be 'json_schema' or 'text'"},
+    ],
+)
+def test_chat_json_falls_back_for_a_bare_string_error_body(body):
+    unsupported = ProviderError(status_code=400, body=body)
+    sequence = CompletionSequence(unsupported, _response('{"ok": true}'))
+    client = _client_for(sequence)
+
+    result = client.chat_json(
+        messages=[{"role": "user", "content": "Return JSON"}],
+        max_attempts=1,
+    )
+
+    assert result == {"ok": True}
+    assert sequence.calls[0]["response_format"] == {"type": "json_object"}
+    assert "response_format" not in sequence.calls[1]
+
+
+def test_chat_json_does_not_retry_an_unrelated_string_error_body():
+    provider_error = ProviderError(
+        status_code=400,
+        body={"error": "context length exceeded"},
+    )
+    client = _client_for(CompletionSequence(provider_error))
+
+    with pytest.raises(type(provider_error)):
+        client.chat_json(messages=[{"role": "user", "content": "Return JSON"}])
 
 
 def test_response_format_fallback_keeps_content_retry_available():

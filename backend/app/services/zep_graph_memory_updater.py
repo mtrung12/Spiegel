@@ -23,6 +23,20 @@ from ..utils.zep import (
 logger = get_logger('spiegel.zep_graph_memory_updater')
 
 
+class ZepIngestionIncomplete(RuntimeError):
+    """
+    The drain finished, but some activity batches were rejected for good.
+
+    Distinct from a drain that merely ran out of time, because the two need
+    opposite handling. A timeout is retryable: the worker may still be making
+    progress, so the updater stays registered and stopping it again can
+    succeed. Rejected batches are not - they are never replayed, so ``stop()``
+    would raise this again on every retry, forever. Treating the two alike is
+    what turns an out-of-credit Zep account into a simulation whose report can
+    never be generated.
+    """
+
+
 @dataclass
 class AgentActivity:
     """A single agent activity record."""
@@ -337,7 +351,7 @@ class ZepGraphMemoryUpdater:
         self._flush_remaining(deadline=deadline)
 
         if self._failed_batches:
-            raise RuntimeError(
+            raise ZepIngestionIncomplete(
                 f"{len(self._failed_batches)} Zep activity batch(es) failed; "
                 "simulation graph ingestion is incomplete"
             )
@@ -775,10 +789,20 @@ class ZepGraphMemoryManager:
             return
 
         # Do not hold the manager lock through up to several minutes of Cloud
-        # polling. Crucially, only remove the updater after a successful drain;
-        # on failure it remains visible to report/deletion barriers and can be
-        # stopped again.
-        updater.stop()
+        # polling. Crucially, only remove the updater after a drain that either
+        # succeeded or can never succeed; a retryable failure keeps it visible
+        # to the report/deletion barriers so it can be stopped again.
+        try:
+            updater.stop()
+        except ZepIngestionIncomplete:
+            # Rejected batches are never replayed, so every retry raises this
+            # again. Keeping the registration would leave the barriers reading
+            # "ingestion still pending" for the life of the process. Drop it
+            # and let the caller record the loss instead.
+            with cls._lock:
+                if cls._updaters.get(simulation_id) is updater:
+                    cls._updaters.pop(simulation_id, None)
+            raise
         with cls._lock:
             if cls._updaters.get(simulation_id) is updater:
                 cls._updaters.pop(simulation_id, None)

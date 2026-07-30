@@ -1020,18 +1020,28 @@ def create_model(config: Dict[str, Any], use_boost: bool = False, label: str = "
     """
     Create the LLM model.
 
-    Two LLM configurations are supported, to speed a parallel run up:
+    Three LLM configurations are supported:
     - General: LLM_API_KEY, LLM_BASE_URL, LLM_MODEL_NAME
+    - Simulation (optional): SIMULATION_LLM_API_KEY, SIMULATION_LLM_BASE_URL,
+      SIMULATION_LLM_MODEL_NAME
     - Boost (optional): LLM_BOOST_API_KEY, LLM_BOOST_BASE_URL, LLM_BOOST_MODEL_NAME
-    
+
+    The simulation configuration exists because the agent loop is the pipeline's
+    dominant cost by a wide margin - rounds x active agents x platforms, against
+    tens of calls for everything else - while being the step that needs the least
+    of the model: pick one action from a listed action space. A cheap model here
+    and a stronger one for ontology, profiles and the report is a large saving
+    for little quality lost. Unset, everything runs on the general LLM as before.
+
     With a boost LLM configured, the two platforms can run against different
-    API providers, which raises the concurrency ceiling.
-    
+    API providers, which raises the concurrency ceiling. Boost still wins over
+    the simulation configuration on the platform that asks for it.
+
     Args:
         config: The simulation config
         use_boost: Use the boost LLM configuration when it is available
     """
-    from app.config import resolve_llm_api_key
+    from app.config import Config, resolve_llm_api_key
 
     # Is a boost configuration present?
     boost_base_url = os.environ.get("LLM_BOOST_BASE_URL", "")
@@ -1044,15 +1054,20 @@ def create_model(config: Dict[str, Any], use_boost: bool = False, label: str = "
         # Use the boost configuration
         llm_api_key = boost_api_key
         llm_base_url = boost_base_url
-        llm_model = boost_model or os.environ.get("LLM_MODEL_NAME", "")
+        llm_model = boost_model or Config.LLM_MODEL_NAME
         config_label = "[boost LLM]"
     else:
-        # Use the general configuration
-        llm_base_url = os.environ.get("LLM_BASE_URL", "")
-        llm_api_key = resolve_llm_api_key(os.environ.get("LLM_API_KEY"), llm_base_url) or ""
-        llm_model = os.environ.get("LLM_MODEL_NAME", "")
-        config_label = "[general LLM]"
-    
+        # SIMULATION_LLM_* where set, LLM_* otherwise - Config resolves that,
+        # including the rule that a key never travels to another endpoint.
+        llm_base_url = Config.SIMULATION_LLM_BASE_URL or ""
+        llm_api_key = Config.SIMULATION_LLM_API_KEY or ""
+        llm_model = Config.SIMULATION_LLM_MODEL_NAME or ""
+        config_label = (
+            "[simulation LLM]"
+            if llm_model != Config.LLM_MODEL_NAME or llm_base_url != Config.LLM_BASE_URL
+            else "[general LLM]"
+        )
+
     # No model name in .env: fall back to the config file
     if not llm_model:
         llm_model = config.get("llm_model", "gpt-4o-mini")

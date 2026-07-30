@@ -33,10 +33,13 @@ def _is_response_format_unsupported(error: Exception) -> bool:
         return False
 
     body = getattr(error, "body", None)
-    if not isinstance(body, dict):
-        return False
-
-    details = body.get("error", body)
+    details = body.get("error", body) if isinstance(body, dict) else body
+    if isinstance(details, str):
+        # Not every OpenAI-compatible server sends the {"error": {"param": ...}}
+        # object. LM Studio answers with a bare string - "'response_format.type'
+        # must be 'json_schema' or 'text'" - either as the whole body or under
+        # an "error" key.
+        return "response_format" in details.lower()
     if not isinstance(details, dict):
         return False
 
@@ -44,26 +47,11 @@ def _is_response_format_unsupported(error: Exception) -> bool:
     if param == "response_format" or param.startswith("response_format."):
         return True
 
-    message = str(details.get("message") or "").lower()
-    if "response_format" not in message:
-        return False
-
-    code = str(details.get("code") or "").lower()
-    unsupported_codes = {
-        "unsupported_parameter",
-        "unsupported_value",
-        "unknown_parameter",
-        "invalid_parameter",
-    }
-    unsupported_phrases = (
-        "not support",
-        "unsupported",
-        "unknown parameter",
-        "unrecognized parameter",
-    )
-    return code in unsupported_codes or any(
-        phrase in message for phrase in unsupported_phrases
-    )
+    # A 400/422 that names response_format at all is a rejection of the
+    # parameter. Matching on phrasing instead ("not support", "unsupported",
+    # ...) only works for the wordings that have already been seen, and every
+    # provider words it differently.
+    return "response_format" in str(details.get("message") or "").lower()
 
 
 def _clean_chat_text(content: str) -> str:

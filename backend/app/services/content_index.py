@@ -27,12 +27,23 @@ payload so what gets shown is still the audience's own words.
 A long-form Reddit post is the only case that is genuinely too big for one
 embedding. Those (rare) outliers fall back to the sentence-boundary splitter
 already used for uploaded documents.
+
+The model
+---------
+Embeddings come from the self-hosted LM Studio box over the OpenAI format, like
+every other model in this project. Nothing is billed per post and no audience
+text leaves the LAN. Because the unit of indexing is one short utterance, context
+length is irrelevant to the choice of model; multilingual coverage is what
+matters. See ``Config.EMBEDDING_MODEL_NAME``.
 """
 
+import threading
+import time
 import uuid
+from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
 
-from openai import OpenAI
+from openai import BadRequestError, OpenAI
 
 from ..config import Config
 from ..utils.file_parser import split_text_into_chunks
@@ -55,6 +66,11 @@ PARENT_CONTEXT_CHARS = 200
 
 EMBED_BATCH_SIZE = 64
 
+# Retries for the idle-unload race described in ``_embed_batch``. Reloading the
+# model off disk is what the wait is for.
+EMBED_UNLOAD_RETRIES = 3
+EMBED_UNLOAD_BACKOFF_SECONDS = 3
+
 COLLECTION_NAME = "simulation_content"
 
 # Deterministic point IDs, so re-indexing upserts in place instead of duplicating.
@@ -63,6 +79,86 @@ _POINT_NAMESPACE = uuid.UUID("6f0a1c2e-7b1d-4a55-9c3e-2b8f4d5a1e77")
 
 class ContentIndexError(RuntimeError):
     """Indexing or search could not be completed."""
+
+
+# ═══════════════════════════════════════════════════════════════
+# Process-shared backends
+# ═══════════════════════════════════════════════════════════════
+#
+# Both of these are per process, not per service instance, because callers build
+# a throwaway ``ContentIndexService()`` per use - the report agent does so on
+# every search_content tool call.
+#
+# For Qdrant that is not merely wasteful, it is a hard error: embedded Qdrant
+# takes an *exclusive file lock* on its storage folder, so a second live client
+# in the same process fails with "already accessed by another instance". Sharing
+# one client is what makes a background index build able to coexist with a
+# chatbot query.
+#
+# For the embeddings endpoint it avoids opening a fresh HTTP connection pool per
+# tool call.
+
+
+@lru_cache(maxsize=1)
+def _shared_qdrant_client() -> Any:
+    try:
+        from qdrant_client import QdrantClient
+    except ImportError as exc:  # pragma: no cover - dependency guard
+        raise ContentIndexError(
+            "qdrant-client is not installed; run pip install -r backend/requirements.txt"
+        ) from exc
+
+    if Config.QDRANT_URL:
+        return QdrantClient(
+            url=Config.QDRANT_URL,
+            api_key=Config.QDRANT_API_KEY or None,
+        )
+    # ponytail: embedded local storage, no server to run. One process only - the
+    # file lock is per process, so a second worker cannot open it at all. Set
+    # QDRANT_URL to point at a real server when running several workers or when
+    # the index outgrows one machine.
+    return QdrantClient(path=Config.QDRANT_PATH)
+
+
+@lru_cache(maxsize=1)
+def _shared_embedding_client() -> Any:
+    if not Config.EMBEDDING_API_KEY:
+        raise ContentIndexError(
+            f"EMBEDDING_API_KEY is not configured (base_url={Config.EMBEDDING_BASE_URL})"
+        )
+    return OpenAI(
+        api_key=Config.EMBEDDING_API_KEY,
+        base_url=Config.EMBEDDING_BASE_URL,
+        # A local box loading a 4B embedding model on the first request is slower
+        # than a cloud endpoint; the SDK's 10 min default timeout is fine for that
+        # but its 2 retries are not enough for a cold start.
+        max_retries=4,
+    )
+
+
+def reset_shared_clients() -> None:
+    """
+    Drop the cached clients. For tests and for reconfiguration.
+
+    The embedded Qdrant client must be closed, not just forgotten: the storage
+    lock lives on the object, so a cache cleared without closing leaves the next
+    client unable to open the folder at all.
+    """
+    if _shared_qdrant_client.cache_info().currsize:
+        try:
+            _shared_qdrant_client().close()
+        except Exception as e:  # pragma: no cover - best effort teardown
+            logger.warning(f"could not close the Qdrant client: {e}")
+    _shared_qdrant_client.cache_clear()
+    _shared_embedding_client.cache_clear()
+
+
+# Embedded Qdrant is one process-wide store now that it is shared, and the warm
+# build runs on a background thread while requests are being served.
+# ponytail: one writer lock for the whole collection. Reads are not held, and
+# per-simulation locks would only matter if two simulations ever finished within
+# the same few seconds.
+_write_lock = threading.Lock()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -152,60 +248,57 @@ class ContentIndexService:
     """Qdrant-backed semantic search over one simulation's posts and comments."""
 
     def __init__(self, client: Any = None, embedder: Any = None):
+        # Both default to the process-shared clients above; the arguments exist so
+        # tests can inject fakes.
         self._client = client
         self._embedder = embedder
-        self._vector_size: Optional[int] = None
 
     # ── Backends ────────────────────────────────────────────────
 
     @property
     def client(self) -> Any:
         if self._client is None:
-            try:
-                from qdrant_client import QdrantClient
-            except ImportError as exc:  # pragma: no cover - dependency guard
-                raise ContentIndexError(
-                    "qdrant-client is not installed; run pip install -r backend/requirements.txt"
-                ) from exc
-
-            if Config.QDRANT_URL:
-                self._client = QdrantClient(
-                    url=Config.QDRANT_URL,
-                    api_key=Config.QDRANT_API_KEY or None,
-                )
-            else:
-                # ponytail: embedded local storage, no server to run. It takes an
-                # exclusive file lock, so it is single-process only - set
-                # QDRANT_URL to point at a real server when running several
-                # workers or when the index outgrows one machine.
-                self._client = QdrantClient(path=Config.QDRANT_PATH)
+            self._client = _shared_qdrant_client()
         return self._client
 
     @property
     def embedder(self) -> Any:
         if self._embedder is None:
-            if not Config.EMBEDDING_API_KEY:
-                raise ContentIndexError(
-                    f"EMBEDDING_API_KEY is not configured (base_url={Config.EMBEDDING_BASE_URL})"
-                )
-            self._embedder = OpenAI(
-                api_key=Config.EMBEDDING_API_KEY,
-                base_url=Config.EMBEDDING_BASE_URL,
-            )
+            self._embedder = _shared_embedding_client()
         return self._embedder
+
+    def _embed_batch(self, batch: List[str]) -> List[List[float]]:
+        """
+        One request, retried past LM Studio's idle-unload race.
+
+        LM Studio evicts an idle model and answers anything already queued with
+        "Model was unloaded while the request was still in queue" - as a 400, which
+        the SDK's own retry policy (4xx are client errors) will not touch. Left
+        unhandled it kills a whole indexing pass on the first cold batch, so retry
+        that one message and let every other 400 through untouched.
+        """
+        for attempt in range(EMBED_UNLOAD_RETRIES + 1):
+            try:
+                response = self.embedder.embeddings.create(
+                    model=Config.EMBEDDING_MODEL_NAME,
+                    input=batch,
+                )
+            except BadRequestError as e:
+                if "unloaded" not in str(e) or attempt == EMBED_UNLOAD_RETRIES:
+                    raise
+                logger.warning(f"embedding model was unloaded mid-request; retrying ({e})")
+                time.sleep(EMBED_UNLOAD_BACKOFF_SECONDS)
+                continue
+            # The API may return the batch out of order; index is authoritative.
+            ordered = sorted(response.data, key=lambda d: d.index)
+            return [d.embedding for d in ordered]
+        raise ContentIndexError("unreachable")  # pragma: no cover
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         """Embed texts in batches through the OpenAI-format embeddings endpoint."""
         vectors: List[List[float]] = []
         for start in range(0, len(texts), EMBED_BATCH_SIZE):
-            batch = texts[start:start + EMBED_BATCH_SIZE]
-            response = self.embedder.embeddings.create(
-                model=Config.EMBEDDING_MODEL_NAME,
-                input=batch,
-            )
-            # The API may return the batch out of order; index is authoritative.
-            ordered = sorted(response.data, key=lambda d: d.index)
-            vectors.extend(d.embedding for d in ordered)
+            vectors.extend(self._embed_batch(texts[start:start + EMBED_BATCH_SIZE]))
         return vectors
 
     # ── Collection ──────────────────────────────────────────────
@@ -214,7 +307,17 @@ class ContentIndexService:
         from qdrant_client import models
 
         if self.client.collection_exists(COLLECTION_NAME):
-            return
+            if self._existing_vector_size() == vector_size:
+                return
+            # A different embedding model was used before, so every stored vector
+            # is a different length and unusable. The index is derived data - it
+            # rebuilds from the simulation databases - so dropping it is safe and
+            # cheaper than keeping two collections around.
+            logger.warning(
+                f"{COLLECTION_NAME} was built at a different dimension; "
+                f"recreating it at dim={vector_size}"
+            )
+            self.client.delete_collection(COLLECTION_NAME)
 
         self.client.create_collection(
             collection_name=COLLECTION_NAME,
@@ -233,6 +336,16 @@ class ContentIndexService:
                 field_schema=models.PayloadSchemaType.KEYWORD,
             )
         logger.info(f"created Qdrant collection {COLLECTION_NAME} (dim={vector_size})")
+
+    def _existing_vector_size(self) -> Optional[int]:
+        """Dimension the collection was created with, or None if it cannot be read."""
+        try:
+            params = self.client.get_collection(COLLECTION_NAME).config.params.vectors
+            # Unnamed single vector, which is how _ensure_collection creates it.
+            return getattr(params, "size", None)
+        except Exception as e:
+            logger.warning(f"could not read {COLLECTION_NAME} vector size: {e}")
+            return None
 
     def _sim_filter(self, simulation_id: str, **equals: Any) -> Any:
         from qdrant_client import models
@@ -300,18 +413,21 @@ class ContentIndexService:
             logger.info(f"simulation {simulation_id} already indexed ({len(records)} records)")
             return 0
 
+        # Embedding is the slow part and touches no shared state, so it stays
+        # outside the lock; only the collection write is serialized.
         vectors = self.embed([r["text"] for r in records])
         if not vectors:
             raise ContentIndexError("embedding endpoint returned no vectors")
 
-        self._ensure_collection(len(vectors[0]))
-        self.client.upsert(
-            collection_name=COLLECTION_NAME,
-            points=[
-                models.PointStruct(id=r["id"], vector=v, payload=r["payload"])
-                for r, v in zip(records, vectors)
-            ],
-        )
+        with _write_lock:
+            self._ensure_collection(len(vectors[0]))
+            self.client.upsert(
+                collection_name=COLLECTION_NAME,
+                points=[
+                    models.PointStruct(id=r["id"], vector=v, payload=r["payload"])
+                    for r, v in zip(records, vectors)
+                ],
+            )
 
         logger.info(f"indexed {len(records)} content records for simulation {simulation_id}")
         return len(records)
@@ -351,6 +467,12 @@ class ContentIndexService:
             return []
 
         vector = self.embed([query])[0]
+
+        # An index built by a previous embedding model holds vectors of another
+        # length, so searching it would just error. Rebuild instead.
+        if self._existing_vector_size() not in (None, len(vector)):
+            self.index_simulation(simulation_id, force=True)
+
         response = self.client.query_points(
             collection_name=COLLECTION_NAME,
             query=vector,

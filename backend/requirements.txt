@@ -16,6 +16,8 @@ openai>=1.0.0
 # ============= Vector index =============
 # Semantic search over the posts/comments the simulated audience wrote.
 # Runs embedded (local file storage) unless QDRANT_URL is set.
+# The embedding model is not a Python dependency - it is served over HTTP by the
+# self-hosted LM Studio box, see EMBEDDING_BASE_URL.
 qdrant-client>=1.9.0
 
 # ============= Zep Cloud =============

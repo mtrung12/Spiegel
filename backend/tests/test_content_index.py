@@ -1,5 +1,6 @@
 """The chunking decisions in content_index: one record per point, with context."""
 
+import httpx
 import pytest
 
 pytest.importorskip("qdrant_client")
@@ -106,6 +107,113 @@ def test_search_returns_payloads_scored(monkeypatch):
     text = service.search_as_text("sim-1", "price")
     assert "The price is insulting." in text
     assert "bob" in text
+
+
+def test_an_index_from_another_embedding_model_is_rebuilt(monkeypatch):
+    """A collection built at another dimension cannot be searched with this model."""
+    calls = {"reindexed": False}
+
+    class FakeClient:
+        def collection_exists(self, name):
+            return True
+
+        def count(self, **kwargs):
+            return type("C", (), {"count": 12})()
+
+        def get_collection(self, name):
+            vectors = type("V", (), {"size": 1536})()
+            return type("Info", (), {
+                "config": type("Cfg", (), {
+                    "params": type("P", (), {"vectors": vectors})()
+                })()
+            })()
+
+        def query_points(self, **kwargs):
+            return type("R", (), {"points": []})()
+
+    service = ContentIndexService(client=FakeClient())
+    monkeypatch.setattr(service, "embed", lambda texts: [[0.1] * 2560])
+    monkeypatch.setattr(
+        service, "index_simulation",
+        lambda sim, force=False: calls.__setitem__("reindexed", force),
+    )
+
+    service.search("sim-1", "price")
+
+    assert calls["reindexed"] is True
+
+
+def test_an_idle_unloaded_model_is_retried_but_other_400s_are_not(monkeypatch):
+    """LM Studio reports its idle-unload race as a 400, which the SDK never retries."""
+    from openai import BadRequestError
+
+    def _bad_request(message):
+        response = httpx.Response(400, request=httpx.Request("POST", "http://x/v1/embeddings"))
+        return BadRequestError(message, response=response, body=None)
+
+    class FakeEmbeddings:
+        def __init__(self, errors):
+            self.errors = list(errors)
+            self.calls = 0
+
+        def create(self, model, input):
+            self.calls += 1
+            if self.errors:
+                raise _bad_request(self.errors.pop(0))
+            data = [type("D", (), {"index": i, "embedding": [0.1] * 1024})()
+                    for i, _ in enumerate(input)]
+            return type("R", (), {"data": data})()
+
+    monkeypatch.setattr("app.services.content_index.EMBED_UNLOAD_BACKOFF_SECONDS", 0)
+
+    # Transient unload: retried, then succeeds.
+    embeddings = FakeEmbeddings(["Model was unloaded while the request was still in queue.."])
+    service = ContentIndexService(
+        embedder=type("E", (), {"embeddings": embeddings})()
+    )
+    vectors = service.embed(["a", "b"])
+    assert len(vectors) == 2 and len(vectors[0]) == 1024
+    assert embeddings.calls == 2
+
+    # Any other 400 is a real error and must surface immediately.
+    embeddings = FakeEmbeddings(['Invalid model identifier "nope".'] * 9)
+    service = ContentIndexService(
+        embedder=type("E", (), {"embeddings": embeddings})()
+    )
+    with pytest.raises(BadRequestError):
+        service.embed(["a"])
+    assert embeddings.calls == 1
+
+
+def test_every_service_instance_shares_one_qdrant_client(monkeypatch):
+    """
+    Embedded Qdrant takes an exclusive file lock, so a second live client in the
+    same process cannot open the storage at all - and callers build a throwaway
+    service per use.
+    """
+    import qdrant_client
+
+    from app.services import content_index
+
+    built = []
+
+    class CountingClient:
+        def __init__(self, *args, **kwargs):
+            built.append(kwargs)
+
+    monkeypatch.setattr(qdrant_client, "QdrantClient", CountingClient)
+    content_index.reset_shared_clients()
+    try:
+        first = ContentIndexService().client
+        second = ContentIndexService().client
+        assert first is second
+        assert len(built) == 1, "a second client would fail on the storage lock"
+
+        content_index.reset_shared_clients()
+        assert ContentIndexService().client is not first
+        assert len(built) == 2
+    finally:
+        content_index.reset_shared_clients()
 
 
 def test_empty_query_short_circuits():

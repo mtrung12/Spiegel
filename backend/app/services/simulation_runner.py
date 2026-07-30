@@ -25,7 +25,7 @@ from ..utils.zep import (
     ZEP_HTTP_REQUEST_TIMEOUT_SECONDS,
     ZEP_INGESTION_WAIT_TIMEOUT_SECONDS,
 )
-from .zep_graph_memory_updater import ZepGraphMemoryManager
+from .zep_graph_memory_updater import ZepGraphMemoryManager, ZepIngestionIncomplete
 from .simulation_ipc import SimulationIPCClient
 
 logger = get_logger('spiegel.simulation_runner')
@@ -35,6 +35,60 @@ _cleanup_registered = False
 
 # Platform detection
 IS_WINDOWS = sys.platform == 'win32'
+
+
+def _elapsed_seconds(started_at: Optional[str], completed_at: Optional[str]) -> Optional[float]:
+    """Wall time between two ISO stamps, or None when either is missing/unparsable."""
+    if not started_at or not completed_at:
+        return None
+    try:
+        delta = datetime.fromisoformat(completed_at) - datetime.fromisoformat(started_at)
+    except ValueError:
+        return None
+    return round(delta.total_seconds(), 1)
+
+
+def _aggregate_action_log_usage(simulation_id: str) -> Dict[str, Any]:
+    """
+    Sum the token counts the pipeline logger recorded for one run id.
+
+    Reads the per-run mirror of ``actions.jsonl``, which only holds this run's
+    lines, so no run-id filtering is needed. Lines without token metrics (every
+    non-LLM action) are skipped.
+    """
+    totals = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    by_component: Dict[str, Dict[str, int]] = {}
+
+    # ponytail: reuse the logger's own path rule so the two cannot drift.
+    path = os.path.join(pipeline_log._run_dir(simulation_id), 'actions.jsonl')
+    if not os.path.exists(path):
+        return {"total": totals, "by_component": by_component}
+
+    with open(path, 'r', encoding='utf-8') as handle:
+        for line in handle:
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            metrics = record.get('metrics') or {}
+            prompt = metrics.get('prompt_tokens')
+            completion = metrics.get('completion_tokens')
+            if prompt is None and completion is None:
+                continue
+            prompt = int(prompt or 0)
+            completion = int(completion or 0)
+            total = int(metrics.get('total_tokens') or (prompt + completion))
+            bucket = by_component.setdefault(
+                record.get('component') or 'unknown',
+                {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            )
+            for target in (totals, bucket):
+                target["calls"] += 1
+                target["prompt_tokens"] += prompt
+                target["completion_tokens"] += completion
+                target["total_tokens"] += total
+
+    return {"total": totals, "by_component": by_component}
 
 
 class RunnerStatus(str, Enum):
@@ -148,7 +202,14 @@ class SimulationRunState:
     
     # Error information
     error: Optional[str] = None
-    
+
+    # Set when the run itself succeeded but its activity could not be fully
+    # streamed into the Zep graph. Not an error: the simulation databases hold
+    # every action, so the KPIs, sentiment and content search are complete and
+    # the report is still worth generating - only the parts that read run
+    # memory out of Zep see less than they should.
+    graph_ingestion_error: Optional[str] = None
+
     # Process ID, used to stop the run
     process_pid: Optional[int] = None
     
@@ -190,6 +251,7 @@ class SimulationRunState:
             "updated_at": self.updated_at,
             "completed_at": self.completed_at,
             "error": self.error,
+            "graph_ingestion_error": self.graph_ingestion_error,
             "process_pid": self.process_pid,
         }
     
@@ -330,6 +392,7 @@ class SimulationRunner:
                 updated_at=data.get("updated_at", datetime.now().isoformat()),
                 completed_at=data.get("completed_at"),
                 error=data.get("error"),
+                graph_ingestion_error=data.get("graph_ingestion_error"),
                 process_pid=data.get("process_pid"),
             )
             
@@ -730,6 +793,21 @@ class SimulationRunner:
                             "stopped graph memory updates: simulation_id=%s",
                             simulation_id,
                         )
+                    except ZepIngestionIncomplete as error:
+                        # The run produced everything it was asked to; only the
+                        # optional export of it to Zep came up short, and no
+                        # retry can change that. Failing the run here would
+                        # destroy the report - permanently, since the report
+                        # API requires a successful terminal status - over a
+                        # degraded auxiliary index.
+                        logger.error(
+                            "graph ingestion incomplete, continuing without it: "
+                            "simulation_id=%s, error=%s",
+                            simulation_id,
+                            error,
+                        )
+                        state.graph_ingestion_error = str(error)
+                        cls._graph_memory_enabled.pop(simulation_id, None)
                     except Exception as error:
                         logger.error(f"failed to stop graph memory updater: {error}")
                         desired_status = RunnerStatus.FAILED
@@ -758,8 +836,10 @@ class SimulationRunner:
                     },
                     error=error_message,
                 )
+                cls._write_run_summary(simulation_id, state)
                 if desired_status == RunnerStatus.COMPLETED:
                     logger.info(f"simulation complete: {simulation_id}")
+                    cls._warm_content_index(simulation_id)
                 else:
                     logger.error(f"simulation failed: {simulation_id}, error={state.error}")
 
@@ -778,6 +858,105 @@ class SimulationRunner:
                 cls._manual_stop_requests.discard(simulation_id)
 
             return state
+
+    @classmethod
+    def _write_run_summary(
+        cls,
+        simulation_id: str,
+        state: SimulationRunState,
+    ) -> Optional[str]:
+        """
+        Persist one run's token spend and wall time as a single JSON file.
+
+        The two halves of the spend are recorded in different places: agent steps
+        and interviews run in the child process and land in its
+        ``token_usage.json``, while the backend's own calls (profiles, ontology,
+        report agent) are only in the pipeline action stream for this run id.
+        This joins them so a run's cost does not have to be reassembled by hand.
+
+        Best effort: accounting must never change a run's terminal status.
+        """
+        try:
+            run_id = datetime.now().strftime('%Y%m%d-%H%M%S')
+            # Under the pipeline log root, which is the writable, gitignored,
+            # docker-mounted home the ledger already uses. The repo root is not
+            # writable in the container - it runs as uid 10001 and /app is
+            # root-owned - so a folder there is silently skipped on every run.
+            out_dir = os.path.join(pipeline_log.log_dir, 'run-summaries', run_id)
+            os.makedirs(out_dir, exist_ok=True)
+
+            sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
+            simulation_tokens: Dict[str, Any] = {}
+            token_usage_path = os.path.join(sim_dir, "token_usage.json")
+            if os.path.exists(token_usage_path):
+                with open(token_usage_path, 'r', encoding='utf-8') as handle:
+                    simulation_tokens = json.load(handle)
+
+            summary = {
+                "run_id": run_id,
+                "simulation_id": simulation_id,
+                "status": state.runner_status.value,
+                "started_at": state.started_at,
+                "completed_at": state.completed_at,
+                "elapsed_seconds": _elapsed_seconds(
+                    state.started_at, state.completed_at
+                ),
+                "rounds_completed": state.current_round,
+                "total_actions": (
+                    state.twitter_actions_count + state.reddit_actions_count
+                ),
+                # Child process: agent steps and interviews.
+                "simulation_tokens": simulation_tokens,
+                # Flask process: everything logged under this run id.
+                "backend_tokens": _aggregate_action_log_usage(simulation_id),
+                "error": state.error,
+                "graph_ingestion_error": state.graph_ingestion_error,
+            }
+
+            path = os.path.join(out_dir, "run_summary.json")
+            with open(path, 'w', encoding='utf-8') as handle:
+                json.dump(summary, handle, ensure_ascii=False, indent=2)
+            logger.info(f"run summary written: {path}")
+            return path
+        except Exception as error:
+            logger.warning(f"could not write the run summary for {simulation_id}: {error}")
+            return None
+
+    @classmethod
+    def _warm_content_index(cls, simulation_id: str) -> None:
+        """
+        Embed the finished feed now, off the critical path.
+
+        ``ContentIndexService.search`` indexes on demand, so this is only about
+        *when* the cost is paid. Without it the first chatbot question that reaches
+        search_content embeds every post and comment synchronously, inside a report
+        agent tool call - a wait the user experiences as the chatbot hanging. The
+        feed is complete and unchanging at this point, so index it while nobody is
+        waiting.
+
+        Best effort by design: the index is derived data, and search still rebuilds
+        it lazily, so a failure here must not touch the run's terminal status.
+        """
+        def _run() -> None:
+            try:
+                from .content_index import ContentIndexService
+                count = ContentIndexService().index_simulation(simulation_id)
+                logger.info(
+                    f"content index warmed: simulation_id={simulation_id}, points={count}"
+                )
+            except Exception as error:
+                logger.warning(
+                    f"could not warm the content index for {simulation_id}; "
+                    f"the chatbot will build it on first use: {error}"
+                )
+
+        # Daemon, so a hung embedding endpoint cannot keep the process alive, and
+        # not tracked in _monitor_threads - nothing waits on this.
+        threading.Thread(
+            target=_run,
+            name=f"content-index-{simulation_id}",
+            daemon=True,
+        ).start()
 
     @classmethod
     def _monitor_simulation_body(cls, simulation_id: str, locale: str = 'zh'):
@@ -1227,6 +1406,18 @@ class SimulationRunner:
                 if cls._graph_memory_enabled.get(simulation_id, False):
                     try:
                         ZepGraphMemoryManager.stop_updater(simulation_id)
+                        cls._graph_memory_enabled.pop(simulation_id, None)
+                    except ZepIngestionIncomplete as error:
+                        # Unretryable, so the stop succeeds and records the
+                        # loss - see the monitor path for why this must not
+                        # fail the run.
+                        logger.error(
+                            "graph ingestion incomplete, continuing without it: "
+                            "simulation_id=%s, error=%s",
+                            simulation_id,
+                            error,
+                        )
+                        state.graph_ingestion_error = str(error)
                         cls._graph_memory_enabled.pop(simulation_id, None)
                     except Exception as error:
                         state.runner_status = RunnerStatus.FAILED
