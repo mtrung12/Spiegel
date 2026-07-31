@@ -1418,49 +1418,9 @@ Return the sub-questions as JSON."""
 
     def _load_agent_profiles(self, simulation_id: str) -> List[Dict[str, Any]]:
         """Load the agent persona files for a simulation."""
-        import os
-        import csv
-        
-        # Build the persona file path
-        sim_dir = os.path.join(
-            os.path.dirname(__file__), 
-            f'../../uploads/simulations/{simulation_id}'
-        )
-        
-        profiles = []
-        
-        # Prefer the Reddit JSON format
-        reddit_profile_path = os.path.join(sim_dir, "reddit_profiles.json")
-        if os.path.exists(reddit_profile_path):
-            try:
-                with open(reddit_profile_path, 'r', encoding='utf-8') as f:
-                    profiles = json.load(f)
-                logger.info(t("console.loadedRedditProfiles", count=len(profiles)))
-                return profiles
-            except Exception as e:
-                logger.warning(t("console.readRedditProfilesFailed", error=e))
-        
-        # Fall back to the Twitter CSV format
-        twitter_profile_path = os.path.join(sim_dir, "twitter_profiles.csv")
-        if os.path.exists(twitter_profile_path):
-            try:
-                with open(twitter_profile_path, 'r', encoding='utf-8') as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        # Normalise the CSV rows onto one shape
-                        profiles.append({
-                            "realname": row.get("name", ""),
-                            "username": row.get("username", ""),
-                            "bio": row.get("description", ""),
-                            "persona": row.get("user_char", ""),
-                            "profession": "unknown"
-                        })
-                logger.info(t("console.loadedTwitterProfiles", count=len(profiles)))
-                return profiles
-            except Exception as e:
-                logger.warning(t("console.readTwitterProfilesFailed", error=e))
-        
-        return profiles
+        from .offline_interview import load_agent_profiles
+
+        return load_agent_profiles(simulation_id)
     
     def _select_agents_for_interview(
         self,

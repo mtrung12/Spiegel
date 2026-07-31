@@ -26,8 +26,13 @@
       <button class="warn-retry" @click="refreshGraph">{{ $t('common.retry') }}</button>
     </div>
 
-    <!-- Main Content Area -->
-    <main id="main-content" class="content-area" :data-mode="viewMode">
+    <!-- Main Content Area.
+         data-layout="stacked": the brief reads as a centered document with the
+         graph beneath it, rather than as a half-width sidebar competing with
+         the graph for attention on first open. The panels keep their
+         left/right classes so the graph/workbench view modes still collapse
+         the right one; only the axis and the order change. -->
+    <main id="main-content" class="content-area" :data-mode="viewMode" data-layout="stacked">
       <!-- Left Panel: Graph -->
       <div class="panel-wrapper left">
         <GraphPanel
@@ -438,6 +443,52 @@ onUnmounted(() => {
 
 <style scoped>
 /* The shell (.main-view / .content-area / .panel-wrapper) lives in App.vue. */
+
+/* ---------------------------------------------------------------------------
+   Stacked layout: brief on top as a centered column, graph beneath.
+   Overrides the shell's side-by-side split for this view only. The rules below
+   have to out-specify App.vue's [data-mode] widths, which the extra attribute
+   selector plus the scoping attribute achieve.
+   --------------------------------------------------------------------------- */
+.content-area[data-layout="stacked"] {
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.content-area[data-layout="stacked"] .panel-wrapper {
+  width: 100%;
+  height: auto;
+  opacity: 1;
+  transform: none;
+  /* Width is fixed now, so animating it only causes reflow on mode switches. */
+  transition: opacity 0.3s ease;
+}
+
+/* The brief is second in the DOM - the graph stays first so screen readers and
+   the existing mode rules keep their order - so lift it visually. */
+.content-area[data-layout="stacked"] .panel-wrapper.right {
+  order: 0;
+  flex: 0 0 auto;
+}
+
+.content-area[data-layout="stacked"] .panel-wrapper.left {
+  order: 1;
+  flex: 1 1 auto;
+  border-right: none;
+  border-top: 1px solid var(--border-soft);
+  /* Below this the graph is unreadable; it should scroll into view instead. */
+  min-height: 420px;
+}
+
+/* The view-mode switcher still hides a pane, it just does so vertically. */
+.content-area[data-layout="stacked"][data-mode="graph"] .panel-wrapper.right,
+.content-area[data-layout="stacked"][data-mode="workbench"] .panel-wrapper.left {
+  display: none;
+}
+
+.content-area[data-layout="stacked"][data-mode="graph"] .panel-wrapper.left {
+  border-top: none;
+}
 
 /* Failure banner */
 .error-banner,

@@ -1,7 +1,7 @@
 <template>
   <section class="sd-panel">
     <header class="sd-header">
-      <div class="sd-heading">
+      <div v-if="!bare" class="sd-heading">
         <h2 class="sd-title">{{ $t('sentiment.panelTitle') }}</h2>
         <p class="sd-subtitle">{{ $t('sentiment.panelSubtitle') }}</p>
       </div>
@@ -147,7 +147,10 @@ const props = defineProps({
   simulationId: String,
   // The parent flips this once the run has finished, so the panel does not
   // classify a feed that is still being written.
-  autoLoad: { type: Boolean, default: true }
+  autoLoad: { type: Boolean, default: true },
+  // Drop the panel's own title - the report section heading already names it.
+  // The reclassify button stays: it is the only way to trigger a re-run.
+  bare: { type: Boolean, default: false }
 })
 
 const digest = ref(null)

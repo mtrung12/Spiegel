@@ -60,15 +60,15 @@
     "metricHighAvailDesc": "Personas built from your brief",
     "workflowSequence": "How it works",
     "step01Title": "Read the campaign",
-    "step01Desc": "Your brief and creative (PDF/MD/TXT) are read into a knowledge graph of products, messages and customer entities",
+    "step01Desc": "Brief becomes a knowledge graph",
     "step02Title": "Build the customers",
-    "step02Desc": "Those entities become customer personas — demographics, needs, brand attitude, purchase behaviour, media habits — then placed into both simulated channels",
+    "step02Desc": "Graph entities become personas",
     "step03Title": "Run the campaign",
-    "step03Desc": "Creative seeded into two simulated feeds — Info Plaza and Topic Community; customers react over N rounds",
+    "step03Desc": "Customers react across feeds",
     "step04Title": "Measure & report",
-    "step04Desc": "Every action is counted into marketing KPIs — reach, engagement, virality, sentiment — then a report agent writes the assessment",
+    "step04Desc": "Actions become KPIs and a report",
     "step05Title": "Ask follow-ups",
-    "step05Desc": "Chat with the report agent, interview individual customers, or put one question to a whole group",
+    "step05Desc": "Chat or interview any customer",
     "realitySeed": "01 / Campaign material",
     "supportedFormats": "PDF · MD · TXT",
     "dragToUpload": "Drop the brief and creative",
@@ -152,7 +152,13 @@
     "generatedRelationTypes": "Generated relation types",
     "systemDashboard": "System dashboard",
     "entityBadge": "Entity",
-    "relationBadge": "Relation"
+    "relationBadge": "Relation",
+    "briefTitle": "Project brief",
+    "briefReady": "Graph ready",
+    "briefUntitled": "Untitled project",
+    "briefSchema": "Entity & relation types",
+    "briefEntityTypes": "Entity types",
+    "briefRelationTypes": "Relation types"
   },
   "step2": {
     "simInstanceInit": "Campaign Test Initialization",
@@ -337,7 +343,9 @@
     "close": "Close"
   },
   "step4": {
-    "reportTag": "Campaign Assessment",
+    "reportTag": "Simulation Run",
+    "showEvidence": "Show evidence",
+    "hideEvidence": "Hide evidence",
     "selectionReason": "Why this customer was interviewed",
     "waitingToStart": "Waiting to start",
     "generatingSection": "Generating {title}...",
@@ -529,7 +537,8 @@
     "deleteConfirm": "Delete \"{name}\"? Its graph and simulation runs go with it. Reports are kept.",
     "deleteFailed": "Delete failed",
     "stepBadge": "Step {n}",
-    "allBadge": "All"
+    "allBadge": "All",
+    "openButton": "Open project"
   },
   "api": {
     "projectNotFound": "Project not found: {id}",
@@ -597,7 +606,6 @@
     "requireAgentId": "Please provide agent_id",
     "requirePrompt": "Please provide a prompt (interview question)",
     "invalidInterviewPlatform": "Platform must be either 'twitter' or 'reddit'",
-    "envNotRunning": "Simulation environment not running or closed. Ensure simulation is complete and in command-wait mode.",
     "interviewTimeout": "Interview response timed out: {error}",
     "requireInterviews": "Please provide interviews (interview list)",
     "interviewListMissingAgentId": "Interview list item {index} missing agent_id",
@@ -609,7 +617,8 @@
     "envNotRunningShort": "Environment not running or closed",
     "requireGraphIdAndQuery": "Please provide graph_id and query",
     "initReportAgent": "Initializing Report Agent...",
-    "documentHasNoText": "No readable text could be extracted from {filename} ({chars} characters). If it is a scanned or image-only PDF, configure VISION_LLM_* so the pages can be read, or upload a version with a text layer."
+    "documentHasNoText": "No readable text could be extracted from {filename} ({chars} characters). If it is a scanned or image-only PDF, configure VISION_LLM_* so the pages can be read, or upload a version with a text layer.",
+    "envNotRunning": "Simulation environment not running or closed. Ensure simulation is complete and in command-wait mode."
   },
   "progress": {
     "initGraphService": "Initializing graph build service...",
@@ -792,14 +801,13 @@
     "customSimRounds": "Custom simulation rounds: {rounds} rounds"
   },
   "report": {
-    "docTitle": "Campaign assessment report",
-    "docSummary": "Simulated audience reaction to the campaign, measured against marketing KPIs",
+    "docTitle": "Simulation run report",
+    "docSummary": "What a simulated audience did with the campaign, and what the run does and does not show",
     "sections": {
-      "whoSawIt": "Who saw it",
+      "whatHappened": "What happened",
       "howTheyReacted": "How they reacted",
-      "howFarItSpread": "How far it spread",
-      "whichGroups": "Which groups liked it, which didn't",
-      "whatToFix": "What to fix before launch"
+      "whereTheyDiverged": "Where the audience split",
+      "signalsAndLimits": "Signals and limits"
     },
     "taskStarted": "Report generation task started",
     "planningStart": "Starting report outline planning",

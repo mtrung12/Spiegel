@@ -61,10 +61,11 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import LanguageSwitcher from './LanguageSwitcher.vue'
+import { getProjectProgress } from '../api/graph'
 
 const props = defineProps({
   currentStep: { type: Number, required: true },
@@ -91,17 +92,67 @@ const layoutLabels = computed(() => ({
   workbench: t('main.layoutWorkbench')
 }))
 
-// A step is only reachable once the id its route needs exists. Steps the run
-// has not produced yet stay disabled rather than routing to a broken page.
-const stepTarget = (step) => {
+// How far this project actually got, asked of the server. A view only holds
+// the ids its own route was given - step 1 has neither a simulation nor a
+// report id - so without this a returning user finds every later step greyed
+// out even though the run finished days ago.
+const progress = ref(null)
+
+watch(
+  () => props.projectId,
+  async (projectId) => {
+    progress.value = null
+    if (!projectId) return
+    try {
+      const response = await getProjectProgress(projectId)
+      progress.value = response?.data || null
+    } catch {
+      // Navigation is a convenience; if this call fails the stepper falls
+      // back to the ids this view already has rather than breaking the page.
+      progress.value = null
+    }
+  },
+  { immediate: true }
+)
+
+const routeNames = {
+  1: 'Process',
+  2: 'Simulation',
+  3: 'SimulationRun',
+  4: 'Report',
+  5: 'Interaction'
+}
+
+const paramNames = {
+  1: 'projectId',
+  2: 'simulationId',
+  3: 'simulationId',
+  4: 'reportId',
+  5: 'reportId'
+}
+
+// Fallback for the moment before the fetch lands, and if it fails: the ids
+// this view was handed. Never more permissive than the server's answer.
+const localRouteId = (step) => {
   switch (step) {
-    case 1: return props.projectId ? { name: 'Process', params: { projectId: props.projectId } } : null
-    case 2: return props.simulationId ? { name: 'Simulation', params: { simulationId: props.simulationId } } : null
-    case 3: return props.simulationId ? { name: 'SimulationRun', params: { simulationId: props.simulationId } } : null
-    case 4: return props.reportId ? { name: 'Report', params: { reportId: props.reportId } } : null
-    case 5: return props.reportId ? { name: 'Interaction', params: { reportId: props.reportId } } : null
+    case 1: return props.projectId
+    case 2:
+    case 3: return props.simulationId
+    case 4:
+    case 5: return props.reportId
     default: return null
   }
+}
+
+// A step opens only when the project reached it *and* its route has an id.
+// Both halves matter: a step that never started has no id, and an id alone
+// does not prove the step was ever begun.
+const stepTarget = (step) => {
+  const serverStep = progress.value?.steps?.find((s) => s.step === step)
+  const routeId = serverStep ? serverStep.route_id : localRouteId(step)
+  if (serverStep && !serverStep.reachable) return null
+  if (!routeId) return null
+  return { name: routeNames[step], params: { [paramNames[step]]: routeId } }
 }
 
 const goToStep = (step) => {

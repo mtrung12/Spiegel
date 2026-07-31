@@ -10,12 +10,50 @@
         :reportId="reportId"
         :tag="$t('step4.reportTag')"
       >
-        <template #header-extra>
-          <!-- Measured marketing KPIs, counted from the action log -->
-          <CampaignKpiPanel v-if="simulationId" :simulationId="simulationId" :autoLoad="isComplete" />
-          <!-- What the audience actually wrote, classified from the text -->
-          <SentimentDigestPanel v-if="simulationId" :simulationId="simulationId" :autoLoad="isComplete" />
+        <!-- Each panel sits inside the section that explains it, rather than
+             stacked above the report where the reader meets forty figures
+             before the first sentence. Section order is fixed in
+             REPORT_SECTION_IDS, so the slot numbers are stable. -->
+
+        <!-- 01 What happened: exposure, engagement, spread, and the curve -->
+        <template #visual-1>
+          <CampaignKpiPanel
+            v-if="simulationId"
+            :simulationId="simulationId"
+            :autoLoad="isComplete"
+            :only="['reach', 'engagement', 'virality', 'rounds']"
+            bare
+          />
         </template>
+
+        <!-- 02 How they reacted: the text sentiment split, quotes and themes -->
+        <template #visual-2>
+          <SentimentDigestPanel
+            v-if="simulationId"
+            :simulationId="simulationId"
+            :autoLoad="isComplete"
+            bare
+          />
+        </template>
+
+        <!-- 03 Where the audience split: the per-segment table -->
+        <!-- ponytail: this second instance re-fetches /campaign-metrics rather
+             than sharing section 01's copy. It is a SQLite read with no LLM in
+             it, so two calls are cheaper than threading the payload through the
+             pane. Lift the fetch into this view if runs get big enough to
+             notice. -->
+        <template #visual-3>
+          <CampaignKpiPanel
+            v-if="simulationId"
+            :simulationId="simulationId"
+            :autoLoad="isComplete"
+            :only="['segments']"
+            bare
+          />
+        </template>
+
+        <!-- 04 Signals and limits has no visual, by design: it is the section
+             meant to be read rather than scanned. -->
       </ReportPane>
 
       <!-- RIGHT PANEL: Workflow Timeline -->

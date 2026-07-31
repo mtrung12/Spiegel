@@ -27,7 +27,7 @@ from ..models.task import TaskCancelled, TaskManager, TaskStatus
 from ..models.project import ProjectManager, ProjectStatus
 from ..services.simulation_manager import SimulationManager
 from ..services.simulation_runner import SimulationRunner, RunnerStatus
-from ..services.report_agent import ReportManager
+from ..services.report_agent import ReportManager, ReportStatus
 from ..services.zep_graph_memory_updater import ZepGraphMemoryManager
 from ..utils.llm_client import LLMResponseError
 
@@ -157,6 +157,90 @@ def _project_stage(project, simulation, run_state, report_id: str | None) -> str
     return "upload"
 
 
+# Where each stage sits on the five-step stepper in the UI. Derived from the
+# same _project_stage the home page uses, so "continue" and the stepper can
+# never disagree about how far a project got.
+_STAGE_FURTHEST_STEP = {
+    "upload": 1,
+    "graph": 1,
+    "failed": 1,
+    "simulation": 2,
+    "run": 3,
+    "report": 4,
+}
+
+WORKFLOW_STEP_COUNT = 5
+
+
+def _furthest_step(stage: str, report_id: str | None) -> int:
+    """
+    The last step this project reached - where "open project" should land.
+
+    Shared by the project list and the stepper so the button and the tabs can
+    never disagree about how far a project got.
+    """
+    step = _STAGE_FURTHEST_STEP.get(stage, 1)
+
+    # A finished report is the end of the workflow, so a completed project
+    # opens on the last step. One still generating, or failed, has nothing for
+    # step 5 to read, so it stops at the report itself.
+    if report_id:
+        report = ReportManager.get_report(report_id)
+        if report is not None and report.status == ReportStatus.COMPLETED:
+            step = WORKFLOW_STEP_COUNT
+    return step
+
+
+def _project_progress(project, simulations: list, report_ids: dict[str, str]) -> dict:
+    """
+    Which of the five workflow steps this project may navigate to.
+
+    The stepper cannot work this out on its own: each view only holds the ids
+    its own route was given, so step 1 has no idea a finished run and report
+    exist and greys out every later step. Answering it server-side, from the
+    stored project/simulation/report state, is what lets a returning user jump
+    back to where they left off - and keeps steps that never started closed,
+    since routing into one lands on a page with no id to load.
+    """
+    simulation = max(simulations, key=lambda s: s.created_at, default=None)
+    simulation_id = simulation.simulation_id if simulation else None
+    run_state = (
+        SimulationRunner.get_run_state(simulation_id) if simulation_id else None
+    )
+    report_id = report_ids.get(simulation_id) if simulation_id else None
+
+    stage = _project_stage(project, simulation, run_state, report_id)
+    furthest_step = _furthest_step(stage, report_id)
+
+    # The id each step's route needs to load anything.
+    route_ids = {
+        1: project.project_id,
+        2: simulation_id,
+        3: simulation_id,
+        4: report_id,
+        5: report_id,
+    }
+
+    return {
+        "project_id": project.project_id,
+        "simulation_id": simulation_id,
+        "report_id": report_id,
+        "stage": stage,
+        "furthest_step": furthest_step,
+        "steps": [
+            {
+                "step": step,
+                # Reached before *and* routable. Both matter: a step the run
+                # never got to has no id, and an id alone does not mean the
+                # step was ever started.
+                "reachable": step <= furthest_step and route_ids[step] is not None,
+                "route_id": route_ids[step],
+            }
+            for step in range(1, WORKFLOW_STEP_COUNT + 1)
+        ],
+    }
+
+
 def _project_overview(project, simulations: list, report_ids: dict[str, str]) -> dict:
     """Project row for the home page: metadata plus its latest run and report."""
 
@@ -175,6 +259,7 @@ def _project_overview(project, simulations: list, report_ids: dict[str, str]) ->
             "simulation_count": 0,
         })
         overview["stage"] = _project_stage(project, None, None, None)
+        overview["furthest_step"] = _furthest_step(overview["stage"], None)
         return overview
 
     run_state = SimulationRunner.get_run_state(simulation.simulation_id)
@@ -204,6 +289,7 @@ def _project_overview(project, simulations: list, report_ids: dict[str, str]) ->
         "simulation_count": len(simulations),
     })
     overview["stage"] = _project_stage(project, simulation, run_state, report_id)
+    overview["furthest_step"] = _furthest_step(overview["stage"], report_id)
     return overview
 
 
@@ -285,6 +371,31 @@ def list_projects():
             for project in projects
         ],
         "count": len(projects)
+    })
+
+
+@graph_bp.route('/project/<project_id>/progress', methods=['GET'])
+def get_project_progress(project_id: str):
+    """
+    Which workflow steps this project can navigate to.
+
+    Powers the stepper, which otherwise has to guess from whichever ids the
+    current view happens to hold.
+    """
+    project = ProjectManager.get_project(project_id)
+    if not project:
+        return jsonify({
+            "success": False,
+            "error": t('api.projectNotFound', id=project_id),
+        }), 404
+
+    simulations = [
+        simulation
+        for simulation in SimulationManager().list_simulations(project_id=project_id)
+    ]
+    return jsonify({
+        "success": True,
+        "data": _project_progress(project, simulations, _latest_report_ids()),
     })
 
 

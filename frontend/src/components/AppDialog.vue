@@ -53,6 +53,7 @@ onBeforeUnmount(() => {
   width: min(92vw, 560px);
   max-height: 88vh;
   font-family: var(--font-sans);
+  margin: auto; /* global * { margin: 0 } kills native <dialog> auto-centering */
 }
 
 .app-dialog.sm { width: min(92vw, 420px); }

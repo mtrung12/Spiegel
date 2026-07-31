@@ -2384,13 +2384,8 @@ def interview_agent():
                 "error": t('api.invalidInterviewPlatform')
             }), 400
         
-        # Check the environment status
-        if not SimulationRunner.check_env_alive(simulation_id):
-            return jsonify({
-                "success": False,
-                "error": t('api.envNotRunning')
-            }), 400
-        
+        # No environment check: SimulationRunner falls back to an offline
+        # interview when the environment has already closed.
         # Prefix the prompt so the agent does not reach for a tool
         optimized_prompt = optimize_interview_prompt(prompt)
         
@@ -2518,13 +2513,8 @@ def interview_agents_batch():
                     "error": t('api.interviewListInvalidPlatform', index=i+1)
                 }), 400
 
-        # Check the environment status
-        if not SimulationRunner.check_env_alive(simulation_id):
-            return jsonify({
-                "success": False,
-                "error": t('api.envNotRunning')
-            }), 400
-
+        # No environment check: SimulationRunner falls back to an offline
+        # interview when the environment has already closed.
         # Prefix each item's prompt so the agent does not reach for a tool
         optimized_interviews = []
         for interview in interviews:
@@ -2624,13 +2614,8 @@ def interview_all_agents():
                 "error": t('api.invalidInterviewPlatform')
             }), 400
 
-        # Check the environment status
-        if not SimulationRunner.check_env_alive(simulation_id):
-            return jsonify({
-                "success": False,
-                "error": t('api.envNotRunning')
-            }), 400
-
+        # No environment check: SimulationRunner falls back to an offline
+        # interview when the environment has already closed.
         # Prefix the prompt so the agent does not reach for a tool
         optimized_prompt = optimize_interview_prompt(prompt)
 

@@ -1,6 +1,157 @@
 <template>
   <div class="workbench-panel">
-    <div class="scroll-container">
+    <!-- Finished project: a summary, not a build log. Someone reopening a
+         project wants to know what this is and where to go next; the ontology
+         tags, the brief text and the build log are all still here, one
+         disclosure away. While a build is actually running the step cards
+         below stay, because then the detail *is* the point. -->
+    <div v-if="showSummary" class="scroll-container brief-summary">
+      <section class="brief-card">
+        <header class="brief-head">
+          <span class="brief-eyebrow">{{ $t('step1.briefTitle') }}</span>
+          <span class="badge success">{{ $t('step1.briefReady') }}</span>
+        </header>
+
+        <h1 class="brief-name">{{ projectData?.name || $t('step1.briefUntitled') }}</h1>
+        <p v-if="briefRequirement" class="brief-requirement">{{ briefRequirement }}</p>
+
+        <dl class="brief-figures">
+          <div class="figure">
+            <dt>{{ $t('step1.entityNodes') }}</dt>
+            <dd>{{ graphStats.nodes }}</dd>
+          </div>
+          <div class="figure">
+            <dt>{{ $t('step1.relationEdges') }}</dt>
+            <dd>{{ graphStats.edges }}</dd>
+          </div>
+          <div class="figure">
+            <dt>{{ $t('step1.briefEntityTypes') }}</dt>
+            <dd>{{ ontologyCounts.entities }}</dd>
+          </div>
+          <div class="figure">
+            <dt>{{ $t('step1.briefRelationTypes') }}</dt>
+            <dd>{{ ontologyCounts.relations }}</dd>
+          </div>
+        </dl>
+
+        <button
+          class="action-btn brief-action"
+          :disabled="creatingSimulation"
+          @click="handleEnterEnvSetup"
+        >
+          <span v-if="creatingSimulation" class="spinner-sm"></span>
+          {{ creatingSimulation ? $t('step1.creating') : $t('step1.enterEnvSetup') + ' ➝' }}
+        </button>
+
+        <!-- Everything below is opt-in. -->
+        <details class="brief-more">
+          <summary>
+            {{ $t('step1.briefSchema') }}
+            <span class="brief-more-hint">
+              {{ ontologyCounts.entities + ontologyCounts.relations }}
+            </span>
+          </summary>
+          <div class="brief-more-body">
+            <div v-if="projectData?.ontology?.entity_types?.length" class="tags-container">
+              <span class="tag-label">{{ $t('step1.generatedEntityTypes') }}</span>
+              <div class="tags-list">
+                <button
+                  v-for="entity in projectData.ontology.entity_types"
+                  :key="entity.name"
+                  type="button"
+                  class="entity-tag clickable"
+                  @click="selectOntologyItem(entity, 'entity')"
+                >
+                  {{ entity.name }}
+                </button>
+              </div>
+            </div>
+            <div v-if="projectData?.ontology?.edge_types?.length" class="tags-container">
+              <span class="tag-label">{{ $t('step1.generatedRelationTypes') }}</span>
+              <div class="tags-list">
+                <button
+                  v-for="rel in projectData.ontology.edge_types"
+                  :key="rel.name"
+                  type="button"
+                  class="entity-tag clickable"
+                  @click="selectOntologyItem(rel, 'relation')"
+                >
+                  {{ rel.name }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <details class="brief-more" @toggle="onSourceTextToggle">
+          <summary>
+            {{ $t('step1.viewSourceText') }}
+            <span v-if="projectData?.total_text_length" class="brief-more-hint">
+              {{ $t('step1.sourceTextChars', { count: projectData.total_text_length.toLocaleString() }) }}
+            </span>
+          </summary>
+          <div class="brief-more-body">
+            <p v-if="sourceTextLoading" class="source-text-status">{{ $t('step1.sourceTextLoading') }}</p>
+            <p v-else-if="sourceTextError" class="source-text-status error">{{ sourceTextError }}</p>
+            <pre v-else-if="sourceText" class="source-text-body">{{ sourceTextPreview }}</pre>
+          </div>
+        </details>
+
+        <details class="brief-more">
+          <summary>{{ $t('step1.systemDashboard') }}</summary>
+          <div class="brief-more-body">
+            <div class="log-content compact">
+              <div class="log-line" v-for="(log, idx) in systemLogs" :key="idx">
+                <span class="log-time">{{ log.time }}</span>
+                <span class="log-msg">{{ log.msg }}</span>
+              </div>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <!-- The ontology detail popover is shared with the build view. -->
+      <div v-if="selectedOntologyItem" class="ontology-detail-overlay floating">
+        <div class="detail-header">
+          <div class="detail-title-group">
+            <span class="detail-type-badge">{{ selectedOntologyItem.itemType === 'entity' ? $t('step1.entityBadge') : $t('step1.relationBadge') }}</span>
+            <span class="detail-name">{{ selectedOntologyItem.name }}</span>
+          </div>
+          <button class="close-btn" @click="selectedOntologyItem = null">×</button>
+        </div>
+        <div class="detail-body">
+          <div class="detail-desc">{{ selectedOntologyItem.description }}</div>
+          <div class="detail-section" v-if="selectedOntologyItem.attributes?.length">
+            <span class="section-label">{{ $t('step1.attributes') }}</span>
+            <div class="attr-list">
+              <div v-for="attr in selectedOntologyItem.attributes" :key="attr.name" class="attr-item">
+                <span class="attr-name">{{ attr.name }}</span>
+                <span class="attr-type">({{ attr.type }})</span>
+                <span class="attr-desc">{{ attr.description }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="detail-section" v-if="selectedOntologyItem.examples?.length">
+            <span class="section-label">{{ $t('step1.examples') }}</span>
+            <div class="example-list">
+              <span v-for="ex in selectedOntologyItem.examples" :key="ex" class="example-tag">{{ ex }}</span>
+            </div>
+          </div>
+          <div class="detail-section" v-if="selectedOntologyItem.source_targets?.length">
+            <span class="section-label">{{ $t('step1.connections') }}</span>
+            <div class="conn-list">
+              <div v-for="(conn, idx) in selectedOntologyItem.source_targets" :key="idx" class="conn-item">
+                <span class="conn-node">{{ conn.source }}</span>
+                <span class="conn-arrow">→</span>
+                <span class="conn-node">{{ conn.target }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-else class="scroll-container">
       <!-- Step 01: Ontology -->
       <div class="step-card" :class="{ 'active': currentPhase === 0, 'completed': currentPhase > 0 }">
         <div class="card-header">
@@ -121,7 +272,7 @@
             </summary>
             <p v-if="sourceTextLoading" class="source-text-status">{{ $t('step1.sourceTextLoading') }}</p>
             <p v-else-if="sourceTextError" class="source-text-status error">{{ sourceTextError }}</p>
-            <pre v-else-if="sourceText" class="source-text-body">{{ sourceText }}</pre>
+            <pre v-else-if="sourceText" class="source-text-body">{{ sourceTextPreview }}</pre>
           </details>
         </div>
       </div>
@@ -210,8 +361,9 @@
       </div>
     </div>
 
-    <!-- Bottom Info / Logs -->
-    <div class="system-logs">
+    <!-- Bottom Info / Logs. During a build this is the live feed; on a
+         finished project it moves into a disclosure in the summary above. -->
+    <div v-if="!showSummary" class="system-logs">
       <div class="log-header">
         <span class="log-title">{{ $t('step1.systemDashboard') }}</span>
         <span class="log-id">{{ projectData?.project_id || 'NO_PROJECT' }}</span>
@@ -259,12 +411,46 @@ const props = defineProps({
 
 defineEmits(['next-step', 'stop-build'])
 
+// A finished build shows the summary; a running one shows the step cards,
+// where the detail is the whole point.
+const showSummary = computed(() => props.currentPhase >= 2)
+
+const ontologyCounts = computed(() => ({
+  entities: props.projectData?.ontology?.entity_types?.length || 0,
+  relations: props.projectData?.ontology?.edge_types?.length || 0
+}))
+
+// A couple of lines of orientation under the title. The analysis summary comes
+// first because it is written prose; simulation_requirement is frequently the
+// raw extracted document - "=== brief.pdf ===\nTESLA MODEL ZERO\n..." - which
+// is exactly the wall of text this view exists to avoid. When it is the only
+// thing available, strip the file-header lines off it.
+const briefRequirement = computed(() => {
+  const summary = props.projectData?.analysis_summary?.trim()
+  if (summary) return summary
+
+  return (props.projectData?.simulation_requirement || '')
+    .split('\n')
+    .filter((line) => !/^\s*={2,}.*={2,}\s*$/.test(line))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+})
+
 // Extracted source text, fetched on first open of the disclosure rather than
 // with the project - it is the whole brief, and nothing else on this screen
 // needs it.
 const sourceText = ref('')
 const sourceTextLoading = ref(false)
 const sourceTextError = ref('')
+
+// Brief view, not the whole document - full raw text belongs in a real viewer.
+const SOURCE_TEXT_PREVIEW_LIMIT = 2000
+const sourceTextPreview = computed(() => {
+  const text = sourceText.value
+  if (text.length <= SOURCE_TEXT_PREVIEW_LIMIT) return text
+  return text.slice(0, SOURCE_TEXT_PREVIEW_LIMIT) + '…'
+})
 
 const onSourceTextToggle = async (event) => {
   if (!event.target.open || sourceText.value || sourceTextLoading.value) return
@@ -394,6 +580,166 @@ watch(() => props.systemLogs.length, () => {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+/* ---------------------------------------------------------------------------
+   Brief summary (finished project)
+   --------------------------------------------------------------------------- */
+.brief-summary {
+  align-items: center;
+  padding: 32px 24px;
+}
+
+.brief-card {
+  width: 100%;
+  /* Long prose past ~70ch stops being readable, and the figures look adrift
+     when stretched across a full-width panel. */
+  max-width: 720px;
+  background: var(--white);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.brief-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.brief-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.brief-name {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.25;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.brief-requirement {
+  margin: -8px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+  /* Three lines of orientation, not the whole brief - that is a disclosure. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.brief-figures {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 0;
+  padding: 16px 0;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.brief-figures .figure {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 4px;
+  min-width: 0;
+}
+
+.brief-figures dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.1;
+}
+
+.brief-figures dt {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.brief-action {
+  align-self: flex-start;
+}
+
+.brief-more {
+  border-top: 1px solid var(--border-soft);
+  padding-top: 14px;
+}
+
+.brief-more + .brief-more {
+  border-top: 1px solid var(--border-soft);
+  padding-top: 14px;
+  margin-top: -6px;
+}
+
+.brief-more > summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  list-style: revert;
+}
+
+.brief-more > summary:hover {
+  color: var(--ink);
+}
+
+.brief-more-hint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.brief-more-body {
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.brief-more-body .log-content.compact {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* Floating variant of the shared ontology popover, for the summary view. */
+.ontology-detail-overlay.floating {
+  position: sticky;
+  bottom: 16px;
+  width: 100%;
+  max-width: 720px;
+  z-index: 5;
+}
+
+@media (max-width: 720px) {
+  .brief-figures {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .brief-card {
+    padding: 20px;
+  }
 }
 
 .step-card {

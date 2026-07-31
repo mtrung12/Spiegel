@@ -27,6 +27,7 @@ from ..utils.zep import (
 )
 from .zep_graph_memory_updater import ZepGraphMemoryManager, ZepIngestionIncomplete
 from .simulation_ipc import SimulationIPCClient
+from . import offline_interview
 
 logger = get_logger('spiegel.simulation_runner')
 
@@ -2089,7 +2090,18 @@ class SimulationRunner:
         ipc_client = SimulationIPCClient(sim_dir)
 
         if not ipc_client.check_env_alive():
-            raise ValueError(f"simulation environment is not running; cannot interview: {simulation_id}")
+            # The environment does not outlive a backend restart or its idle
+            # timeout, and interviews only unlock after the report - so answer
+            # from the recorded persona and activity instead of refusing.
+            logger.info(
+                f"environment closed; interviewing offline: simulation_id={simulation_id}, agent_id={agent_id}"
+            )
+            return offline_interview.interview_agent(
+                simulation_id=simulation_id,
+                agent_id=agent_id,
+                prompt=prompt,
+                platform=platform,
+            )
 
         logger.info(f"sending interview command: simulation_id={simulation_id}, agent_id={agent_id}, platform={platform}")
 
@@ -2151,7 +2163,14 @@ class SimulationRunner:
         ipc_client = SimulationIPCClient(sim_dir)
 
         if not ipc_client.check_env_alive():
-            raise ValueError(f"simulation environment is not running; cannot interview: {simulation_id}")
+            logger.info(
+                f"environment closed; interviewing offline: simulation_id={simulation_id}, count={len(interviews)}"
+            )
+            return offline_interview.interview_batch(
+                simulation_id=simulation_id,
+                interviews=interviews,
+                platform=platform,
+            )
 
         logger.info(f"sending batch interview command: simulation_id={simulation_id}, count={len(interviews)}, platform={platform}")
 

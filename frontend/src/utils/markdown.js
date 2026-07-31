@@ -3,8 +3,9 @@ import DOMPurify from 'dompurify'
 /**
  * Minimal Markdown renderer for report sections and chat replies.
  *
- * Hand-rolled because it only has to cover what the report agent emits. Swap
- * for `marked` if the agent ever emits tables or footnotes.
+ * Hand-rolled because it only has to cover what the report agent emits:
+ * headings, lists, quotes, bold, code and pipe tables. Swap for `marked` if it
+ * ever needs footnotes, reference links or nested block quotes.
  *
  * The input is NOT trusted. Report text is derived from harvested public
  * discussion (Reddit, HN, RSS), so a crafted post can carry markup all the way
@@ -49,6 +50,24 @@ export const renderMarkdown = (content) => {
   // leading "> " into "&gt; " by the time this runs.
   html = html.replace(/^&gt; (.+)$/gm, '<blockquote class="md-quote">$1</blockquote>')
 
+  // Pipe tables. Runs before the list and paragraph passes, which would
+  // otherwise chew up the rows. Only the GFM shape is supported - a header row,
+  // a |---|---| separator, then body rows - because that is all the report
+  // agent is asked to emit. Alignment colons are accepted and ignored.
+  html = html.replace(
+    /^\|(.+)\|[ \t]*\n\|[ \t]*:?-{1,}:?[ \t]*(?:\|[ \t]*:?-{1,}:?[ \t]*)*\|[ \t]*\n((?:\|.*\|[ \t]*\n?)*)/gm,
+    (match, headerRow, bodyRows) => {
+      const cells = (row) => row.replace(/^\||\|$/g, '').split('|').map((c) => c.trim())
+      const head = cells(headerRow).map((c) => `<th>${c}</th>`).join('')
+      const body = bodyRows
+        .split('\n')
+        .filter((row) => row.trim())
+        .map((row) => `<tr>${cells(row).map((c) => `<td>${c}</td>`).join('')}</tr>`)
+        .join('')
+      return `<table class="md-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>\n`
+    }
+  )
+
   // Lists, nested ones included
   html = html.replace(/^(\s*)- (.+)$/gm, (match, indent, text) => {
     const level = Math.floor(indent.length / 2)
@@ -92,13 +111,13 @@ export const renderMarkdown = (content) => {
   html = html.replace(/<p class="md-p"><\/p>/g, '')
   html = html.replace(/<p class="md-p">(<h[2-5])/g, '$1')
   html = html.replace(/(<\/h[2-5]>)<\/p>/g, '$1')
-  html = html.replace(/<p class="md-p">(<ul|<ol|<blockquote|<pre|<hr)/g, '$1')
-  html = html.replace(/(<\/ul>|<\/ol>|<\/blockquote>|<\/pre>)<\/p>/g, '$1')
+  html = html.replace(/<p class="md-p">(<ul|<ol|<blockquote|<pre|<hr|<table)/g, '$1')
+  html = html.replace(/(<\/ul>|<\/ol>|<\/blockquote>|<\/pre>|<\/table>)<\/p>/g, '$1')
   // Strip <br> around block-level elements
-  html = html.replace(/<br>\s*(<ul|<ol|<blockquote)/g, '$1')
-  html = html.replace(/(<\/ul>|<\/ol>|<\/blockquote>)\s*<br>/g, '$1')
+  html = html.replace(/<br>\s*(<ul|<ol|<blockquote|<table)/g, '$1')
+  html = html.replace(/(<\/ul>|<\/ol>|<\/blockquote>|<\/table>)\s*<br>/g, '$1')
   // Strip <p><br> immediately before a block element, left by a stray blank line
-  html = html.replace(/<p class="md-p">(<br>\s*)+(<ul|<ol|<blockquote|<pre|<hr)/g, '$2')
+  html = html.replace(/<p class="md-p">(<br>\s*)+(<ul|<ol|<blockquote|<pre|<hr|<table)/g, '$2')
   // Collapse runs of <br>
   html = html.replace(/(<br>\s*){2,}/g, '<br>')
   // Strip the <br> before a paragraph that follows a block element
@@ -136,9 +155,42 @@ export const renderMarkdown = (content) => {
     ALLOWED_TAGS: [
       'p', 'br', 'hr', 'strong', 'em', 'code', 'pre',
       'h2', 'h3', 'h4', 'h5', 'ul', 'ol', 'li', 'blockquote',
+      'table', 'thead', 'tbody', 'tr', 'th', 'td',
     ],
     ALLOWED_ATTR: ['class', 'data-level', 'start'],
   })
+}
+
+/**
+ * Split a section body into its opening verdict and the rest.
+ *
+ * The report agent is required to open every section with a one-sentence
+ * verdict, which the backend normalises to a fully bold first line (see
+ * `ReportAgent._normalize_verdict`). The pane shows that line always and keeps
+ * the body behind a toggle, so the reader can scan four verdicts before
+ * deciding what to open.
+ *
+ * Returns `{ verdict: '', body: content }` when the first line is not bold,
+ * which is what an older report or a model that ignored the format produces.
+ */
+export const splitVerdict = (content) => {
+  if (!content) return { verdict: '', body: '' }
+
+  // The section title is rendered outside the body, as in renderMarkdown().
+  const stripped = content.replace(/^##\s+.+\n+/, '')
+  const lines = stripped.split('\n')
+  const firstIdx = lines.findIndex((line) => line.trim())
+  if (firstIdx === -1) return { verdict: '', body: '' }
+
+  const first = lines[firstIdx].trim()
+  const bold = first.match(/^\*\*(.+)\*\*$/)
+  // A line with inner ** would be two bold runs, not one verdict.
+  if (!bold || bold[1].includes('**')) return { verdict: '', body: stripped }
+
+  return {
+    verdict: bold[1].trim(),
+    body: lines.slice(firstIdx + 1).join('\n').replace(/^\n+/, '')
+  }
 }
 
 export default renderMarkdown

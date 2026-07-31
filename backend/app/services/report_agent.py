@@ -560,6 +560,32 @@ Get those from interview_agents and from what the agents actually wrote.
 
 [Parameters] None required."""
 
+TOOL_DESC_SENTIMENT_DIGEST = """\
+[Text sentiment - what the audience wrote, classified]
+campaign_metrics reads sentiment off the action type: a like is approval, a
+dislike is rejection. This tool reads the TEXT instead. Every post and comment
+the agents authored is classified positive / neutral / negative toward the
+campaign, with a theme tag, and the results are aggregated.
+
+[When to use it]
+- ALWAYS in a section about what the audience thought, objected to or liked
+- When you need the recurring objections, ranked by how often they came up
+- When you need the recurring hooks - what actually won people over
+- When you want the single loudest post on each side, ready to quote
+
+[What it returns]
+- The positive / neutral / negative split, for posts, comments and overall
+- Net sentiment from the text, -1.0 to 1.0
+- Recurring objections and recurring hooks, ranked, with example quotes
+- The most-liked positive and negative post and comment
+
+[Important] The behavioural split from campaign_metrics and the text split from
+this tool measure different things. A quote-repost that mocks the campaign
+counts as approval behaviourally and rejection textually. When they disagree,
+that disagreement is itself a finding worth reporting.
+
+[Parameters] None required."""
+
 TOOL_DESC_SEARCH_CONTENT = """\
 [Verbatim audience content - semantic search over what they actually wrote]
 Searches the raw posts and comments the audience authored, by meaning rather
@@ -584,54 +610,63 @@ than by keyword. Every other search tool returns the knowledge graph's
 - platform: "twitter" or "reddit" (optional, omit for both)"""
 
 # -- Fixed report structure --
-# The outline is fixed: a marketing lead reads the same report every time, and
-# the five sections map onto the KPI groups campaign_metrics.py measures.
+# The outline is fixed: the reader sees the same four sections every run, in a
+# deliberate order - observation, interpretation, segmentation, conclusion.
+# Each section answers the question the one above it raises, and each is paired
+# on screen with the panel that already renders its data, so the prose explains
+# numbers the reader is looking at instead of restating them.
 # Section ids are stable; the headings they print come from the locale files.
 REPORT_SECTION_IDS = [
-    "whoSawIt",
+    "whatHappened",
     "howTheyReacted",
-    "howFarItSpread",
-    "whichGroups",
-    "whatToFix",
+    "whereTheyDiverged",
+    "signalsAndLimits",
 ]
 
 # What each fixed section is responsible for, so sections do not overlap.
 # Prompt text, so English regardless of the report language.
 REPORT_SECTION_BRIEFS = {
-    "whoSawIt": (
-        "How far the campaign travelled and who it actually reached: audience "
-        "size, reached agents and reach rate, impressions, the channel split, "
-        "and how exposure built across the rounds observed."
+    "whatHappened": (
+        "Whether the message travelled at all, and how it moved over time: "
+        "reach rate, impressions, engagement rate, the passive share that saw "
+        "it and did nothing, the action breakdown, amplification and virality "
+        "ratio, and the shape of the round-by-round curve - when it peaked and "
+        "how fast it decayed. Observation only; save the why for later sections."
     ),
     "howTheyReacted": (
-        "Whether the audience acted, ignored it, or pushed back: engagement "
-        "rate, the passive share that saw it and did nothing, the action "
-        "breakdown (posts, comments, likes, dislikes, follows), and the "
-        "positive / negative split with the net sentiment score - each backed "
-        "by what the audience actually wrote."
+        "What the audience actually thought, from the text they wrote: the "
+        "positive / neutral / negative split of authored posts and comments, "
+        "the recurring objections and the recurring hooks, and the loudest "
+        "voice on each side quoted verbatim. Where the behavioural signal "
+        "(likes, reposts) and the text sentiment disagree, say so and explain "
+        "which one to trust - a quote-repost that mocks the campaign counts as "
+        "approval behaviourally and as rejection textually."
     ),
-    "howFarItSpread": (
-        "Whether the message spread on its own or had to be pushed: "
-        "amplifications (reposts and quotes), amplifier agents and "
-        "amplification rate, the virality ratio, cascade depth, the peak round, "
-        "and the loudest voices carrying the conversation."
+    "whereTheyDiverged": (
+        "Which segments responded and which did not: per-segment reach, "
+        "engagement, net sentiment, amplification and share of voice, who the "
+        "loudest voices were and which segment they belong to, and what "
+        "separates the segment that engaged from the one that stayed silent."
     ),
-    "whichGroups": (
-        "Which segments bought into the message and which resisted: per-segment "
-        "reach, engagement, net sentiment, amplifications and share of voice, "
-        "plus the purchase-intent and conversion signals visible in what those "
-        "segments said."
-    ),
-    "whatToFix": (
-        "The specific objections and message risks the audience raised, quoted "
-        "verbatim, and the concrete changes to make before spending the budget. "
-        "End with prioritised, actionable recommendations."
+    "signalsAndLimits": (
+        "The two to four findings this run genuinely supports, each stated as a "
+        "claim with the measured evidence behind it and what would confirm it "
+        "outside the simulation. Then, plainly, what this run could NOT show - "
+        "audience size, rounds observed, the absence of price or purchase "
+        "behaviour, and the fact that the audience is LLM agents rather than "
+        "people. No visual accompanies this section; it is the one the reader "
+        "is meant to read rather than scan."
     ),
 }
 
+# The section body opens with a one-sentence verdict, on its own line, that the
+# UI shows while the rest stays collapsed. Kept as a plain bold lead line so
+# the same text reads naturally in the downloaded Markdown.
+VERDICT_PREFIX = "VERDICT:"
+
 
 def _fixed_sections() -> List['ReportSection']:
-    """The five sections, headed in the report language."""
+    """The four sections, headed in the report language."""
     return [
         ReportSection(title=t(f'report.sections.{sid}'), brief=REPORT_SECTION_BRIEFS[sid])
         for sid in REPORT_SECTION_IDS
@@ -641,56 +676,53 @@ def _fixed_sections() -> List['ReportSection']:
 # -- Outline planning prompts --
 
 PLAN_SYSTEM_PROMPT = """\
-You are a marketing effectiveness analyst writing a CAMPAIGN ASSESSMENT REPORT.
-You have full visibility into a simulated audience: every reaction, post,
-comment, like, share and silence is logged and available to you.
+You are a simulation analyst writing the report on a SIMULATION RUN. A campaign
+brief was released to an audience of LLM agents built from the target market's
+described characteristics, and every reaction, post, comment, like, share and
+silence in that run is logged and available to you.
 
 [Core idea]
-We took a campaign brief - its creative, its message, its target audience - and
-released it to a simulated audience built from that audience's real
-characteristics. How that audience reacted is our forecast of how the real
-market will receive the campaign. What you are looking at is a pre-flight test
-of the campaign, not an academic experiment.
+This is a record of what happened inside a model, not a market forecast. The
+agents' behaviour is evidence about the message - where it caught, what people
+argued with, which segment stayed silent - and it is worth reading precisely
+because it is cheap and repeatable. It is not evidence about the real market's
+purchasing behaviour, and the report must never claim it is.
 
 [Your task]
-Write a campaign assessment that answers the questions a marketing lead has
-before spending the budget:
-1. How far did the campaign travel, and who did it actually reach?
-2. Did the audience engage, ignore it, or push back - and in what proportion?
-3. Did it spread on its own, or did it need to be pushed?
-4. Which segments bought into the message, and which resisted it?
-5. What are the objections, and what should change before launch?
+Report what the run showed, in this order:
+1. Did the message travel, and how did it move over time?
+2. What did the audience actually think, in their own words?
+3. Which segments diverged?
+4. What does the run support - and what can it not show?
 
 [What the report is]
-- YES: an assessment of THIS campaign's likely market performance
-- YES: built on marketing KPIs - reach, engagement, sentiment split, virality,
-  purchase intent, share of voice, segment performance
-- YES: the simulated agents' posts and reactions ARE audience reactions to the
-  campaign; treat them as verbatim consumer response
-- NO: a generic prediction of the future or a public-opinion survey
+- YES: an account of observed agent behaviour, anchored to counted figures
+- YES: the agents' posts and reactions read as audience reaction to the message
+- YES: honest about the limits of a simulated audience
+- NO: a forecast of real-world sales, market share or campaign ROI
 - NO: a description of the brand or the market as it exists today
 - NO: vague conclusions with no number attached
 
 [The report structure is fixed]
 The title and the sections are already decided - you do not design them:
-1. Who saw it
+1. What happened
 2. How they reacted
-3. How far it spread
-4. Which groups liked it, which did not
-5. What to fix before launch
+3. Where the audience split
+4. Signals and limits
 
 [Your only output here]
-The one-sentence headline result of the campaign: did it land, and how hard.
-Anchor it to a measured number, not an adjective.
+The one-sentence headline result of the run: did the message move, and how far.
+Anchor it to a measured number, not an adjective. Describe the run, not the
+market.
 
 Output JSON, in this shape:
 {
-    "summary": "one sentence stating the campaign's headline result"
+    "summary": "one sentence stating what the run showed"
 }"""
 
 PLAN_USER_PROMPT_TEMPLATE = """\
-[Campaign under assessment]
-The campaign brief and target audience we released into the simulated market: {simulation_requirement}
+[What was simulated]
+The campaign brief and target audience released into the simulated market: {simulation_requirement}
 
 [Scale of the simulated audience]
 - Audience entities modelled: {total_nodes}
@@ -704,19 +736,17 @@ The campaign brief and target audience we released into the simulated market: {s
 [A sample of the audience reactions the simulation produced]
 {related_facts_json}
 
-State the headline result the way a marketing lead would want it before signing
-off the spend: did this campaign land, and how hard? One sentence, with the
-number that carries it."""
+State what this run showed: did the message move, and how far? One sentence,
+with the number that carries it. Describe the run, not the market."""
 
 # -- Section generation prompts --
 
 SECTION_SYSTEM_PROMPT_TEMPLATE = """\
-You are a marketing effectiveness analyst writing one section of a CAMPAIGN
-ASSESSMENT REPORT.
+You are a simulation analyst writing one section of a SIMULATION RUN REPORT.
 
 Report title: {report_title}
 Report summary: {report_summary}
-Campaign under assessment (brief and target audience): {simulation_requirement}
+What was simulated (brief and target audience): {simulation_requirement}
 
 The section you are writing now: {section_title}
 What this section must cover: {section_brief}
@@ -725,20 +755,32 @@ What this section must cover: {section_brief}
 [Core idea]
 ═══════════════════════════════════════════════════════════════
 
-The simulated audience is a pre-flight test of this campaign. We released the
-campaign's creative and message to an audience built from the target market's
-real characteristics, and what those agents posted, shared, liked, ignored and
-argued with IS the forecast of how the real market will react.
+A campaign brief was released to an audience of LLM agents built from the
+target market's described characteristics. What those agents posted, shared,
+liked, ignored and argued with is the run's evidence about the message.
 
 Your task is to:
-- Report how the campaign performed against marketing KPIs
-- Explain WHY it performed that way, in the audience's own words
-- Show which segments responded and which did not
-- Surface the objections and risks that would cost money at launch
+- Report what the run measured
+- Explain WHY the agents behaved that way, in their own words
+- Be exact about what the run does and does not support
 
 NO: do not describe the brand or the market as it exists today
-NO: do not write a generic public-opinion survey
-YES: assess THIS campaign's likely market performance
+NO: do not forecast real-world sales, market share or ROI
+YES: report observed agent behaviour, and say plainly what it suggests
+
+═══════════════════════════════════════════════════════════════
+[The reader is looking at a chart while they read you]
+═══════════════════════════════════════════════════════════════
+
+This section is rendered next to the panel that already displays its figures -
+the KPI cards, the sentiment bar, the segment table. The reader can see the
+numbers. So:
+
+- Cite a number only when your sentence is ABOUT that number: the one that
+  carries the point, the one that is surprising, the two you are comparing
+- Do NOT walk through the panel restating every figure in prose
+- Your job is the part the chart cannot show: what it means, why it happened,
+  what the audience said
 
 ═══════════════════════════════════════════════════════════════
 [The rules that matter most - you must follow them]
@@ -792,6 +834,15 @@ YES: assess THIS campaign's likely market performance
 [Formatting rules - critically important]
 ═══════════════════════════════════════════════════════════════
 
+[Open with a one-sentence verdict - this is mandatory]
+The FIRST line of your section body must be:
+
+VERDICT: <one sentence answering this section's question, with the number that carries it>
+
+Then a blank line, then the rest. The interface shows that line while the rest
+stays collapsed, so it has to stand alone: no "as shown below", no "this
+section examines". State the finding.
+
 [One section = the smallest unit of content]
 - Each section is the smallest block the report is split into
 - NO Markdown headings anywhere inside a section (#, ##, ###, ####)
@@ -800,12 +851,21 @@ YES: assess THIS campaign's likely market performance
 - Organise the content with **bold**, paragraph breaks, quotes and lists -
   never with headings
 
+[Tables]
+A Markdown pipe table is allowed, and is the right choice when you are
+comparing the same few figures across three or more things (segments,
+platforms, rounds, objections). At most ONE table per section, at most five
+columns. Anything smaller belongs in a sentence, not a table.
+
+| Segment | Reached | Engaged | Net sentiment |
+|---|---|---|---|
+| Bank executives | 61% | 34% | +0.42 |
+| IT architects | 88% | 51% | -0.18 |
+
 [Correct example]
 ```
-The campaign reached 142 of the 180 modelled audience members, a 78.9% reach
-rate, but only 41 of those reacted - an engagement rate of 28.9%.
-
-**Where the engagement came from**
+VERDICT: The message reached 79% of the audience but only 29% of those reacted,
+and everything that did happen happened in the first four rounds.
 
 Amplification was concentrated in one segment rather than spread across the
 audience:
@@ -838,8 +898,12 @@ This section analyses...
 
 [Advice - mix the tools, do not lean on just one]
 - campaign_metrics: the measured KPIs. Call this FIRST in any section that
-  reports reach, engagement, sentiment split, virality, share of voice or
-  segment performance. Every number you print should come from here.
+  reports reach, engagement, virality, share of voice or segment performance.
+  Every number you print should come from here.
+- sentiment_digest: what the audience WROTE, classified. Call this FIRST in any
+  section about opinion, objections or what won people over. Note that its
+  split and the behavioural split in campaign_metrics measure different things
+  and can disagree.
 - insight_forge: deep analysis; decomposes the question and retrieves audience
   reactions and relationships along several dimensions
 - panorama_search: wide-angle view; the whole campaign arc, how reaction evolved
@@ -925,24 +989,29 @@ Sections completed so far (read them carefully; do not repeat them):
 [Reminders]
 1. Read the completed sections above carefully and do not restate them
 2. If this section states any KPI, call campaign_metrics and use its measured
-   figures - never your own estimate
+   figures - never your own estimate. For anything about opinion or objections,
+   call sentiment_digest
 3. Then find out WHY: insight_forge or interview_agents for the audience's
    reasoning behind the number
 4. Mix the tools; do not lean on just one
-5. The content must come from the tool results, not from your own marketing
-   knowledge
+5. The content must come from the tool results, not from your own knowledge
+6. The reader can see the panel of figures next to this section - explain the
+   numbers, do not recite them
 
 [Formatting warning - must be followed]
+- The first line must be "VERDICT: <one sentence>", then a blank line
 - Do not write any heading (#, ##, ###, #### - none of them)
 - Do not open with "{section_title}"
 - The section title is added by the system
 - Write body text directly, using **bold** in place of sub-headings
+- At most one Markdown table, and only to compare three or more things
 
 Begin:
-1. First reason (Thought) about which KPI this section rests on
-2. Then call a tool (Action) - campaign_metrics for the numbers, the retrieval
-   and interview tools for the reasoning behind them
-3. Once you have enough, write the Final Answer (body text only, no headings)"""
+1. First reason (Thought) about which measured figure this section rests on
+2. Then call a tool (Action) - campaign_metrics and sentiment_digest for the
+   numbers, the retrieval and interview tools for the reasoning behind them
+3. Once you have enough, write the Final Answer: the VERDICT line first, then
+   the body (no headings)"""
 
 # -- Message templates used inside the ReACT loop --
 
@@ -982,22 +1051,24 @@ REACT_FORCE_FINAL_MSG = "The tool call limit has been reached. Write the section
 # -- Chat prompt --
 
 CHAT_SYSTEM_PROMPT_TEMPLATE = """\
-You are a concise marketing analyst answering questions about a campaign
-assessment you already produced.
+You are a concise simulation analyst answering questions about a run report you
+already produced.
 
-[Campaign assessed]
+[What was simulated]
 Campaign brief and target audience: {simulation_requirement}
 
-[The campaign assessment report already generated]
+[The run report already generated]
 {report_content}
 
 [Rules]
 1. Answer from the report above wherever you can
 2. Answer directly; skip long deliberation
 3. Only call a tool when the report does not cover the question
-4. For any KPI the report does not already state, call campaign_metrics rather
-   than estimating it
+4. For any figure the report does not already state, call campaign_metrics or
+   sentiment_digest rather than estimating it
 5. Keep answers short, clear and well organised
+6. Answer about what the run showed. If asked to predict real-world results,
+   give what the run supports and say plainly where that stops
 
 [Available tools] (use only when needed, 1-2 calls at most)
 {tools_description}
@@ -1011,7 +1082,8 @@ Campaign brief and target audience: {simulation_requirement}
 - Short and direct; no essays
 - Quote the audience with > when a verbatim makes the point better than a summary
 - Lead with the number or the conclusion, then explain why
-- When asked "should we launch this", give a straight answer with the evidence"""
+- When asked "should we launch this", give a straight answer from what the run
+  showed, and name the limit that stops it being a market forecast"""
 
 CHAT_OBSERVATION_SUFFIX = "\n\nAnswer the question concisely."
 
@@ -1081,6 +1153,11 @@ class ReportAgent:
             "campaign_metrics": {
                 "name": "campaign_metrics",
                 "description": TOOL_DESC_CAMPAIGN_METRICS,
+                "parameters": {}
+            },
+            "sentiment_digest": {
+                "name": "sentiment_digest",
+                "description": TOOL_DESC_SENTIMENT_DIGEST,
                 "parameters": {}
             },
             "insight_forge": {
@@ -1158,6 +1235,15 @@ class ReportAgent:
                 # Counted KPIs from the action log - no LLM, no estimation
                 from .campaign_metrics import CampaignMetricsService
                 return CampaignMetricsService.compute_as_text(self.simulation_id)
+
+            elif tool_name == "sentiment_digest":
+                # Classified text sentiment. Cached per feed size, so the first
+                # caller pays the classification pass and the rest read it back.
+                from .content_sentiment import ContentSentimentService
+                return ContentSentimentService().compute_as_text(
+                    simulation_id=self.simulation_id,
+                    campaign_requirement=self.simulation_requirement,
+                )
 
             elif tool_name == "insight_forge":
                 query = parameters.get("query", "")
@@ -1265,8 +1351,8 @@ class ReportAgent:
             else:
                 return (
                     f"Unknown tool: {tool_name}. Use one of: campaign_metrics, "
-                    "insight_forge, panorama_search, quick_search, interview_agents, "
-                    "search_content"
+                    "sentiment_digest, insight_forge, panorama_search, quick_search, "
+                    "interview_agents, search_content"
                 )
                 
         except Exception as e:
@@ -1280,8 +1366,8 @@ class ReportAgent:
     
     # Valid tool names, used to validate the bare-JSON fallback parse
     VALID_TOOL_NAMES = {
-        "campaign_metrics", "insight_forge", "panorama_search",
-        "quick_search", "interview_agents", "search_content",
+        "campaign_metrics", "sentiment_digest", "insight_forge",
+        "panorama_search", "quick_search", "interview_agents", "search_content",
     }
 
     def _parse_tool_calls(self, response: str) -> List[Dict[str, Any]]:
@@ -1388,8 +1474,42 @@ class ReportAgent:
         cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
         return cleaned.strip()
 
+    @staticmethod
+    def _normalize_verdict(content: str) -> str:
+        """
+        Turn the mandated ``VERDICT: ...`` lead line into a bold first line.
+
+        Normalising here - before the section is logged, saved or assembled -
+        keeps every downstream reader seeing the same shape. The UI treats a
+        fully bold first line as the verdict and collapses the rest behind it;
+        the downloaded Markdown just reads as a bold opening sentence.
+        """
+        if not content:
+            return content
+
+        lines = content.lstrip().split('\n')
+        if not lines:
+            return content
+
+        first = lines[0].strip()
+        # Tolerate the model bolding or heading its own marker.
+        marker = re.match(
+            rf'^(?:#+\s*)?(?:\*\*)?\s*{re.escape(VERDICT_PREFIX)}\s*(?:\*\*)?\s*(.+?)\s*(?:\*\*)?$',
+            first,
+            re.IGNORECASE,
+        )
+        if not marker:
+            return content
+
+        verdict = marker.group(1).strip().strip('*').strip()
+        if not verdict:
+            return '\n'.join(lines[1:]).lstrip()
+
+        rest = '\n'.join(lines[1:]).lstrip('\n')
+        return f"**{verdict}**\n\n{rest}".rstrip() + "\n"
+
     def plan_outline(
-        self, 
+        self,
         progress_callback: Optional[Callable] = None
     ) -> ReportOutline:
         """
@@ -1674,6 +1794,7 @@ class ReportAgent:
 
                 # Normal completion
                 final_answer = cleaned_response.split("Final Answer:")[-1].strip()
+                final_answer = ReportAgent._normalize_verdict(final_answer)
                 logger.info(t('report.sectionGenDone', title=section.title, count=tool_calls_count))
 
                 if self.report_logger:
@@ -1775,7 +1896,7 @@ class ReportAgent:
             # Enough tool calls were made and the model produced content without
             # the "Final Answer:" prefix. Take it as the answer rather than spinning.
             logger.info(t('report.sectionNoPrefix', title=section.title, count=tool_calls_count))
-            final_answer = cleaned_response
+            final_answer = ReportAgent._normalize_verdict(cleaned_response)
 
             if self.report_logger:
                 self.report_logger.log_section_content(
@@ -1802,10 +1923,12 @@ class ReportAgent:
             logger.error(t('report.sectionForceFailed', title=section.title))
             final_answer = t('report.sectionGenFailedContent')
         elif "Final Answer:" in response:
-            final_answer = response.split("Final Answer:")[-1].strip()
+            final_answer = ReportAgent._normalize_verdict(
+                response.split("Final Answer:")[-1].strip()
+            )
         else:
-            final_answer = response
-        
+            final_answer = ReportAgent._normalize_verdict(response)
+
         # Log that the section body was produced
         if self.report_logger:
             self.report_logger.log_section_content(

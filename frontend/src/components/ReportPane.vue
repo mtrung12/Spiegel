@@ -56,11 +56,46 @@
           </h3>
 
           <div class="section-body" v-show="!collapsedSections.has(idx)">
-            <div
-              v-if="generatedSections[idx + 1]"
-              class="generated-content"
-              v-html="renderMarkdown(generatedSections[idx + 1])"
-            ></div>
+            <template v-if="generatedSections[idx + 1]">
+              <!-- The one-sentence finding, always visible. -->
+              <p v-if="split(idx).verdict" class="section-verdict">
+                {{ split(idx).verdict }}
+              </p>
+
+              <!-- The panel that already renders this section's figures. The
+                   host view decides which one, keyed by section id. -->
+              <slot :name="`visual-${idx + 1}`" />
+
+              <template v-if="split(idx).body">
+                <button
+                  type="button"
+                  class="evidence-toggle"
+                  :aria-expanded="expandedEvidence.has(idx)"
+                  @click="toggleEvidence(idx)"
+                >
+                  <svg
+                    class="evidence-icon"
+                    :class="{ 'is-open': expandedEvidence.has(idx) }"
+                    viewBox="0 0 24 24"
+                    width="14"
+                    height="14"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    aria-hidden="true"
+                  >
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                  {{ expandedEvidence.has(idx) ? $t('step4.hideEvidence') : $t('step4.showEvidence') }}
+                </button>
+
+                <div
+                  v-show="expandedEvidence.has(idx)"
+                  class="generated-content"
+                  v-html="renderMarkdown(split(idx).body)"
+                ></div>
+              </template>
+            </template>
 
             <div v-else-if="currentSectionIndex === idx + 1" class="loading-state">
               <div class="loading-icon" aria-hidden="true">
@@ -88,8 +123,8 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { renderMarkdown } from '../utils/markdown'
+import { computed, ref } from 'vue'
+import { renderMarkdown, splitVerdict } from '../utils/markdown'
 
 const props = defineProps({
   outline: { type: Object, default: null },
@@ -102,8 +137,29 @@ const props = defineProps({
 
 // Collapse state belongs to the pane; nothing outside it reads or sets it.
 const collapsedSections = ref(new Set())
+// Evidence starts closed in every section: the point of the verdict line is
+// that four of them fit on a screen. The reader opens what they care about.
+const expandedEvidence = ref(new Set())
+
+// Splitting on every render would re-parse each section on any reactive change,
+// so the results are cached and only recomputed when the content changes.
+const splits = computed(() => {
+  const out = {}
+  for (const [index, content] of Object.entries(props.generatedSections)) {
+    out[index] = splitVerdict(content)
+  }
+  return out
+})
+
+const split = (idx) => splits.value[idx + 1] || { verdict: '', body: '' }
 
 const isSectionCompleted = (sectionNumber) => !!props.generatedSections[sectionNumber]
+
+const toggleEvidence = (idx) => {
+  const next = new Set(expandedEvidence.value)
+  next.has(idx) ? next.delete(idx) : next.add(idx)
+  expandedEvidence.value = next
+}
 
 // Only a finished section can collapse - collapsing a placeholder hides the
 // very progress the user is waiting on.
@@ -308,6 +364,45 @@ const toggleSectionCollapse = (idx) => {
   overflow: hidden;
 }
 
+/* The one-sentence finding. Sized to be read before anything else in the
+   section, and to survive being the only thing on screen. */
+.section-verdict {
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--black);
+  margin: 0 0 16px;
+}
+
+.evidence-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  transition: color 0.15s ease;
+}
+
+.evidence-toggle:hover {
+  color: var(--ink-2);
+}
+
+.evidence-icon {
+  transition: transform 0.2s ease;
+}
+
+.evidence-icon.is-open {
+  transform: rotate(90deg);
+}
+
 /* Generated Content */
 .generated-content {
   font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
@@ -342,6 +437,34 @@ const toggleSectionCollapse = (idx) => {
 
 .generated-content :deep(.md-li) {
   margin-bottom: 0.5em;
+}
+
+/* Tables scroll inside their own box rather than widening the pane. */
+.generated-content :deep(.md-table) {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5em 0;
+  font-size: 13px;
+}
+
+.generated-content :deep(.md-table th),
+.generated-content :deep(.md-table td) {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.generated-content :deep(.md-table th) {
+  color: var(--black);
+  font-weight: 600;
+  border-bottom-width: 2px;
+}
+
+.generated-content :deep(.md-table td:not(:first-child)) {
+  font-variant-numeric: tabular-nums;
 }
 
 .generated-content :deep(.md-quote) {

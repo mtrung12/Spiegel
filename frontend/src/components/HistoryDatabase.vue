@@ -163,61 +163,16 @@
               </div>
             </div>
 
-            <!-- Primary action: pick the project up where it stopped -->
+            <!-- One way in. The step it lands on is the furthest the project
+                 reached, so a finished project opens on the last step and an
+                 unfinished one opens where it stopped. Every step is still
+                 reachable once inside, through the stepper. -->
             <button class="modal-continue" @click="goToContinue">
-              <span class="continue-text">{{ $t('history.continueButton') }}</span>
+              <span class="continue-text">{{ $t('history.openButton') }}</span>
               <span class="continue-stage">{{ $t(`history.stage.${selectedProject.stage || 'upload'}`) }}</span>
             </button>
 
-            <!-- Replay divider -->
-            <div class="modal-divider">
-              <span class="divider-line"></span>
-              <span class="divider-text">{{ $t('history.replayTitle') }}</span>
-              <span class="divider-line"></span>
-            </div>
-
-            <!-- Navigation buttons -->
-            <div class="modal-actions">
-              <button 
-                class="modal-btn btn-project" 
-                @click="goToProject"
-                :disabled="!selectedProject.project_id"
-              >
-                <span class="btn-step">{{ $t('history.stepBadge', { n: 1 }) }}</span>
-                <span class="btn-icon">◇</span>
-                <span class="btn-text">{{ $t('history.step1Button') }}</span>
-              </button>
-              <button
-                class="modal-btn btn-simulation"
-                @click="goToSimulation"
-                :disabled="!selectedProject.simulation_id"
-              >
-                <span class="btn-step">{{ $t('history.stepBadge', { n: 2 }) }}</span>
-                <span class="btn-icon">◈</span>
-                <span class="btn-text">{{ $t('history.step2Button') }}</span>
-              </button>
-              <button 
-                class="modal-btn btn-report" 
-                @click="goToReport"
-                :disabled="!selectedProject.report_id"
-              >
-                <span class="btn-step">{{ $t('history.stepBadge', { n: 4 }) }}</span>
-                <span class="btn-icon">◆</span>
-                <span class="btn-text">{{ $t('history.step4Button') }}</span>
-              </button>
-              <button
-                class="modal-btn btn-workspace"
-                @click="goToWorkspace"
-                :disabled="!selectedProject.project_id"
-              >
-                <span class="btn-step">{{ $t('history.allBadge') }}</span>
-                <span class="btn-icon">▣</span>
-                <span class="btn-text">{{ $t('history.workspaceButton') }}</span>
-              </button>
-            </div>
-            <!-- Notice when replay is unavailable -->
-            <div class="modal-playback-hint">
-              <span class="hint-text">{{ $t('history.replayHint') }}</span>
+            <div class="modal-footer-actions">
               <button class="delete-btn" :disabled="deleting" @click="requestDelete">
                 {{ deleting ? $t('common.loading') : $t('history.deleteButton') }}
               </button>
@@ -496,60 +451,33 @@ const handleDelete = async () => {
   }
 }
 
-// Navigate to the graph build page (Project)
-const goToProject = () => {
-  if (selectedProject.value?.project_id) {
-    router.push({
-      name: 'Process',
-      params: { projectId: selectedProject.value.project_id }
-    })
-    closeModal()
-  }
-}
-
-// Navigate to the environment setup page (Simulation)
-const goToSimulation = () => {
-  if (selectedProject.value?.simulation_id) {
-    router.push({
-      name: 'Simulation',
-      params: { simulationId: selectedProject.value.simulation_id }
-    })
-    closeModal()
-  }
-}
-
-// Navigate to the analysis report page (Report)
-const goToReport = () => {
-  if (selectedProject.value?.report_id) {
-    router.push({
-      name: 'Report',
-      params: { reportId: selectedProject.value.report_id }
-    })
-    closeModal()
-  }
-}
-
-// Where the project stopped, as a route. The backend hands us the stage so the
-// resume point is decided in one place instead of re-derived from loose fields.
+// Where the project stopped, as a route. The backend decides how far it got -
+// the same furthest_step the stepper gates on - so the button and the tabs
+// cannot disagree. A finished project lands on the last step; an unfinished one
+// lands where it stopped. Any step whose id is missing falls back to the
+// project page, which is always loadable.
 const continueRoute = (project) => {
   if (!project) return null
   const toProcess = { name: 'Process', params: { projectId: project.project_id } }
 
-  switch (project.stage) {
-    case 'report':
+  switch (project.furthest_step) {
+    case 5:
+      return project.report_id
+        ? { name: 'Interaction', params: { reportId: project.report_id } }
+        : toProcess
+    case 4:
       return project.report_id
         ? { name: 'Report', params: { reportId: project.report_id } }
         : toProcess
-    case 'run':
+    case 3:
       return project.simulation_id
         ? { name: 'SimulationRun', params: { simulationId: project.simulation_id } }
         : toProcess
-    case 'simulation':
+    case 2:
       return project.simulation_id
         ? { name: 'Simulation', params: { simulationId: project.simulation_id } }
         : toProcess
     default:
-      // upload, graph, failed: the project page owns all three
       return toProcess
   }
 }
@@ -558,17 +486,6 @@ const goToContinue = () => {
   const target = continueRoute(selectedProject.value)
   if (target) {
     router.push(target)
-    closeModal()
-  }
-}
-
-// Navigate to the project workspace: reports plus follow-up chat in one place
-const goToWorkspace = () => {
-  if (selectedProject.value?.project_id) {
-    router.push({
-      name: 'Workspace',
-      params: { projectId: selectedProject.value.project_id }
-    })
     closeModal()
   }
 }
@@ -1405,104 +1322,10 @@ onUnmounted(() => {
   opacity: 0.85;
 }
 
-.modal-divider {
+.modal-footer-actions {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 10px 32px 0;
-  background: var(--white);
-}
-
-.divider-line {
-  flex: 1;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--border), transparent);
-}
-
-.divider-text {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  color: var(--muted-soft);
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-/* Navigation buttons */
-.modal-actions {
-  display: flex;
-  gap: 16px;
-  padding: 20px 32px;
-  background: var(--white);
-}
-
-.modal-btn {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--white);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  position: relative;
-  overflow: hidden;
-}
-
-.modal-btn:hover:not(:disabled) {
-  border-color: var(--black);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.modal-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: var(--surface);
-}
-
-.btn-step {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--muted-soft);
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}
-
-.btn-icon {
-  font-size: 1.4rem;
-  line-height: 1;
-  transition: color 0.2s ease;
-}
-
-.btn-text {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  color: var(--ink-3);
-}
-
-.modal-btn.btn-project .btn-icon { color: var(--ink); }
-.modal-btn.btn-simulation .btn-icon { color: var(--warning); }
-.modal-btn.btn-report .btn-icon { color: var(--success); }
-.modal-btn.btn-workspace .btn-icon { color: #6366F1; }
-
-.modal-btn:hover:not(:disabled) .btn-text {
-  color: var(--black);
-}
-
-/* Replay-unavailable notice */
-.modal-playback-hint {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 0 32px 20px;
+  justify-content: flex-end;
+  padding: 16px 32px 20px;
   background: var(--white);
 }
 
@@ -1537,12 +1360,4 @@ onUnmounted(() => {
   font-size: 0.8rem;
 }
 
-.hint-text {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  color: var(--muted-soft);
-  letter-spacing: 0.3px;
-  text-align: center;
-  line-height: 1.5;
-}
 </style>

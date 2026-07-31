@@ -1,6 +1,6 @@
 <template>
   <section class="kpi-panel">
-    <header class="kpi-header">
+    <header v-if="!bare" class="kpi-header">
       <div class="kpi-heading">
         <h2 class="kpi-title">{{ $t('campaign.panelTitle') }}</h2>
         <p class="kpi-subtitle">{{ $t('campaign.panelSubtitle') }}</p>
@@ -28,7 +28,7 @@
       </div>
 
       <!-- Per-segment breakdown -->
-      <div class="kpi-group">
+      <div v-if="shows('segments')" class="kpi-group">
         <div class="kpi-group-label">{{ $t('campaign.segments') }}</div>
         <div v-if="!segments.length" class="kpi-state">{{ $t('campaign.noSegments') }}</div>
         <div v-else class="kpi-table-wrap">
@@ -56,7 +56,7 @@
       </div>
 
       <!-- Round-by-round curve, as a bar strip -->
-      <div class="kpi-group">
+      <div v-if="shows('rounds')" class="kpi-group">
         <div class="kpi-group-label">{{ $t('campaign.perRound') }}</div>
         <div v-if="!perRound.length" class="kpi-state">{{ $t('campaign.noRounds') }}</div>
         <div v-else class="kpi-rounds">
@@ -82,8 +82,18 @@ const props = defineProps({
   simulationId: String,
   // The parent flips this once the report/simulation has finished, so the
   // panel does not query an action log that is still being written.
-  autoLoad: { type: Boolean, default: true }
+  autoLoad: { type: Boolean, default: true },
+  // Which blocks to render: any of reach, engagement, virality, sentiment,
+  // segments, rounds. Empty means all of them. The report pane uses this to
+  // show each block beside the section that explains it, instead of dumping
+  // every figure above the report.
+  only: { type: Array, default: () => [] },
+  // Drop the panel's own title and refresh button - the section heading is
+  // already doing that job.
+  bare: { type: Boolean, default: false }
 })
+
+const shows = (key) => !props.only.length || props.only.includes(key)
 
 const metrics = ref(null)
 const loading = ref(false)
@@ -112,6 +122,10 @@ const hasData = computed(() => {
 const groups = computed(() => {
   const m = metrics.value
   if (!m) return []
+  return allGroups(m).filter((g) => shows(g.key))
+})
+
+const allGroups = (m) => {
   return [
     {
       key: 'reach',
@@ -154,7 +168,7 @@ const groups = computed(() => {
       ]
     }
   ]
-})
+}
 
 const segments = computed(() => metrics.value?.segments || [])
 const perRound = computed(() => metrics.value?.per_round || [])

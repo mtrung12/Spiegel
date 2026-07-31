@@ -60,15 +60,15 @@
     "metricHighAvailDesc": "Persóny vytvorené z vášho zadania",
     "workflowSequence": "Ako to funguje",
     "step01Title": "Načítanie kampane",
-    "step01Desc": "Vaše zadanie a kreatíva (PDF/MD/TXT) sa načítajú do znalostného grafu produktov, posolstiev a zákazníckych entít",
+    "step01Desc": "Zadanie sa stane znalostným grafom",
     "step02Title": "Tvorba zákazníkov",
-    "step02Desc": "Z entít vzniknú persóny zákazníkov — demografia, potreby, postoj k značke, nákupné správanie, mediálne návyky — a vložia sa do oboch simulovaných kanálov",
+    "step02Desc": "Entity grafu sa stanú persónami",
     "step03Title": "Spustenie kampane",
-    "step03Desc": "Kreatíva sa vloží do dvoch simulovaných kanálov — Info Plaza a Topic Community; zákazníci reagujú počas N kôl",
+    "step03Desc": "Zákazníci reagujú naprieč kanálmi",
     "step04Title": "Meranie a správa",
-    "step04Desc": "Každá akcia sa započíta do marketingových KPI — dosah, zapojenie, virálnosť, sentiment — potom report agent napíše vyhodnotenie",
+    "step04Desc": "Akcie sa stanú KPI a reportom",
     "step05Title": "Doplňujúce otázky",
-    "step05Desc": "Chatujte s report agentom, veďte rozhovory s jednotlivými zákazníkmi alebo položte jednu otázku celej skupine",
+    "step05Desc": "Chatujte alebo vypočujte zákazníka",
     "realitySeed": "01 / Podklady kampane",
     "supportedFormats": "PDF · MD · TXT",
     "dragToUpload": "Presuňte sem zadanie a kreatívu",
@@ -152,7 +152,13 @@
     "generatedRelationTypes": "Vygenerované typy vzťahov",
     "systemDashboard": "Systémový prehľad",
     "entityBadge": "Entita",
-    "relationBadge": "Vzťah"
+    "relationBadge": "Vzťah",
+    "briefTitle": "Zadanie projektu",
+    "briefReady": "Graf pripravený",
+    "briefUntitled": "Projekt bez názvu",
+    "briefSchema": "Typy entít a vzťahov",
+    "briefEntityTypes": "Typy entít",
+    "briefRelationTypes": "Typy vzťahov"
   },
   "step2": {
     "simInstanceInit": "Inicializácia testu kampane",
@@ -337,7 +343,9 @@
     "close": "Zavrieť"
   },
   "step4": {
-    "reportTag": "Vyhodnotenie kampane",
+    "reportTag": "Beh simulácie",
+    "showEvidence": "Zobraziť dôkazy",
+    "hideEvidence": "Skryť dôkazy",
     "selectionReason": "Prečo bol tento zákazník vybraný na rozhovor",
     "waitingToStart": "Čaká sa na spustenie",
     "generatingSection": "Generuje sa {title}...",
@@ -529,17 +537,17 @@
     "deleteConfirm": "Zmazať \"{name}\"? Jeho graf a behy simulácie sa zmažú tiež. Správy zostanú.",
     "deleteFailed": "Mazanie zlyhalo",
     "stepBadge": "Krok {n}",
-    "allBadge": "Všetko"
+    "allBadge": "Všetko",
+    "openButton": "Otvoriť projekt"
   },
   "report": {
-    "docTitle": "Hodnotenie kampane",
-    "docSummary": "Reakcia simulovaného publika na kampaň, meraná marketingovými KPI",
+    "docTitle": "Správa zo simulácie",
+    "docSummary": "Čo simulované publikum urobilo s kampaňou a čo tento beh ukazuje a čo už nie",
     "sections": {
-      "whoSawIt": "Kto to videl",
+      "whatHappened": "Čo sa stalo",
       "howTheyReacted": "Ako reagovali",
-      "howFarItSpread": "Ako ďaleko sa to rozšírilo",
-      "whichGroups": "Ktoré skupiny to prijali a ktoré nie",
-      "whatToFix": "Čo opraviť pred spustením"
+      "whereTheyDiverged": "Kde sa publikum rozdelilo",
+      "signalsAndLimits": "Signály a limity"
     }
   },
   "sentiment": {

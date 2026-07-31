@@ -97,6 +97,20 @@ export function listProjects(limit = 20) {
 }
 
 /**
+ * Which workflow steps this project can navigate to, and the id each one needs.
+ * Drives the stepper: a view only knows the ids its own route was given, so
+ * step 1 cannot otherwise tell that a finished run and report exist.
+ * @param {String} projectId - the project ID
+ * @returns {Promise}
+ */
+export function getProjectProgress(projectId) {
+  return service({
+    url: `/api/graph/project/${projectId}/progress`,
+    method: 'get'
+  })
+}
+
+/**
  * Delete a project, its Zep graph and its simulations.
  * @param {String} projectId - the project ID
  * @returns {Promise}

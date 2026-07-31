@@ -15,6 +15,18 @@ Classification is a batched LLM pass over the simulation SQLite databases. The
 same pass emits a short theme tag per item, so objections and hooks stay
 grounded in the text they came from rather than being re-summarised later.
 
+A fine-tuned sentiment encoder would be cheaper here, and it was tried:
+``cardiffnlp/twitter-roberta-base-sentiment-latest`` over the 1862 authored
+items of a real run labelled 0.1% of them negative, against this pass's 58.8%,
+and agreed with it on 14 of the 30 items that could be compared directly. The
+agents do not write angry tweets - they write hedged professional scepticism
+("promising, but transparency is non-negotiable"), which is neutral as English
+and negative as a stance toward the campaign. A polarity head has no target and
+cannot see that difference; the prompt below states it explicitly. Since the
+ranked objections are built from the negative pool, the encoder emptied the most
+useful half of the digest. Measure again before retrying it - a target-aware
+(aspect-based) checkpoint would be the thing to try, not another polarity model.
+
 The result is cached to ``sentiment_digest.json`` in the simulation directory
 and reused until the feed grows.
 """
@@ -652,3 +664,77 @@ Every index from 0 to {len(batch) - 1} must appear exactly once."""
 
         self._save_cache(simulation_id, digest)
         return digest
+
+    def compute_as_text(
+        self,
+        simulation_id: str,
+        campaign_requirement: str = "",
+    ) -> str:
+        """Render the digest as the text block the report agent reads."""
+        digest = self.compute(simulation_id, campaign_requirement)
+        totals = digest.get("totals", {})
+
+        lines: List[str] = [
+            "═══ Text sentiment (every authored post and comment, classified) ═══",
+            "",
+            f"Classified: {totals.get('classified', 0)} items "
+            f"({totals.get('posts', 0)} posts / {totals.get('comments', 0)} comments). "
+            f"Seed posts excluded: {totals.get('seed_posts_excluded', 0)}.",
+            "",
+        ]
+
+        if not totals.get("classified"):
+            lines.append("Nothing was authored in this run, so there is no text to classify.")
+            return "\n".join(lines)
+
+        for label, key in (("Overall", "overall"), ("Posts", "posts"), ("Comments", "comments")):
+            split = digest.get(key) or {}
+            if not split.get("total"):
+                continue
+            lines.append(
+                f"[{label}] {split['positive_pct']}% positive / "
+                f"{split['neutral_pct']}% neutral / {split['negative_pct']}% negative "
+                f"(net {split['net_sentiment']}, n={split['total']})"
+            )
+        lines.append("")
+
+        def _themes(title: str, groups: List[Dict[str, Any]], empty: str) -> None:
+            lines.append(f"[{title}]")
+            if not groups:
+                lines.append(f"- {empty}")
+                lines.append("")
+                return
+            for group in groups:
+                lines.append(
+                    f"- \"{group['theme']}\" - raised {group['count']}x "
+                    f"({group['share_pct']}% of them), {group['total_likes']} likes"
+                )
+                for example in group.get("examples", []):
+                    lines.append(
+                        f"    @{example['author_name']} ({example['platform']}): "
+                        f"\"{example['content']}\""
+                    )
+            lines.append("")
+
+        _themes("Recurring objections (what keeps going wrong)",
+                digest.get("problems") or [], "no objection recurred")
+        _themes("Recurring hooks (what keeps landing)",
+                digest.get("quirks") or [], "no hook recurred")
+
+        highlights = digest.get("highlights") or {}
+        if highlights:
+            lines.append("[Loudest voice on each side - quotable verbatim]")
+            for key, item in highlights.items():
+                lines.append(
+                    f"- {key}: @{item['author_name']} ({item['platform']}, "
+                    f"{item['likes']} likes): \"{item['content']}\""
+                )
+            lines.append("")
+
+        lines.append(
+            "[Reading this] These percentages come from the text the agents wrote. "
+            "The sentiment figures in campaign_metrics come from the action type "
+            "instead (a like is approval, a dislike is rejection). They measure "
+            "different things and may disagree - that disagreement is a finding."
+        )
+        return "\n".join(lines)
