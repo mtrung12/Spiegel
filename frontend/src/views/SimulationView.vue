@@ -8,6 +8,7 @@
       :projectId="projectData?.project_id"
       :simulationId="currentSimulationId"
       :reportId="null"
+      @readonly="readOnly = $event"
     />
 
     <!-- Main Content Area -->
@@ -30,6 +31,8 @@
           :projectData="projectData"
           :graphData="graphData"
           :systemLogs="systemLogs"
+          :readOnly="readOnly"
+          :userConfig="userConfig"
           @go-back="handleGoBack"
           @next-step="handleNextStep"
           @add-log="addLog"
@@ -69,6 +72,14 @@ const projectData = ref(null)
 const graphData = ref(null)
 const graphLoading = ref(false)
 const currentStatus = ref('processing') // processing | completed | error
+
+// Set by the header: true when the project stopped past step 2, so the setup
+// shows what was chosen without offering to prepare or launch it again.
+const readOnly = ref(false)
+
+// The audience size and round count saved by step 2's substeps, so reopening
+// the project shows the numbers the run was set up with rather than defaults.
+const userConfig = ref(null)
 
 const statusText = computed(() => {
   if (currentStatus.value === 'error') return t('main.statusError')
@@ -196,6 +207,7 @@ const loadSimulationData = async () => {
     const simRes = await getSimulation(currentSimulationId.value)
     if (simRes.success && simRes.data) {
       const simData = simRes.data
+      userConfig.value = simData.user_config || null
 
       // Read the project
       if (simData.project_id) {

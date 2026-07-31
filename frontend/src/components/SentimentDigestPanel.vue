@@ -62,7 +62,9 @@
           <span v-for="seg in barSegments" :key="seg.key" class="sd-legend-item">
             <i class="sd-dot" :class="`is-${seg.key}`"></i>
             {{ $t(seg.label) }}
-            <span class="mono">{{ seg.count }}</span>
+            <!-- The in-bar label is dropped on a thin segment, so the legend
+                 is what guarantees every percentage is readable. -->
+            <span class="mono">{{ seg.pct }}% ({{ seg.count }})</span>
           </span>
           <span class="sd-legend-item sd-legend-net">
             {{ $t('sentiment.netSentiment') }}

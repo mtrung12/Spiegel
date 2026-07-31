@@ -1,4 +1,4 @@
-# Campaign-Reaction
+# Spiegel
 
 Test a marketing campaign against a simulated audience before you spend the budget.
 
@@ -9,16 +9,16 @@ Upload the campaign brief and creative, describe the target audience, and the en
 1. **Graph building** — the uploaded material (PDF/MD/TXT) is extracted into a Zep Cloud GraphRAG knowledge graph
 2. **Audience setup** — entities become buyer personas: demographics, needs, brand attitude, purchase behaviour, media habits
 3. **Simulation** — the campaign creative is seeded into simulated Twitter and Reddit feeds, and the audience agents react over N rounds
-4. **KPI measurement** — every action is logged and counted into marketing KPIs
-5. **Report** — a ReportAgent reads the measured KPIs plus the graph and writes the assessment; you can then chat with it or interview individual audience agents
+4. **Measurement** — every action is logged and counted into marketing metrics
+5. **Report** — a ReportAgent reads the measured metrics plus the graph and writes the assessment; you can then chat with it or interview individual audience agents
 
 ### What is real and what is simulated
 
 - The social platforms are **simulated** ([OASIS](https://github.com/camel-ai/oasis)). Nothing reads or posts to real Twitter or Reddit, and there is no crawler — input is manual file upload only.
 - The knowledge graph lives on **Zep Cloud** (SaaS), not a local database.
-- KPIs are **counted** from the action log, not estimated by an LLM. Purchase intent and objections are the exception — they aren't countable from likes and reposts, so they come from agent interviews and what the agents actually wrote.
+- The metrics are **counted** from the action log, not estimated by an LLM. Purchase intent and objections are the exception — they aren't countable from likes and reposts, so they come from agent interviews and what the agents actually wrote.
 
-## KPIs produced
+## Metrics produced
 
 Reach and reach rate · impressions · engagement rate · passive share · virality ratio and share cascade depth · sentiment split · share of voice · per-segment breakdown · round-by-round curve
 

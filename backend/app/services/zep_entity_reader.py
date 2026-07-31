@@ -3,6 +3,7 @@ Zep entity reading and filtering service.
 Reads nodes from a Zep graph and keeps the ones matching the predefined entity types.
 """
 
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Set, Callable, TypeVar
 from dataclasses import dataclass, field
 from zep_cloud import NotFoundError
@@ -16,6 +17,52 @@ logger = get_logger('spiegel.zep_entity_reader')
 
 # Generic return type
 T = TypeVar('T')
+
+
+def _parse_iso(value: str) -> Optional[datetime]:
+    """Parse an ISO-8601 timestamp, tolerating Zep's trailing 'Z'."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    # A naive timestamp cannot be compared with an aware one; assume UTC,
+    # which is what both sides of this comparison are written in.
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _document_build_cutoff(graph_id: str) -> Optional[datetime]:
+    """
+    When this graph's document build finished, if it is known.
+
+    Returns None for a graph no project claims, or one built before this
+    field existed - in both cases every node is kept, which is the old
+    behaviour.
+    """
+    # Imported here: models.project pulls in the config and filesystem layout,
+    # and this module is imported from services/__init__.
+    from ..models.project import ProjectManager
+
+    try:
+        projects = ProjectManager.find_projects_by_graph_id(graph_id)
+    except Exception as e:
+        logger.warning(f"could not resolve the project for graph {graph_id}: {e}")
+        return None
+
+    stamps = [_parse_iso(p.graph_built_at) for p in projects if p.graph_built_at]
+    stamps = [s for s in stamps if s]
+    # More than one project on a graph is not expected, but the latest build
+    # is the safe reading: it keeps everything any of them contributed.
+    return max(stamps) if stamps else None
+
+
+def _created_after(node: Dict[str, Any], cutoff: datetime) -> bool:
+    """Whether a node was written after the document build finished."""
+    created = _parse_iso(node.get("created_at", ""))
+    # An unparseable timestamp is kept: dropping a real entity is worse than
+    # keeping a simulation artefact.
+    return bool(created and created > cutoff)
 
 
 @dataclass
@@ -133,6 +180,7 @@ class ZepEntityReader:
                 "labels": node.labels or [],
                 "summary": node.summary or "",
                 "attributes": node.attributes or {},
+                "created_at": getattr(node, 'created_at', '') or "",
             })
 
         logger.info(f"fetched {len(nodes_data)} nodes")
@@ -234,6 +282,10 @@ class ZepEntityReader:
           type, so it is skipped
         - A node carrying any label other than "Entity" and "Node" matches a
           predefined type and is kept
+        - A node created after the document build finished is skipped: a
+          running simulation writes its agents' activity back into the same
+          graph, and those nodes are the simulation's own output, not the
+          audience the brief described
 
         Args:
             graph_id: Graph ID
@@ -249,7 +301,17 @@ class ZepEntityReader:
         # Fetch every node
         all_nodes = self.get_all_nodes(graph_id)
         total_count = len(all_nodes)
-        
+
+        cutoff = _document_build_cutoff(graph_id)
+        if cutoff:
+            before = len(all_nodes)
+            all_nodes = [n for n in all_nodes if not _created_after(n, cutoff)]
+            if before != len(all_nodes):
+                logger.info(
+                    f"ignoring {before - len(all_nodes)} node(s) written back into "
+                    f"{graph_id} by a simulation after the document build"
+                )
+
         # Fetch every edge (used for relationship lookups below)
         all_edges = self.get_all_edges(graph_id) if enrich_with_edges else []
         

@@ -8,6 +8,7 @@
       :projectId="projectData?.project_id"
       :simulationId="currentSimulationId"
       :reportId="existingReportId"
+      @readonly="readOnly = $event"
     ></AppHeader>
 
     <!-- Main Content Area -->
@@ -34,6 +35,7 @@
           :projectData="projectData"
           :graphData="graphData"
           :systemLogs="systemLogs"
+          :readOnly="readOnly"
           @go-back="handleGoBack"
           @next-step="handleNextStep"
           @add-log="addLog"
@@ -84,6 +86,10 @@ const currentStatus = ref('processing') // processing | completed | error
 // stays disabled after coming back here, and the only way forward is the
 // generate button - which re-runs the whole report pipeline.
 const existingReportId = ref(null)
+
+// Set by the header: true when the project stopped past step 3, so the run
+// shows its result without offering to generate a second report from it.
+const readOnly = ref(false)
 
 const statusText = computed(() => {
   if (currentStatus.value === 'error') return t('main.statusError')

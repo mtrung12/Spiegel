@@ -1,17 +1,9 @@
 <template>
   <div class="interaction-panel">
-    <!-- Main Split Layout -->
+    <!-- The report itself is step 4's panel and stays there; this step is only
+         the follow-up conversation, full width. -->
     <div class="main-split-layout">
-      <!-- LEFT PANEL: the rendered report (shared with step 4) -->
-      <ReportPane
-        :outline="reportOutline"
-        :generatedSections="generatedSections"
-        :currentSectionIndex="currentSectionIndex"
-        :reportId="reportId"
-        :tag="$t('step5.reportTag')"
-      />
-
-      <!-- RIGHT PANEL: Interaction Interface -->
+      <!-- Interaction Interface -->
       <div class="right-panel" ref="rightPanel">
         <!-- Unified Action Bar - Professional Design -->
         <div class="action-bar">
@@ -353,9 +345,8 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { chatWithReport, getReport, getAgentLog } from '../api/report'
+import { chatWithReport } from '../api/report'
 import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
-import ReportPane from './ReportPane.vue'
 import { renderMarkdown } from '../utils/markdown'
 
 const { t } = useI18n()
@@ -391,10 +382,6 @@ const surveyResults = ref([])
 const isSurveying = ref(false)
 const surveyError = ref('')
 
-// Report Data
-const reportOutline = ref(null)
-const generatedSections = ref({})
-const currentSectionIndex = ref(null)
 const profiles = ref([])
 
 // Refs
@@ -712,49 +699,6 @@ const submitSurvey = async () => {
   }
 }
 
-// Load Report Data
-const loadReportData = async () => {
-  if (!props.reportId) return
-  
-  try {
-    addLog(t('log.loadReportData', { id: props.reportId }))
-    
-    // Get report info
-    const reportRes = await getReport(props.reportId)
-    if (reportRes.success && reportRes.data) {
-      // Load agent logs to get report outline and sections
-      await loadAgentLogs()
-    }
-  } catch (err) {
-    addLog(t('log.loadReportFailed', { error: err.message }))
-  }
-}
-
-const loadAgentLogs = async () => {
-  if (!props.reportId) return
-  
-  try {
-    const res = await getAgentLog(props.reportId, 0)
-    if (res.success && res.data) {
-      const logs = res.data.logs || []
-      
-      logs.forEach(log => {
-        if (log.action === 'planning_complete' && log.details?.outline) {
-          reportOutline.value = log.details.outline
-        }
-        
-        if (log.action === 'section_complete' && log.section_index < 100 && log.details?.content) {
-          generatedSections.value[log.section_index] = log.details.content
-        }
-      })
-      
-      addLog(t('log.reportDataLoaded'))
-    }
-  } catch (err) {
-    addLog(t('log.loadReportLogFailed', { error: err.message }))
-  }
-}
-
 const loadProfiles = async () => {
   if (!props.simulationId) return
   
@@ -780,7 +724,6 @@ const handleClickOutside = (e) => {
 // Lifecycle
 onMounted(() => {
   addLog(t('log.step5Init'))
-  loadReportData()
   loadProfiles()
   document.addEventListener('click', handleClickOutside)
 })
@@ -788,12 +731,6 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
 })
-
-watch(() => props.reportId, (newId) => {
-  if (newId) {
-    loadReportData()
-  }
-}, { immediate: true })
 
 watch(() => props.simulationId, (newId) => {
   if (newId) {

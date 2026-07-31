@@ -34,7 +34,9 @@
           </div>
         </dl>
 
+        <p v-if="readOnly" class="view-only-note">{{ $t('common.viewOnly') }}</p>
         <button
+          v-else
           class="action-btn brief-action"
           :disabled="creatingSimulation"
           @click="handleEnterEnvSetup"
@@ -309,7 +311,7 @@
                a live task rather than the phase, which stays at 1 after a build
                stops or fails. -->
           <button
-            v-if="currentPhase === 1 && buildProgress"
+            v-if="currentPhase === 1 && buildProgress && !readOnly"
             class="stop-btn"
             :disabled="stopping"
             @click="$emit('stop-build')"
@@ -349,8 +351,10 @@
         
         <div class="card-content">
           <p class="description">{{ $t('step1.buildCompleteDesc') }}</p>
-          <button 
-            class="action-btn" 
+          <p v-if="readOnly" class="view-only-note">{{ $t('common.viewOnly') }}</p>
+          <button
+            v-else
+            class="action-btn"
             :disabled="currentPhase < 2 || creatingSimulation"
             @click="handleEnterEnvSetup"
           >
@@ -406,7 +410,10 @@ const props = defineProps({
   buildProgress: Object,
   graphData: Object,
   systemLogs: { type: Array, default: () => [] },
-  stopping: { type: Boolean, default: false }
+  stopping: { type: Boolean, default: false },
+  // The project moved past this step: show what it produced, offer nothing
+  // that would start a second simulation from it.
+  readOnly: { type: Boolean, default: false }
 })
 
 defineEmits(['next-step', 'stop-build'])
@@ -1172,6 +1179,12 @@ watch(() => props.systemLogs.length, () => {
 }
 
 /* Step 03 Button */
+.view-only-note {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 10px 0;
+}
+
 .action-btn {
   width: 100%;
   background: var(--accent);

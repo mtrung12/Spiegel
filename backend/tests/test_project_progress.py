@@ -178,3 +178,73 @@ def test_the_newest_simulation_is_the_one_resumed(monkeypatch):
     progress = _project_progress(_project(), [older, newer], {})
 
     assert progress["simulation_id"] == "sim-newer"
+
+
+def test_a_prepared_simulation_keeps_step_two_editable(monkeypatch):
+    """
+    Reachable and editable are not the same step.
+
+    A prepared-but-never-started simulation opens step 3 to look at, but the
+    launch button that would fill it lives on step 2. Reading `furthest_step`
+    as "the step that keeps its buttons" locks such a project out of its own
+    workflow: step 2 read-only, step 3 with nothing to run.
+    """
+    monkeypatch.setattr(
+        "app.api.graph.SimulationRunner.get_run_state",
+        classmethod(lambda _cls, _sid: None),
+    )
+    progress = _project_progress(_project(), [_simulation()], {})
+
+    assert progress["furthest_step"] == 3
+    assert progress["editable_step"] == 2
+
+
+def test_a_started_run_makes_step_three_the_editable_one(monkeypatch):
+    monkeypatch.setattr(
+        "app.api.graph.SimulationRunner.get_run_state",
+        classmethod(
+            lambda _cls, _sid: SimpleNamespace(
+                runner_status=RunnerStatus.RUNNING, current_round=3, total_rounds=40
+            )
+        ),
+    )
+    progress = _project_progress(_project(), [_simulation()], {})
+
+    assert progress["editable_step"] == 3
+
+
+def test_a_finished_report_makes_the_last_step_the_editable_one(monkeypatch):
+    monkeypatch.setattr(
+        "app.api.graph.SimulationRunner.get_run_state",
+        classmethod(
+            lambda _cls, _sid: SimpleNamespace(
+                runner_status=RunnerStatus.STOPPED, current_round=50, total_rounds=50
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "app.api.graph.ReportManager.get_report",
+        classmethod(lambda _cls, _rid: SimpleNamespace(status=ReportStatus.COMPLETED)),
+    )
+    progress = _project_progress(_project(), [_simulation()], {"sim-1": "report-1"})
+
+    assert progress["editable_step"] == 5
+
+
+def test_a_failed_report_leaves_step_three_editable(monkeypatch):
+    """A failed report is not progress: the retry lives on step 3."""
+    monkeypatch.setattr(
+        "app.api.graph.SimulationRunner.get_run_state",
+        classmethod(
+            lambda _cls, _sid: SimpleNamespace(
+                runner_status=RunnerStatus.STOPPED, current_round=50, total_rounds=50
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "app.api.graph.ReportManager.get_report",
+        classmethod(lambda _cls, _rid: SimpleNamespace(status=ReportStatus.FAILED)),
+    )
+    progress = _project_progress(_project(), [_simulation()], {"sim-1": "report-1"})
+
+    assert progress["editable_step"] == 3

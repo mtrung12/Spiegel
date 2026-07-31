@@ -350,7 +350,7 @@ class CampaignKPIs:
 
         if self.per_round:
             lines.append("[Round-by-round curve: round | actions | active agents | amplifications]")
-            for row in self.per_round:
+            for row in self.per_round[:CampaignMetricsService.MAX_ROUNDS_IN_TEXT]:
                 lines.append(
                     f"- R{row['round_num']}: {row['total_actions']} actions, "
                     f"{row['active_agents_count']} active, "
@@ -589,7 +589,26 @@ class CampaignMetricsService:
                 kpis.peak_round = row.get("round_num", 0)
 
         kpis.cascade_depth_rounds = best_streak
-        kpis.per_round = per_round[:cls.MAX_ROUNDS_IN_TEXT]
+        # A round where nobody acted logs nothing, so it is absent from the
+        # timeline. The curve needs it as a zero bar, otherwise the x axis
+        # silently skips rounds and reads as a shorter run than it was.
+        if per_round:
+            seen = {row["round_num"] for row in per_round}
+            last = max(seen)
+            per_round.extend(
+                {
+                    "round_num": n,
+                    "total_actions": 0,
+                    "active_agents_count": 0,
+                    "engagement_actions": 0,
+                    "amplifications": 0,
+                }
+                for n in range(min(seen), last + 1)
+                if n not in seen
+            )
+            per_round.sort(key=lambda row: row["round_num"])
+        # Full curve; only the text rendering is capped (LLM prompt size).
+        kpis.per_round = per_round
 
     @classmethod
     def compute_as_text(cls, simulation_id: str) -> str:

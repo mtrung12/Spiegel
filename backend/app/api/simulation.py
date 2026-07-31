@@ -343,16 +343,12 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
         # Verbose logging
         logger.debug(f"checking simulation readiness: {simulation_id}, status={status}, config_generated={config_generated}")
         
-        # config_generated=True plus the files present means preparation is done.
-        # All of these statuses imply preparation finished:
-        # - ready: prepared and runnable
-        # - preparing: finished if config_generated=True
-        # - running: already running, so preparation is long done
-        # - completed: run finished, so preparation is long done
-        # - stopped: stopped, so preparation is long done
-        # - failed: the run failed, but preparation had finished
-        prepared_statuses = ["ready", "preparing", "running", "completed", "stopped", "failed"]
-        if status in prepared_statuses and config_generated:
+        # config_generated=True plus the files present means preparation is done,
+        # whatever the run has done since. This used to be gated on a list of
+        # statuses as well, which left "stopping" and "paused" out: step 2 then
+        # decided a finished simulation had never been prepared and offered its
+        # audience-size wizard again instead of the prepared personas.
+        if config_generated:
             # Gather the file statistics
             profiles_file = os.path.join(simulation_dir, "reddit_profiles.json")
             config_file = os.path.join(simulation_dir, "simulation_config.json")
@@ -1215,6 +1211,44 @@ def get_simulation_config(simulation_id: str):
         }), 500
 
 
+@simulation_bp.route('/<simulation_id>/user-config', methods=['POST'])
+def save_simulation_user_config(simulation_id: str):
+    """
+    Persist the choices made in a step's substeps (audience size, round count).
+
+    Each substep saves as soon as its value is settled, so reopening the
+    project shows the numbers the run was actually set up with instead of the
+    defaults. Merged, not replaced: a later substep must not wipe an earlier
+    one's answer.
+
+    Body: { "max_agents": 200, "max_rounds": 40, "use_custom_rounds": true }
+    """
+    try:
+        data = request.get_json() or {}
+        allowed = {"max_agents", "max_rounds", "use_custom_rounds"}
+        updates = {k: v for k, v in data.items() if k in allowed}
+
+        manager = SimulationManager()
+        state = manager.get_simulation(simulation_id)
+        if not state:
+            return jsonify({
+                "success": False,
+                "error": t('api.simulationNotFound', id=simulation_id)
+            }), 404
+
+        state.user_config = {**state.user_config, **updates}
+        manager._save_simulation_state(state)
+
+        return jsonify({"success": True, "data": state.user_config})
+
+    except Exception as e:
+        logger.exception(f"failed to save the user config: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": t('api.internalError')
+        }), 500
+
+
 @simulation_bp.route('/<simulation_id>/config/download', methods=['GET'])
 def download_simulation_config(simulation_id: str):
     """Download the simulation config file."""
@@ -1471,8 +1505,16 @@ def start_simulation():
                 "error": t('api.simulationNotFound', id=simulation_id)
             }), 404
 
+        # A run started from anywhere but the step-2 button carries no round cap
+        # in its request (a refresh, a resumed project, the header tab), so fall
+        # back to the count the user saved in step 2.
+        if max_rounds is None and state.user_config.get('use_custom_rounds'):
+            saved_rounds = state.user_config.get('max_rounds')
+            if isinstance(saved_rounds, int) and saved_rounds > 0:
+                max_rounds = saved_rounds
+
         force_restarted = False
-        
+
         # Status handling: allow a restart once preparation has finished
         if state.status != SimulationStatus.READY:
             # Has preparation finished?

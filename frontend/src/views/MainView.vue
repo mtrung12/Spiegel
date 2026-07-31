@@ -8,6 +8,7 @@
       :projectId="currentProjectId === 'new' ? null : currentProjectId"
       :simulationId="null"
       :reportId="null"
+      @readonly="readOnly = $event"
     />
 
     <!-- Failure banner: without it a failed project is a dead end on screen -->
@@ -55,6 +56,7 @@
           :graphData="graphData"
           :systemLogs="systemLogs"
           :stopping="stoppingBuild"
+          :readOnly="readOnly"
           @stop-build="handleStopBuild"
         />
       </div>
@@ -108,6 +110,11 @@ const buildProgress = ref(null)
 // The build task currently being polled, so it can be stopped.
 const buildTaskId = ref(null)
 const stoppingBuild = ref(false)
+
+// Set by the header once it knows how far this project got: true when this
+// step is not where the project stopped, so the panel shows its result without
+// offering to redo it.
+const readOnly = ref(false)
 
 // Polling timers
 let pollTimer = null

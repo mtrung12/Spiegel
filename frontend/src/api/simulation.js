@@ -69,6 +69,16 @@ export const getSimulationConfigRealtime = (simulationId) => {
 }
 
 /**
+ * Save the choices a step's substeps made (audience size, round count).
+ * Merged server-side, so each substep may save only its own keys.
+ * @param {string} simulationId
+ * @param {Object} config - { max_agents?, max_rounds?, use_custom_rounds? }
+ */
+export const saveSimulationUserConfig = (simulationId, config) => {
+  return service.post(`/api/simulation/${simulationId}/user-config`, config)
+}
+
+/**
  * List every simulation.
  * @param {string} projectId - optional, filter by project
  */

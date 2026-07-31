@@ -412,10 +412,66 @@ class SimulationRunner:
                     success=a.get("success", True),
                 ))
             
-            return state
+            return cls._reconcile_stale_state(state)
         except Exception as e:
             logger.error(f"failed to load run state: {str(e)}")
             return None
+
+    # Statuses that only ever advance while the monitor thread that owns the
+    # run is alive.
+    _TRANSIENT_RUNNER_STATUSES = frozenset({
+        RunnerStatus.STARTING,
+        RunnerStatus.RUNNING,
+        RunnerStatus.PAUSED,
+        RunnerStatus.STOPPING,
+    })
+
+    @classmethod
+    def _reconcile_stale_state(
+        cls, state: SimulationRunState
+    ) -> SimulationRunState:
+        """
+        Settle a transient status left behind by a previous backend process.
+
+        Reaching here means the state came off disk rather than out of
+        `_run_states`, so no monitor in this process owns the run and nothing
+        will ever move it off STARTING/RUNNING/PAUSED/STOPPING. Left alone it
+        wedges every caller that gates on a terminal status: the report barrier
+        answers 409 forever, and step 3 attaches to a "live" run whose
+        generate-report button never enables.
+
+        Not persisted on purpose - this is a read-time correction, so a run
+        that is genuinely still finalizing in *this* process is untouched
+        (it is in `_run_states`, which get_run_state checks first).
+        """
+        if state.runner_status not in cls._TRANSIENT_RUNNER_STATUSES:
+            return state
+
+        previous = state.runner_status
+        if state.total_rounds > 0 and state.current_round >= state.total_rounds:
+            # Every round ran; only the finalization tail was cut short. This
+            # is reportable - the simulation databases hold all of it.
+            state.runner_status = RunnerStatus.COMPLETED
+        else:
+            state.runner_status = RunnerStatus.FAILED
+            state.error = state.error or (
+                f"Run was interrupted while {previous.value} "
+                f"at round {state.current_round}/{state.total_rounds}"
+            )
+        state.twitter_running = False
+        state.reddit_running = False
+        state.completed_at = state.completed_at or state.updated_at
+
+        logger.warning(
+            "settled stale run status left by a previous process: "
+            "simulation_id=%s, %s -> %s, round=%s/%s",
+            state.simulation_id,
+            previous.value,
+            state.runner_status.value,
+            state.current_round,
+            state.total_rounds,
+        )
+        return state
     
     @classmethod
     def _save_run_state(cls, state: SimulationRunState):
@@ -840,9 +896,13 @@ class SimulationRunner:
                 cls._write_run_summary(simulation_id, state)
                 if desired_status == RunnerStatus.COMPLETED:
                     logger.info(f"simulation complete: {simulation_id}")
-                    cls._warm_content_index(simulation_id)
                 else:
                     logger.error(f"simulation failed: {simulation_id}, error={state.error}")
+                # Warm on both paths: the feed databases are complete and final
+                # either way. A run that failed on a Zep ingestion timeout still
+                # has every post and comment on disk, and the chatbot still gets
+                # asked about it.
+                cls._warm_content_index(simulation_id)
 
             elif process_exited and exit_code not in (0, None):
                 # The run was already published as finished, so a bad exit code
@@ -1638,7 +1698,9 @@ class SimulationRunner:
         Returns:
             The per-round summary
         """
-        actions = cls.get_actions(simulation_id, limit=10000)
+        # Not get_actions(): its limit truncates the tail of a long run, which
+        # silently drops the last rounds and undercounts every aggregate.
+        actions = cls.get_all_actions(simulation_id)
         
         # Group by round
         rounds: Dict[int, Dict[str, Any]] = {}
@@ -1699,7 +1761,9 @@ class SimulationRunner:
         Returns:
             The agent statistics
         """
-        actions = cls.get_actions(simulation_id, limit=10000)
+        # Not get_actions(): its limit truncates the tail of a long run, which
+        # silently drops the last rounds and undercounts every aggregate.
+        actions = cls.get_all_actions(simulation_id)
         
         agent_stats: Dict[int, Dict[str, Any]] = {}
         

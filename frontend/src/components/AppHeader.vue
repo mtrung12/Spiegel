@@ -4,7 +4,7 @@
       <div class="header-left">
         <button class="brand" @click="router.push('/')">
           <span class="sr-only">{{ $t('a11y.backToProjectList') }}</span>
-          <span aria-hidden="true">CAMPAIGN REACTION</span>
+          <span aria-hidden="true">SPIEGEL</span>
         </button>
       </div>
 
@@ -79,7 +79,7 @@ const props = defineProps({
   reportId: { type: [String, Number], default: null }
 })
 
-defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'readonly'])
 
 const router = useRouter()
 const { t, tm } = useI18n()
@@ -159,6 +159,24 @@ const goToStep = (step) => {
   const target = stepTarget(step)
   if (target) router.push(target)
 }
+
+// Reopening a project lands on the step it stopped at; every other step is
+// there to be read, not re-run. Without this, stepping back to an earlier tab
+// offers buttons that would build a second simulation or restart a finished
+// run. The header is the only place that knows both numbers, so it decides and
+// the views act on it.
+// Until the answer lands - and if the call fails - fail closed on every step
+// past the first: those views only ever open an existing project, and the ids
+// they need arrive over the network, so the seconds before `progress` resolves
+// used to show a fully live setup that could re-prepare or relaunch a finished
+// run. Step 1 stays open because a brand-new project has no id to ask about.
+const readOnly = computed(() =>
+  progress.value
+    ? progress.value.editable_step !== props.currentStep
+    : props.currentStep > 1
+)
+
+watch(readOnly, (value) => emit('readonly', value), { immediate: true })
 </script>
 
 <style scoped>

@@ -122,7 +122,20 @@
           </button>
         </div>
 
+        <!-- Stopping a run has been possible in code but not on screen: the
+             handler existed with nothing bound to it, so a run could only be
+             ended by letting it finish. Shown while one is live. -->
         <button
+          v-if="phase === 1 && !readOnly"
+          class="action-btn"
+          :disabled="isStopping"
+          @click="handleStopSimulation"
+        >
+          {{ isStopping ? $t('step3.stopping') : $t('step3.stopRun') }}
+        </button>
+
+        <button
+          v-if="!readOnly"
           class="action-btn primary"
           :disabled="phase !== 2 || isGeneratingReport"
           @click="handleNextStep"
@@ -131,6 +144,7 @@
           {{ isGeneratingReport ? $t('step3.generatingReportBtn') : $t('step3.startGenerateReportBtn') }}
           <span v-if="!isGeneratingReport" class="arrow-icon">→</span>
         </button>
+        <p v-else class="view-only-note">{{ $t('common.viewOnly') }}</p>
       </div>
     </div>
 
@@ -353,7 +367,10 @@ const props = defineProps({
   },
   projectData: Object,
   graphData: Object,
-  systemLogs: Array
+  systemLogs: Array,
+  // The project moved past this step: show the run, offer nothing that would
+  // generate another report from it.
+  readOnly: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['go-back', 'next-step', 'add-log', 'update-status'])
@@ -1073,6 +1090,12 @@ onUnmounted(() => {
 }
 
 /* Action Button */
+.view-only-note {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 10px 0;
+}
+
 .action-btn {
   display: inline-flex;
   align-items: center;

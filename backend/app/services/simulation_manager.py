@@ -74,7 +74,13 @@ class SimulationState:
     
     # Error information
     error: Optional[str] = None
-    
+
+    # Choices the user made in the step-2 substeps (audience size, round count).
+    # Kept on the state rather than in simulation_config.json because they are
+    # chosen before that file exists, and a returning user has to see the same
+    # numbers the run was set up with.
+    user_config: Dict[str, Any] = field(default_factory=dict)
+
     def to_dict(self) -> Dict[str, Any]:
         """Full state dict (internal use)."""
         return {
@@ -96,8 +102,9 @@ class SimulationState:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "error": self.error,
+            "user_config": self.user_config,
         }
-    
+
     def get_default_platform(self) -> str:
         """Return the default platform given which platforms are enabled."""
         if self.enable_twitter and self.enable_reddit:
@@ -233,6 +240,7 @@ class SimulationManager:
             created_at=data.get("created_at", datetime.now().isoformat()),
             updated_at=data.get("updated_at", datetime.now().isoformat()),
             error=data.get("error"),
+            user_config=data.get("user_config") or {},
         )
         
         # Another thread may have loaded the same id concurrently; keep whichever

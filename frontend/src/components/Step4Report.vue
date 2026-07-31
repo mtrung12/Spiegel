@@ -1,7 +1,7 @@
 <template>
   <div class="report-panel">
     <!-- Main Split Layout -->
-    <div class="main-split-layout">
+    <div class="main-split-layout" :class="{ 'progress-collapsed': !showProgress }">
       <!-- LEFT PANEL: the rendered report (shared with step 5) -->
       <ReportPane
         :outline="reportOutline"
@@ -22,7 +22,6 @@
             :simulationId="simulationId"
             :autoLoad="isComplete"
             :only="['reach', 'engagement', 'virality', 'rounds']"
-            bare
           />
         </template>
 
@@ -48,7 +47,6 @@
             :simulationId="simulationId"
             :autoLoad="isComplete"
             :only="['segments']"
-            bare
           />
         </template>
 
@@ -56,8 +54,35 @@
              meant to be read rather than scanned. -->
       </ReportPane>
 
-      <!-- RIGHT PANEL: Workflow Timeline -->
-      <div class="right-panel" ref="rightPanel">
+      <!-- RIGHT PANEL: Workflow Timeline.
+           While the report is being written this is the only sign of life, so
+           it stays open. Once it finishes it is history the reader has to be
+           able to push aside for the report itself - so it folds itself at
+           that moment, and the rail reopens it on demand. -->
+      <div class="right-panel" :class="{ 'is-collapsed': !showProgress }" ref="rightPanel">
+        <button
+          class="progress-toggle"
+          :aria-expanded="showProgress"
+          @click="showProgress = !showProgress"
+        >
+          <span class="progress-toggle-label">{{ $t('step4.progressPanel') }}</span>
+          <span class="progress-toggle-status mono">{{ statusText }}</span>
+          <svg class="progress-toggle-chevron" :class="{ open: showProgress }" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+
+        <!-- Forward navigation must not fold away with the progress detail:
+             collapsed or not, a finished report has to offer the next step. -->
+        <button v-if="isComplete && !showProgress" class="next-step-btn rail-next" @click="goToInteraction">
+          <span>{{ $t('step4.goToInteraction') }}</span>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </button>
+
+        <template v-if="showProgress">
         <div class="panel-header" :class="`panel-header--${activeStep.status}`" v-if="!isComplete">
           <span class="header-dot" v-if="activeStep.status === 'active'"></span>
           <span class="header-index mono">{{ activeStep.noLabel }}</span>
@@ -353,6 +378,7 @@
             <span>{{ $t('step4.waitingForAgentActivity') }}</span>
           </div>
         </div>
+        </template>
       </div>
     </div>
 
@@ -411,6 +437,15 @@ const expandedContent = ref(new Set())
 const expandedLogs = ref(new Set())
 const isComplete = ref(false)
 const startTime = ref(null)
+
+// The progress panel is open while there is progress to watch and folds itself
+// once there is not. Only on the transition, never on the value: a reader who
+// reopens a finished report's progress must not have it snap shut again, and
+// opening a report that finished long ago starts folded.
+const showProgress = ref(true)
+watch(isComplete, (complete) => {
+  if (complete) showProgress.value = false
+})
 const rightPanel = ref(null)
 const logContent = ref(null)
 const showRawResult = reactive({})
@@ -2064,7 +2099,8 @@ watch(() => props.reportId, (newId) => {
     expandedLogs.value = new Set()
     isComplete.value = false
     startTime.value = null
-    
+    showProgress.value = true
+
     startPolling()
   }
 }, { immediate: true })
@@ -2189,6 +2225,70 @@ watch(() => props.reportId, (newId) => {
 
 
 /* Right Panel */
+/* Collapsed: the panel drops to a rail and the report takes the width back.
+   The pane's own width lives in ReportPane's scoped styles, so overriding it
+   from here needs :deep. */
+.main-split-layout.progress-collapsed :deep(.left-panel.report-style) {
+  width: auto;
+  flex: 1;
+}
+
+/* Open: report and progress share the width evenly. ReportPane defaults to
+   45%, which is its width in step 5 where there is no progress panel. */
+.main-split-layout:not(.progress-collapsed) :deep(.left-panel.report-style) {
+  width: 50%;
+}
+
+.progress-toggle {
+  /* The panel scrolls; the way to fold it must not scroll out of reach. */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--white);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.progress-toggle:hover {
+  background: var(--surface);
+}
+
+.progress-toggle-status {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.progress-toggle-chevron {
+  transform: rotate(-90deg);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.progress-toggle-chevron.open {
+  transform: rotate(0deg);
+}
+
+.right-panel.is-collapsed {
+  flex: 0 0 auto;
+  width: 220px;
+  overflow: hidden;
+}
+
+.right-panel.is-collapsed .rail-next {
+  margin: 12px;
+  width: calc(100% - 24px);
+}
+
 .right-panel {
   flex: 1;
   background: var(--white);
@@ -4693,7 +4793,8 @@ watch(() => props.reportId, (newId) => {
     padding: 24px 20px 40px;
   }
 
-  .right-panel {
+  .right-panel,
+  .right-panel.is-collapsed {
     width: 100%;
     min-width: 0;
   }

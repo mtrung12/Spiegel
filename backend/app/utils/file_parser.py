@@ -7,6 +7,13 @@ often a deck exported from Figma, Canva or Keynote, which is one flat image per
 slide - ``page.get_text()`` returns nothing for every page of it. Those pages are
 rendered and handed to a vision model instead, so the brief is not silently read
 as an empty document.
+
+A page can also be both. A brief laid out in InDesign or exported from a web
+template has a real text layer *and* carries the campaign's actual creative as
+placed images - the hero shot, the social mockups, the product render. Reading
+only the text layer there silently drops the artwork the simulated audience is
+supposed to be reacting to. Those pages keep their text layer and get a second,
+narrower vision call that describes the imagery alone.
 """
 
 import base64
@@ -22,6 +29,17 @@ logger = get_logger('spiegel.file_parser')
 # exported as one image still carries a page number or a footer, so "any text at
 # all" is the wrong test - it would leave a picture of 200 words looking full.
 PAGE_TEXT_MIN_CHARS = 40
+
+# What counts as artwork worth a vision call on a page that already has text.
+# Measured on where the image is *placed*, not its source pixel size: a 1200x600
+# source scaled into a 10pt footer logo is still a footer logo.
+#
+# Both tests have to pass. The per-image floor drops UI chrome - the comment and
+# upvote icons in a social mockup land at ~10pt. The page-area floor stops a
+# letterhead logo on every page of a 40-page deck from buying 40 vision calls,
+# since one small mark never reaches 3% of the page on its own.
+MIN_IMAGE_SIDE_PT = 48        # ~0.67 inch
+MIN_IMAGE_PAGE_SHARE = 0.03   # 3% of the page area, summed over qualifying images
 
 # The model is reading a marketing deck, not a scanned book, so transcription
 # alone loses most of the brief: the audience, the tone and the positioning live
@@ -52,6 +70,38 @@ Write out everything on the page as text, following the reading order of the lay
 
 Output the page content only. No preamble, no summary, no commentary of your own,
 and never guess at text that is too small or cut off - omit it instead."""
+
+# The sibling prompt, for a page whose text layer was already extracted cleanly.
+# Re-transcribing the body copy here would produce a second, worse copy of text
+# we already have exactly, so this asks for the artwork alone. Text *inside* an
+# image is the exception - it is baked into the pixels and the text layer never
+# had it, which on a campaign brief is usually the headline creative itself.
+ILLUSTRATION_VISION_PROMPT = """This is one page of a marketing campaign brief or creative deck.
+Its body text has already been extracted separately - do NOT transcribe the page.
+
+Describe only the pictures on the page: photographs, illustrations, product
+shots, renders, social-post mockups, charts, diagrams and logos.
+
+For each one, in the order they appear down the page:
+
+([image1]: <what it shows, in detail - subject, setting, any people and what they
+are doing, the product, colours, mood; for a chart, its type, axes and plotted
+values; for a mockup of a social post or an ad, the platform it imitates and the
+copy printed inside it, verbatim>. Caption: "<the caption printed beneath it on
+the page, verbatim>")
+
+Rules:
+- Number them [image1], [image2], ... down the page.
+- Transcribe any text that is part of the image itself - a headline burned into
+  a banner, the copy inside a mocked-up post, labels on a chart. That text is not
+  in the page's text layer and would otherwise be lost.
+- Drop the `Caption:` part entirely when no caption is printed - never invent one.
+- Skip separators, rules, and flat background fills. A panel is NOT a background
+  fill when it carries text, a product, or a chart - describe those, however
+  plain their styling.
+- If the page turns out to have no real imagery, output nothing at all.
+
+Output the markers only. No preamble, no summary, no commentary of your own."""
 
 
 # Tolerant on the way in - the model writes [image2], [Image 2] or [IMAGE2] -
@@ -186,62 +236,102 @@ class FileParser:
             raise ImportError("PyMuPDF is required: pip install PyMuPDF")
 
         text_parts: List[str] = []
-        image_pages: List[int] = []
+        # (slot, mode) for every page the vision model has to look at, in reading
+        # order. 'page' means the page has no text layer and the model reads all
+        # of it; 'illustration' means the text layer is good and only the artwork
+        # is missing.
+        vision_jobs: List[Tuple[int, str]] = []
 
         with fitz.open(file_path) as doc:
             for page in doc:
                 text = page.get_text()
+                slot = len(text_parts)
                 if len(text.strip()) >= PAGE_TEXT_MIN_CHARS:
                     text_parts.append(text)
+                    if FileParser._has_describable_images(page):
+                        vision_jobs.append((slot, 'illustration'))
                 else:
                     # Placeholder, so a page read by the model lands back in
                     # reading order rather than at the end of the document.
-                    image_pages.append(len(text_parts))
                     text_parts.append(text.strip())
+                    vision_jobs.append((slot, 'page'))
 
-            if image_pages:
-                FileParser._read_image_pages(doc, image_pages, text_parts, file_path)
+            if vision_jobs:
+                FileParser._read_image_pages(doc, vision_jobs, text_parts, file_path)
 
         return "\n\n".join(part for part in text_parts if part.strip())
 
     @staticmethod
+    def _has_describable_images(page) -> bool:
+        """
+        Whether this page carries artwork worth a vision call.
+
+        Judged on placed size, so a large source image scaled down to an icon is
+        correctly ignored. See MIN_IMAGE_SIDE_PT / MIN_IMAGE_PAGE_SHARE for why
+        both a per-image floor and a page-share floor are needed.
+        """
+        page_area = abs(page.rect.width * page.rect.height)
+        if not page_area:
+            return False
+
+        covered = 0.0
+        for info in page.get_images(full=True):
+            # get_images can report images the page merely inherits; the rects
+            # are what is actually painted on this page, and an inherited one
+            # returns none.
+            for rect in page.get_image_rects(info[0]):
+                if min(rect.width, rect.height) < MIN_IMAGE_SIDE_PT:
+                    continue
+                covered += abs(rect.width * rect.height)
+
+        return covered / page_area >= MIN_IMAGE_PAGE_SHARE
+
+    @staticmethod
     def _read_image_pages(
         doc,
-        page_indices: List[int],
+        jobs: List[Tuple[int, str]],
         text_parts: List[str],
         file_path: str,
     ) -> None:
-        """Render the text-less pages and fill their slots in ``text_parts``."""
+        """
+        Run the vision passes and fold the results into ``text_parts``.
+
+        A 'page' job replaces the slot, because the page had no text layer to
+        keep. An 'illustration' job appends to it, because the text layer is
+        already the better copy of the body copy.
+        """
         from ..config import Config
 
         budget = max(0, Config.VISION_PDF_MAX_PAGES)
-        if len(page_indices) > budget:
+        if len(jobs) > budget:
             logger.warning(
-                "%s: %d pages have no text layer, reading the first %d "
+                "%s: %d pages need a vision read, reading the first %d "
                 "(raise VISION_PDF_MAX_PAGES to read them all)",
-                Path(file_path).name, len(page_indices), budget,
+                Path(file_path).name, len(jobs), budget,
             )
-            page_indices = page_indices[:budget]
+            jobs = jobs[:budget]
 
         client = FileParser._vision_client()
         if client is None:
             logger.warning(
-                "%s: %d pages have no text layer and no vision model is "
+                "%s: %d pages need a vision read and no vision model is "
                 "configured; set VISION_LLM_* to read them",
-                Path(file_path).name, len(page_indices),
+                Path(file_path).name, len(jobs),
             )
             return
 
+        blind = sum(1 for _, mode in jobs if mode == 'page')
         logger.info(
-            "%s: reading %d image-only pages with %s",
-            Path(file_path).name, len(page_indices), client.model,
+            "%s: vision read of %d pages with %s (%d image-only, %d illustrated)",
+            Path(file_path).name, len(jobs), client.model, blind, len(jobs) - blind,
         )
 
         next_image = 1
-        for index in page_indices:
+        for index, mode in jobs:
+            prompt = PAGE_VISION_PROMPT if mode == 'page' else ILLUSTRATION_VISION_PROMPT
             try:
                 pixmap = doc[index].get_pixmap(dpi=Config.VISION_PDF_DPI)
-                page_text = FileParser._describe_page(client, pixmap.tobytes("png"))
+                page_text = FileParser._describe_page(client, pixmap.tobytes("png"), prompt)
             except Exception as e:
                 # One unreadable page is not worth losing the other 39.
                 logger.warning(
@@ -249,12 +339,18 @@ class FileParser:
                     Path(file_path).name, index + 1, type(e).__name__, str(e)[:120],
                 )
                 continue
-            if page_text:
-                # Pages are read in document order, so the running counter makes
-                # [image1], [image2], ... unique across the whole file.
-                page_text, used = renumber_image_markers(page_text, next_image)
-                next_image += used
+            if not page_text:
+                continue
+
+            # Jobs are in document order, so the running counter makes
+            # [image1], [image2], ... unique across the whole file.
+            page_text, used = renumber_image_markers(page_text, next_image)
+            next_image += used
+
+            if mode == 'page':
                 text_parts[index] = page_text
+            else:
+                text_parts[index] = f"{text_parts[index].rstrip()}\n\n{page_text}"
 
     @staticmethod
     def _vision_client():
@@ -268,7 +364,11 @@ class FileParser:
             return None
 
     @staticmethod
-    def _describe_page(client, png_bytes: bytes) -> Optional[str]:
+    def _describe_page(
+        client,
+        png_bytes: bytes,
+        prompt: str = PAGE_VISION_PROMPT,
+    ) -> Optional[str]:
         """Send one rendered page to the vision model and return what it read."""
         from .pipeline_logger import llm_caller
 
@@ -278,7 +378,7 @@ class FileParser:
                 messages=[{
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": PAGE_VISION_PROMPT},
+                        {"type": "text", "text": prompt},
                         {
                             "type": "image_url",
                             "image_url": {"url": f"data:image/png;base64,{encoded}"},

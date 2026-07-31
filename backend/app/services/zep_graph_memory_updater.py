@@ -5,6 +5,7 @@ Streams agent activity from a running simulation into the Zep graph.
 
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from datetime import datetime
@@ -257,7 +258,17 @@ class ZepGraphMemoryUpdater:
     # Zep recommends keeping an episode below 10,000 characters. Leave room
     # for future source formatting changes.
     MAX_EPISODE_CHARS = 9_500
-    
+
+    # How often the worker trims already-processed episodes out of the
+    # pending list during the run, so the final drain isn't checking the
+    # whole run's backlog against one fixed timeout.
+    PENDING_POLL_INTERVAL_SECONDS = 20
+
+    # Parallel episode-status checks per poll pass. Serial checks (one
+    # HTTP GET at a time) ate most of the drain timeout on large runs
+    # instead of leaving that time for Zep's own processing.
+    PENDING_POLL_CONCURRENCY = 8
+
     def __init__(
         self,
         graph_id: str,
@@ -303,7 +314,9 @@ class ZepGraphMemoryUpdater:
         self._skipped_count = 0     # Activities filtered out (DO_NOTHING)
         self._failed_batches: List[Dict[str, Any]] = []
         self._pending_episode_uuids: List[str] = []
-        
+        self._pending_lock = threading.Lock()
+        self._last_pending_check = time.time()
+
         logger.info(f"ZepGraphMemoryUpdater initialised: graph_id={graph_id}, batch_size={self.BATCH_SIZE}")
     
     def _get_platform_display_name(self, platform: str) -> str:
@@ -465,7 +478,17 @@ class ZepGraphMemoryUpdater:
                     
                 except Empty:
                     pass
-                    
+
+                # Spread the "is this episode done processing" check across
+                # the run instead of deferring the whole backlog to stop().
+                # A run that ends with only the last ~20s of episodes still
+                # pending needs far less of the drain timeout than one that
+                # never checked at all.
+                now = time.time()
+                if now - self._last_pending_check >= self.PENDING_POLL_INTERVAL_SECONDS:
+                    self._last_pending_check = now
+                    self._trim_pending_episodes()
+
             except Exception as e:
                 logger.error(f"worker loop error: {e}")
                 time.sleep(1)
@@ -551,7 +574,8 @@ class ZepGraphMemoryUpdater:
                 )
                 if not episode_uuid:
                     raise RuntimeError("Zep graph.add returned no episode UUID")
-                self._pending_episode_uuids.append(str(episode_uuid))
+                with self._pending_lock:
+                    self._pending_episode_uuids.append(str(episode_uuid))
                 self._total_sent += 1
                 self._total_items_sent += len(payload_activities)
                 display_name = self._get_platform_display_name(platform)
@@ -650,8 +674,48 @@ class ZepGraphMemoryUpdater:
                 with self._buffer_lock:
                     del self._platform_buffers[platform][:processed_count]
 
+    def _poll_pending_episodes(self, uuids: set) -> set:
+        """
+        Check a set of episode UUIDs against Zep concurrently.
+
+        Returns the subset still not processed. Concurrent so a poll pass
+        over N episodes costs one round-trip, not N serial ones.
+        """
+        if not uuids:
+            return set()
+
+        def _check(episode_uuid: str) -> Optional[str]:
+            episode = call_zep_read_with_retry(
+                lambda: self.client.graph.episode.get(uuid_=episode_uuid),
+                operation_name=f"poll simulation episode {episode_uuid}",
+            )
+            return None if getattr(episode, "processed", False) else episode_uuid
+
+        with ThreadPoolExecutor(
+            max_workers=min(self.PENDING_POLL_CONCURRENCY, len(uuids))
+        ) as pool:
+            results = pool.map(_check, uuids)
+            return {uuid for uuid in results if uuid is not None}
+
+    def _trim_pending_episodes(self) -> None:
+        """Drop already-processed episodes from the pending list mid-run."""
+        with self._pending_lock:
+            pending = set(self._pending_episode_uuids)
+        if not pending:
+            return
+        try:
+            still_pending = self._poll_pending_episodes(pending)
+        except Exception as e:
+            logger.warning(f"pending-episode trim check failed, will retry later: {e}")
+            return
+        with self._pending_lock:
+            self._pending_episode_uuids = [
+                uuid for uuid in self._pending_episode_uuids if uuid in still_pending
+            ]
+
     def _wait_for_pending_episodes(self, *, deadline: float | None = None) -> None:
-        pending = set(self._pending_episode_uuids)
+        with self._pending_lock:
+            pending = set(self._pending_episode_uuids)
         if not pending:
             return
 
@@ -663,22 +727,19 @@ class ZepGraphMemoryUpdater:
                     f"Zep simulation ingestion timed out with {len(pending)} "
                     "episode(s) pending"
                 )
-            for episode_uuid in list(pending):
-                episode = call_zep_read_with_retry(
-                    lambda: self.client.graph.episode.get(uuid_=episode_uuid),
-                    operation_name=f"poll simulation episode {episode_uuid}",
-                )
-                if getattr(episode, "processed", False):
-                    pending.remove(episode_uuid)
+            pending = self._poll_pending_episodes(pending)
             if pending:
                 time.sleep(3)
-        self._pending_episode_uuids = []
+        with self._pending_lock:
+            self._pending_episode_uuids = []
     
     def get_stats(self) -> Dict[str, Any]:
         """Return the statistics."""
         with self._buffer_lock:
             buffer_sizes = {p: len(b) for p, b in self._platform_buffers.items()}
-        
+        with self._pending_lock:
+            pending_episode_count = len(self._pending_episode_uuids)
+
         return {
             "graph_id": self.graph_id,
             "batch_size": self.BATCH_SIZE,
@@ -686,7 +747,7 @@ class ZepGraphMemoryUpdater:
             "batches_sent": self._total_sent,            # Batches sent successfully
             "items_sent": self._total_items_sent,        # Activities sent successfully
             "failed_count": self._failed_count,          # Batches that failed to send
-            "pending_episode_count": len(self._pending_episode_uuids),
+            "pending_episode_count": pending_episode_count,
             "skipped_count": self._skipped_count,        # Activities filtered out (DO_NOTHING)
             "queue_size": self._activity_queue.qsize(),
             "buffer_sizes": buffer_sizes,                # Buffer size per platform

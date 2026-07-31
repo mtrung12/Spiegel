@@ -46,6 +46,11 @@ class Project:
     graph_build_task_id: Optional[str] = None
     zep_batch_id: Optional[str] = None
     zep_batch_operation_id: Optional[str] = None
+    # When the document build finished, UTC ISO-8601. A running simulation
+    # writes its agents' activity back into the same graph, so this is the
+    # line between "the audience the brief describes" and everything the
+    # simulation invented afterwards. See ZepEntityReader.filter_defined_entities.
+    graph_built_at: Optional[str] = None
     
     # Audience priors harvested from public discussion during the graph build.
     # Absent when no source was configured or the harvest found nothing; the
@@ -77,6 +82,7 @@ class Project:
             "graph_build_task_id": self.graph_build_task_id,
             "zep_batch_id": self.zep_batch_id,
             "zep_batch_operation_id": self.zep_batch_operation_id,
+            "graph_built_at": self.graph_built_at,
             "corpus_distribution": self.corpus_distribution,
             "corpus_summary": self.corpus_summary,
             "simulation_requirement": self.simulation_requirement,
@@ -106,6 +112,7 @@ class Project:
             graph_build_task_id=data.get('graph_build_task_id'),
             zep_batch_id=data.get('zep_batch_id'),
             zep_batch_operation_id=data.get('zep_batch_operation_id'),
+            graph_built_at=data.get('graph_built_at'),
             corpus_distribution=data.get('corpus_distribution'),
             corpus_summary=data.get('corpus_summary'),
             simulation_requirement=data.get('simulation_requirement'),

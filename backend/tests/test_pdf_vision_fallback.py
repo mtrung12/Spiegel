@@ -12,6 +12,8 @@ import fitz
 import pytest
 
 from app.utils.file_parser import (
+    ILLUSTRATION_VISION_PROMPT,
+    MIN_IMAGE_SIDE_PT,
     PAGE_TEXT_MIN_CHARS,
     PAGE_VISION_PROMPT,
     FileParser,
@@ -185,6 +187,114 @@ def test_a_page_of_boilerplate_counts_as_imageless(tmp_path, fake_vision):
     assert len(fake_vision.calls) == 1, (
         f'a page holding under {PAGE_TEXT_MIN_CHARS} chars must go to the model'
     )
+
+
+# ---- pages that have BOTH a text layer and artwork --------------------------
+# The failure this guards against: a brief laid out with a real text layer that
+# carries the campaign's creative as placed images. The text-layer path used to
+# claim the page and the artwork was never looked at, so the headline burned
+# into the hero banner never reached the graph.
+
+def _pixel_image(width_px=400, height_px=200):
+    """A tiny PNG, so the fixtures carry a real raster rather than a drawing."""
+    pix = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, width_px, height_px))
+    pix.set_rect(pix.irect, (200, 40, 60))
+    return pix.tobytes("png")
+
+
+def _pdf_text_plus_image(path, placed_rect, body=None):
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), body or 'Campaign brief for the new blend. ' * 6, fontsize=11)
+    page.insert_image(placed_rect, stream=_pixel_image())
+    doc.save(str(path))
+    doc.close()
+
+
+def test_a_text_page_with_a_hero_image_is_sent_for_description(tmp_path, fake_vision):
+    pdf = tmp_path / 'brief.pdf'
+    _pdf_text_plus_image(pdf, fitz.Rect(72, 200, 520, 420))
+
+    text = FileParser.extract_text(str(pdf))
+
+    assert len(fake_vision.calls) == 1
+    # The text layer is kept - it is the better copy - and the description is
+    # appended to it rather than replacing it.
+    assert 'Campaign brief' in text
+    assert 'SLIDE TEXT: Launch the new blend.' in text
+    # And it is the narrower prompt, not the transcribe-everything one.
+    assert fake_vision.calls[0][0]['content'][0]['text'] is ILLUSTRATION_VISION_PROMPT
+
+
+def test_small_icons_do_not_buy_a_vision_call(tmp_path, fake_vision):
+    """UI chrome in a social mockup lands at ~10pt; it is not artwork."""
+    pdf = tmp_path / 'brief.pdf'
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), 'Campaign brief for the new blend. ' * 6, fontsize=11)
+    for x in (300, 340, 380):
+        page.insert_image(fitz.Rect(x, 450, x + 10, 460), stream=_pixel_image())
+    doc.save(str(pdf))
+    doc.close()
+
+    FileParser.extract_text(str(pdf))
+
+    assert fake_vision.calls == []
+
+
+def test_a_letterhead_logo_on_every_page_does_not_buy_a_call_per_page(tmp_path, fake_vision):
+    """Over the per-image floor, under the page-share floor: still not artwork."""
+    pdf = tmp_path / 'brief.pdf'
+    side = MIN_IMAGE_SIDE_PT + 6
+    doc = fitz.open()
+    for _ in range(4):
+        page = doc.new_page()
+        page.insert_text((72, 100), 'Campaign brief for the new blend. ' * 6, fontsize=11)
+        page.insert_image(fitz.Rect(72, 40, 72 + side, 40 + side), stream=_pixel_image())
+    doc.save(str(pdf))
+    doc.close()
+
+    FileParser.extract_text(str(pdf))
+
+    assert fake_vision.calls == []
+
+
+def test_markers_are_numbered_across_both_kinds_of_page(tmp_path, monkeypatch):
+    """One counter, document order - an image-only page and an illustrated one."""
+
+    class _OneImage(_FakeVision):
+        def chat(self, messages, **kwargs):
+            self.calls.append(messages)
+            return '([image1]: a red hatchback on a neon grid)'
+
+    client = _OneImage()
+    monkeypatch.setattr(FileParser, '_vision_client', staticmethod(lambda: client))
+
+    pdf = tmp_path / 'mixed.pdf'
+    doc = fitz.open()
+    blind = doc.new_page()                       # page 1: no text layer
+    blind.draw_rect(fitz.Rect(50, 50, 300, 300), fill=(0.2, 0.4, 0.9))
+    rich = doc.new_page()                        # page 2: text layer + artwork
+    rich.insert_text((72, 100), 'Campaign brief for the new blend. ' * 6, fontsize=11)
+    rich.insert_image(fitz.Rect(72, 200, 520, 420), stream=_pixel_image())
+    doc.save(str(pdf))
+    doc.close()
+
+    text = FileParser.extract_text(str(pdf))
+
+    assert len(client.calls) == 2
+    assert re.findall(r'\[image\d+\]', text) == ['[image1]', '[image2]']
+
+
+def test_the_illustration_prompt_does_not_ask_for_a_transcription():
+    # Pointed at a page whose text layer is already good, a transcription would
+    # produce a second, worse copy of text we already have exactly.
+    assert 'do NOT transcribe the page' in ILLUSTRATION_VISION_PROMPT
+    assert '([image1]:' in ILLUSTRATION_VISION_PROMPT
+    # Text baked into the artwork is the exception - the text layer never had it.
+    assert 'Transcribe any text that is part of the image itself' in ILLUSTRATION_VISION_PROMPT
+    # A flat panel carrying copy is content, not a background wash.
+    assert 'fill when it carries text' in ILLUSTRATION_VISION_PROMPT
 
 
 # ---- configuration ----------------------------------------------------------

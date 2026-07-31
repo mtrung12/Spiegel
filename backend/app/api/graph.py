@@ -8,6 +8,7 @@ import re
 import traceback
 import threading
 from contextlib import ExitStack, nullcontext
+from datetime import datetime, timezone
 from flask import request, jsonify
 from zep_cloud import NotFoundError
 
@@ -212,6 +213,24 @@ def _project_progress(project, simulations: list, report_ids: dict[str, str]) ->
     stage = _project_stage(project, simulation, run_state, report_id)
     furthest_step = _furthest_step(stage, report_id)
 
+    # The step that still has work to do - the one allowed to keep its buttons,
+    # every other step being there to read. Usually the furthest one, but not
+    # when a simulation is prepared and never started: that opens step 3 to
+    # look at, while the launch button that would fill it still lives back on
+    # step 2. Without the distinction that project locks itself out - step 2
+    # read-only, step 3 with nothing to run.
+    editable_step = furthest_step
+    if stage == "run" and run_state is None:
+        editable_step = 2
+    elif stage == "report" and report_id:
+        # A failed report is not progress: the button that would write another
+        # one is step 3's, so that is the step that must stay live. Otherwise a
+        # failed report is a dead end - nothing to read on step 4, nothing to
+        # press on step 3.
+        report = ReportManager.get_report(report_id)
+        if report is not None and report.status == ReportStatus.FAILED:
+            editable_step = 3
+
     # The id each step's route needs to load anything.
     route_ids = {
         1: project.project_id,
@@ -227,6 +246,7 @@ def _project_progress(project, simulations: list, report_ids: dict[str, str]) ->
         "report_id": report_id,
         "stage": stage,
         "furthest_step": furthest_step,
+        "editable_step": editable_step,
         "steps": [
             {
                 "step": step,
@@ -255,6 +275,7 @@ def _project_overview(project, simulations: list, report_ids: dict[str, str]) ->
             "runner_status": "idle",
             "current_round": 0,
             "total_rounds": 0,
+            "total_agents": None,
             "report_id": None,
             "simulation_count": 0,
         })
@@ -274,6 +295,10 @@ def _project_overview(project, simulations: list, report_ids: dict[str, str]) ->
     )
     total_rounds = run_state.total_rounds if run_state and run_state.total_rounds > 0 else recommended_rounds
 
+    # None (not 0) when agent_configs hasn't been generated yet, so the
+    # frontend can tell "not decided yet" apart from "zero agents".
+    total_agents = len(config["agent_configs"]) if "agent_configs" in config else None
+
     overview.update({
         "simulation_id": simulation.simulation_id,
         "simulation_status": simulation.status.value,
@@ -285,6 +310,7 @@ def _project_overview(project, simulations: list, report_ids: dict[str, str]) ->
         "runner_status": run_state.runner_status.value if run_state else "idle",
         "current_round": run_state.current_round if run_state else 0,
         "total_rounds": total_rounds,
+        "total_agents": total_agents,
         "report_id": report_id,
         "simulation_count": len(simulations),
     })
@@ -1199,6 +1225,11 @@ def _build_graph_impl():
                 with _project_build_lock(project_id):
                     project.status = ProjectStatus.GRAPH_COMPLETED
                     project.error = None
+                    # Everything in the graph after this instant came from a
+                    # simulation writing its agents' activity back, not from
+                    # the documents. The audience must be read from the
+                    # documents only - see ZepEntityReader.
+                    project.graph_built_at = datetime.now(timezone.utc).isoformat()
                     ProjectManager.save_project(project)
                     task_manager.update_task(
                         task_id,

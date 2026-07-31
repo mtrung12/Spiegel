@@ -10,12 +10,29 @@ This module answers as an agent without that process: the persona from the
 generated profiles plus everything that agent actually posted and commented in
 the platform database, handed to the chatbot LLM. It is a reconstruction, not
 the agent's live in-environment memory, so results carry `offline: True`.
+
+Retrieval
+---------
+An agent's own authored rows are not enough context to answer with. The campaign
+creative it was reacting to lives in the seed posts, and the conversation around
+it lives in everybody else's posts and comments - so an agent asked "would you
+buy this car?" would otherwise answer from persona alone, having never been
+shown the car. Each interview therefore also gets:
+
+* the campaign creative for its platform, read straight from the feed database
+* the passages of audience discussion most relevant to the question, from the
+  Qdrant content index (``content_index``)
+
+The retrieval is per (platform, question), not per agent: a global interview is
+150 agents asked one question, and they all need the same context. One embedding
+call per distinct question is what keeps that affordable.
 """
 
 import csv
 import json
 import os
 import sqlite3
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -29,6 +46,13 @@ PLATFORMS = ("twitter", "reddit")
 
 # Authored items handed to the model per agent, newest first
 MAX_ACTIVITY_ITEMS = 20
+
+# Campaign creative shown to the agent, and how much of each post
+MAX_SEED_POSTS = 5
+SEED_EXCERPT_CHARS = 600
+
+# Audience passages retrieved per question
+MAX_RECALL_ITEMS = 5
 
 # ponytail: fixed pool; a global interview is 150 agents x 2 platforms, and one
 # call each is what makes that finish inside the request timeout. Move to a
@@ -131,6 +155,79 @@ def _agent_activity(simulation_id: str, platform: str, agent_id: int) -> List[st
     return lines[:MAX_ACTIVITY_ITEMS]
 
 
+def _campaign_creative(simulation_id: str) -> Dict[str, str]:
+    """
+    The campaign's own posts, per platform - what the audience was reacting to.
+
+    Read from the same feed databases the sentiment digest reads, which already
+    separate seed posts from audience content, so the creative needs no
+    heuristics here.
+    """
+    try:
+        from .content_sentiment import ContentSentimentService
+        _, seeds = ContentSentimentService._collect(simulation_id)
+    except Exception as e:
+        logger.warning(f"could not read the campaign creative for {simulation_id}: {e}")
+        return {}
+
+    blocks: Dict[str, List[str]] = {}
+    for seed in seeds:
+        lines = blocks.setdefault(seed.platform, [])
+        if len(lines) >= MAX_SEED_POSTS:
+            continue
+        content = (seed.content or "").strip()
+        if not content:
+            continue
+        if len(content) > SEED_EXCERPT_CHARS:
+            content = content[:SEED_EXCERPT_CHARS] + "..."
+        lines.append(f'- {seed.author_name}: "{content}"')
+
+    return {platform: "\n".join(lines) for platform, lines in blocks.items()}
+
+
+def _recall(simulation_id: str, prompt: str, platform: str) -> str:
+    """
+    Audience discussion relevant to this question, from the content index.
+
+    Never builds the index inline. Embedding a whole finished feed takes minutes,
+    and an interview is an interactive request - so an unindexed simulation is
+    warmed on a background thread and answered without recall this once, rather
+    than left hanging. The runner warms every finished run anyway; this covers
+    runs that finished before that existed, or whose warm failed.
+
+    Best effort throughout: the interview is still answerable from persona and
+    own activity, so an index or embedding failure degrades the answer rather
+    than failing the request.
+    """
+    if not prompt.strip():
+        return ""
+    try:
+        from .content_index import ContentIndexService
+        service = ContentIndexService()
+        if service.indexed_count(simulation_id) == 0:
+            logger.info(f"content index empty for {simulation_id}; warming in background")
+            threading.Thread(
+                target=_warm_index, args=(simulation_id,), daemon=True
+            ).start()
+            return ""
+        return service.search_as_text(
+            simulation_id, prompt, limit=MAX_RECALL_ITEMS, platform=platform
+        )
+    except Exception as e:
+        logger.warning(f"content recall failed: {platform}, {e}")
+        return ""
+
+
+def _warm_index(simulation_id: str) -> None:
+    """Build the content index off the request thread."""
+    try:
+        from .content_index import ContentIndexService
+        count = ContentIndexService().index_simulation(simulation_id)
+        logger.info(f"content index warmed from an interview: {simulation_id}, points={count}")
+    except Exception as e:
+        logger.warning(f"could not warm the content index for {simulation_id}: {e}")
+
+
 def _persona_block(profile: Dict[str, Any], agent_id: int) -> str:
     name = profile.get("realname") or profile.get("username") or f"Agent_{agent_id}"
     fields = [
@@ -152,6 +249,8 @@ def _interview_one(
     platform: str,
     profile: Dict[str, Any],
     llm: LLMClient,
+    creative: str = "",
+    recall: str = "",
 ) -> Dict[str, Any]:
     """Answer one question as one agent, on one platform."""
     activity = _agent_activity(simulation_id, platform, agent_id)
@@ -160,15 +259,29 @@ def _interview_one(
         else "- (you did not post or comment during the campaign)"
     )
 
+    sections = [
+        f"Your persona:\n{_persona_block(profile, agent_id)}",
+        f"What you did on {platform} during the campaign:\n{activity_block}",
+    ]
+    if creative:
+        sections.append(f"The campaign posts you saw in your feed:\n{creative}")
+    if recall:
+        sections.append(
+            "What was being said around you, relevant to this question "
+            f"(other people's words, not yours):\n{recall}"
+        )
+
     system_prompt = (
         f"You are a simulated {platform} user being interviewed after a marketing "
         "campaign ran in your feed. Stay in character, answer in the first person "
         "and in plain text. Never mention that you are an AI or a simulation, do "
         "not call tools, and do not use Markdown headings. Base your answer on "
-        "your persona and on what you actually did during the campaign; if the "
-        "record does not cover something, answer the way this persona would.\n\n"
-        f"Your persona:\n{_persona_block(profile, agent_id)}\n\n"
-        f"What you did on {platform} during the campaign:\n{activity_block}"
+        "your persona, on the campaign posts below and on what you actually did "
+        "during the campaign; if the record does not cover something, answer the "
+        "way this persona would. Never speak as anyone else, and never repeat "
+        "another person's opinion as your own - the surrounding discussion is "
+        "context for what you were exposed to, not your view.\n\n"
+        + "\n\n".join(sections)
     )
 
     try:
@@ -242,15 +355,28 @@ def interview_batch(
         )
 
     llm = LLMClient.for_chatbot()
+
+    # Shared context, resolved once per platform / per distinct question rather
+    # than once per agent - see the module docstring.
+    creative = _campaign_creative(simulation_id)
+    recalls = {
+        (prompt, target): _recall(simulation_id, prompt, target)
+        for prompt, target in {(j[1], j[2]) for j in jobs}
+    }
+
     logger.info(
-        f"offline interview: simulation_id={simulation_id}, agents={len(interviews)}, calls={len(jobs)}"
+        f"offline interview: simulation_id={simulation_id}, agents={len(interviews)}, "
+        f"calls={len(jobs)}, retrievals={len(recalls)}, "
+        f"creative_platforms={sorted(creative)}"
     )
 
     def run(job):
         agent_id, prompt, target = job
         profile = profiles[agent_id] if agent_id < len(profiles) else {}
         return _interview_one(
-            simulation_id, agent_id, prompt, target, profile, llm
+            simulation_id, agent_id, prompt, target, profile, llm,
+            creative=creative.get(target, ""),
+            recall=recalls.get((prompt, target), ""),
         )
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:

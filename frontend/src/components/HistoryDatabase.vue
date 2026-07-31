@@ -135,6 +135,7 @@
                 <span class="modal-progress" :class="getProgressClass(selectedProject)">
                   <span class="status-dot" aria-hidden="true">●</span> {{ formatRounds(selectedProject) }}
                 </span>
+                <span class="modal-agents">{{ formatAgents(selectedProject) }}</span>
                 <span class="modal-create-time">{{ formatDate(selectedProject.created_at) }} {{ formatTime(selectedProject.created_at) }}</span>
               </div>
               <button class="modal-close" :aria-label="$t('common.close')" @click="closeModal">
@@ -144,10 +145,10 @@
 
             <!-- Dialog body -->
             <div class="modal-body">
-              <!-- Simulation requirement -->
+              <!-- Simulation requirement: a summary, not the full pasted brief -->
               <div class="modal-section">
                 <div class="modal-label">{{ $t('history.simRequirement') }}</div>
-                <div class="modal-requirement">{{ selectedProject.simulation_requirement || $t('common.none') }}</div>
+                <div class="modal-requirement">{{ truncateText(selectedProject.simulation_requirement, 160) || $t('common.none') }}</div>
               </div>
 
               <!-- Files -->
@@ -375,6 +376,13 @@ const formatRounds = (simulation) => {
   const total = simulation.total_rounds || 0
   if (total === 0) return t('history.notStarted')
   return t('history.roundsProgress', { current, total })
+}
+
+// Agent count is null until env setup generates agent_configs
+const formatAgents = (simulation) => {
+  const count = simulation.total_agents
+  if (count === null || count === undefined) return t('history.agentsPending')
+  return t('history.agentsCount', { count })
 }
 
 // File type, used for styling
@@ -1165,6 +1173,14 @@ onUnmounted(() => {
 .modal-progress.completed { color: var(--success); background: rgba(16, 185, 129, 0.1); }
 .modal-progress.in-progress { color: var(--warning); background: rgba(245, 158, 11, 0.1); }
 .modal-progress.not-started { color: var(--muted-soft); background: var(--surface-2); }
+
+.modal-agents {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted-soft);
+  letter-spacing: 0.3px;
+}
 
 .modal-create-time {
   font-family: 'JetBrains Mono', monospace;

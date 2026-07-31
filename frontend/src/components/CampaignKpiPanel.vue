@@ -1,15 +1,5 @@
 <template>
   <section class="kpi-panel">
-    <header v-if="!bare" class="kpi-header">
-      <div class="kpi-heading">
-        <h2 class="kpi-title">{{ $t('campaign.panelTitle') }}</h2>
-        <p class="kpi-subtitle">{{ $t('campaign.panelSubtitle') }}</p>
-      </div>
-      <button class="kpi-refresh" :disabled="loading" @click="load">
-        {{ $t('campaign.refresh') }}
-      </button>
-    </header>
-
     <div v-if="loading" class="kpi-state">{{ $t('campaign.loading') }}</div>
     <div v-else-if="error" class="kpi-state kpi-state--error">
       {{ $t('campaign.error', { error }) }}
@@ -59,14 +49,29 @@
       <div v-if="shows('rounds')" class="kpi-group">
         <div class="kpi-group-label">{{ $t('campaign.perRound') }}</div>
         <div v-if="!perRound.length" class="kpi-state">{{ $t('campaign.noRounds') }}</div>
-        <div v-else class="kpi-rounds">
-          <div
-            v-for="row in perRound"
-            :key="row.round_num"
-            class="kpi-round-bar"
-            :title="`${$t('campaign.roundLabel')} ${row.round_num} · ${row.total_actions} ${$t('campaign.roundActions')}`"
-          >
-            <div class="kpi-round-fill" :style="{ height: barHeight(row.total_actions) }"></div>
+        <div v-else class="kpi-chart">
+          <!-- y axis: the strip is normalised to the loudest round, so the
+               only two labels that carry information are that peak and 0. -->
+          <div class="kpi-yaxis mono">
+            <span>{{ maxRoundActions }}</span>
+            <span>0</span>
+          </div>
+          <div class="kpi-plot">
+            <div class="kpi-rounds">
+              <div
+                v-for="row in perRound"
+                :key="row.round_num"
+                class="kpi-round-bar"
+                :title="`${$t('campaign.roundLabel')} ${row.round_num} · ${row.total_actions} ${$t('campaign.roundActions')}`"
+              >
+                <div class="kpi-round-fill" :style="{ height: barHeight(row.total_actions) }"></div>
+              </div>
+            </div>
+            <div class="kpi-xaxis mono">
+              <span>{{ $t('campaign.roundLabel') }} {{ perRound[0].round_num }}</span>
+              <span>{{ $t('campaign.roundActions') }}</span>
+              <span>{{ $t('campaign.roundLabel') }} {{ perRound[perRound.length - 1].round_num }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -87,10 +92,7 @@ const props = defineProps({
   // segments, rounds. Empty means all of them. The report pane uses this to
   // show each block beside the section that explains it, instead of dumping
   // every figure above the report.
-  only: { type: Array, default: () => [] },
-  // Drop the panel's own title and refresh button - the section heading is
-  // already doing that job.
-  bare: { type: Boolean, default: false }
+  only: { type: Array, default: () => [] }
 })
 
 const shows = (key) => !props.only.length || props.only.includes(key)
@@ -215,41 +217,6 @@ defineExpose({ load })
   margin-bottom: 32px;
 }
 
-.kpi-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.kpi-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0;
-}
-
-.kpi-subtitle {
-  font-size: 0.78rem;
-  color: var(--muted-soft);
-  margin: 4px 0 0;
-}
-
-.kpi-refresh {
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--muted);
-  font-size: 0.75rem;
-  padding: 6px 12px;
-  cursor: pointer;
-}
-
-.kpi-refresh:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .kpi-state {
   font-size: 0.82rem;
   color: var(--muted-soft);
@@ -327,6 +294,40 @@ defineExpose({ load })
 .kpi-td-name {
   text-align: left;
   color: var(--ink);
+}
+
+.kpi-chart {
+  display: flex;
+  gap: 8px;
+}
+
+.kpi-plot {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.kpi-yaxis,
+.kpi-xaxis {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.kpi-yaxis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  height: 90px;
+  font-size: 0.68rem;
+  color: var(--muted-soft);
+}
+
+.kpi-xaxis {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 0.68rem;
+  color: var(--muted-soft);
 }
 
 .kpi-rounds {

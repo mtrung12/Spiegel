@@ -1,7 +1,7 @@
 <template>
   <div class="home-container">
     <nav class="navbar">
-      <div class="nav-brand">CAMPAIGN REACTION</div>
+      <div class="nav-brand">SPIEGEL</div>
       <div class="nav-links">
         <LanguageSwitcher />
       </div>

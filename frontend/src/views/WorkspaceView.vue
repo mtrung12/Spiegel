@@ -5,7 +5,7 @@
       <div class="header-left">
         <button type="button" class="brand" @click="router.push('/')">
           <span class="sr-only">{{ $t('a11y.backToProjectList') }}</span>
-          <span aria-hidden="true">CAMPAIGN REACTION</span>
+          <span aria-hidden="true">SPIEGEL</span>
         </button>
       </div>
 

@@ -1,6 +1,6 @@
 # Test Case — Asseco BooX Campaign
 
-Demo walkthrough for Campaign-Reaction. Everything below is ready to copy and paste.
+Demo walkthrough for Spiegel. Everything below is ready to copy and paste.
 
 | | |
 |---|---|

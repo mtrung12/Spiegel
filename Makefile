@@ -1,4 +1,4 @@
-# Campaign-Reaction / Spiegel
+# Spiegel
 #
 # make run       - build (if needed) and start the stack in Docker
 # make rebuild   - rebuild the image from scratch and restart
@@ -13,7 +13,7 @@ BACKEND_URL := http://localhost:5001
 .PHONY: help run rebuild dev stop down restart logs ps shell build setup clean
 
 help:
-	@echo Campaign-Reaction targets:
+	@echo Spiegel targets:
 	@echo   make run       Build if needed and start the stack in Docker
 	@echo   make rebuild   Rebuild the image with no cache and restart
 	@echo   make dev       Run locally without Docker
