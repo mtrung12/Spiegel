@@ -21,10 +21,10 @@ _ID_PATTERNS = {
     'project_id': re.compile(r'^proj_[0-9a-f]{12}$'),
     'simulation_id': re.compile(r'^sim_[0-9a-f]{12}$'),
     'report_id': re.compile(r'^report_[0-9a-f]{12}$'),
-    # Zep graph ids default to spiegel_<16>, but a graph may also be created
+    # Graph ids default to spiegel_<16>, but a graph may also be created
     # with a caller-supplied id, so this stays a general safe-token rule.
     'graph_id': re.compile(r'^[A-Za-z0-9_-]{1,128}$'),
-    # Zep entity uuids are standard uuid4 strings.
+    # Entity uuids are standard uuid4 strings.
     'entity_uuid': re.compile(r'^[0-9a-fA-F-]{1,64}$'),
     'task_id': re.compile(r'^[0-9a-fA-F-]{1,64}$'),
 }

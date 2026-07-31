@@ -139,8 +139,12 @@ class Config:
     VISION_PDF_DPI = int(os.environ.get('VISION_PDF_DPI', '150'))
     VISION_PDF_MAX_PAGES = int(os.environ.get('VISION_PDF_MAX_PAGES', '40'))
 
-    # Zep settings
-    ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
+    # Neo4j - the knowledge graph store behind Graphiti. Community Edition is
+    # enough; docker-compose.yml brings one up. Nothing leaves the deployment.
+    NEO4J_URI = os.environ.get('NEO4J_URI', 'bolt://localhost:7687')
+    NEO4J_USER = os.environ.get('NEO4J_USER', 'neo4j')
+    NEO4J_PASSWORD = os.environ.get('NEO4J_PASSWORD')
+    NEO4J_DATABASE = os.environ.get('NEO4J_DATABASE', 'neo4j')
 
     # Embeddings for the content vector index. Served by the self-hosted LM Studio
     # box in the OpenAI format, so no per-post bill and no data leaving the LAN.
@@ -172,6 +176,11 @@ class Config:
     EMBEDDING_MODEL_NAME = os.environ.get(
         'EMBEDDING_MODEL_NAME', 'text-embedding-qwen3-embedding-4b'
     )
+    # Graphiti sizes the Neo4j vector index up front, so unlike Qdrant it cannot
+    # infer the width from the first vector it sees. Keep this in step with
+    # EMBEDDING_MODEL_NAME; changing either means the graph must be rebuilt,
+    # since existing vectors are the old width.
+    EMBEDDING_DIMENSIONS = int(os.environ.get('EMBEDDING_DIMENSIONS', '2560'))
 
     # Qdrant. Unset QDRANT_URL means embedded local storage under uploads/ -
     # no server to run. Point it at a Qdrant instance for multi-worker setups.
@@ -308,10 +317,11 @@ class Config:
                 "VISION_LLM_API_KEY is not configured"
                 " (VISION_LLM_BASE_URL differs from LLM_BASE_URL, so it needs its own key)"
             )
-        if not cls.ZEP_API_KEY:
-            errors.append("ZEP_API_KEY is not configured")
-        if os.environ.get("ZEP_API_URL"):
-            errors.append("ZEP_API_URL is not supported; Spiegel only connects to Zep Cloud")
+        if not cls.NEO4J_PASSWORD:
+            errors.append(
+                "NEO4J_PASSWORD is not configured"
+                " (the knowledge graph store; see docker-compose.yml)"
+            )
         if cls.DEBUG:
             import warnings
             warnings.warn("Flask DEBUG mode is enabled. Do not use in production.", RuntimeWarning)

@@ -21,9 +21,9 @@ from app.services.simulation_runner import (
     SimulationRunState,
     SimulationRunner,
 )
-from app.services.zep_graph_memory_updater import (
-    ZepGraphMemoryManager,
-    ZepIngestionIncomplete,
+from app.services.graph_memory_updater import (
+    GraphMemoryManager,
+    GraphIngestionIncomplete,
 )
 
 
@@ -51,7 +51,7 @@ def _stop_with(monkeypatch, simulation_id, exc):
         "_sync_simulation_status",
         classmethod(lambda _cls, *_args, **_kwargs: None),
     )
-    monkeypatch.setattr(runner_module.ZepGraphMemoryManager, "stop_updater", _raise(exc))
+    monkeypatch.setattr(runner_module.GraphMemoryManager, "stop_updater", _raise(exc))
     SimulationRunner._processes.pop(simulation_id, None)
     SimulationRunner._monitor_threads.pop(simulation_id, None)
     SimulationRunner._graph_memory_enabled[simulation_id] = True
@@ -59,7 +59,7 @@ def _stop_with(monkeypatch, simulation_id, exc):
 
 
 def test_rejected_batches_still_reach_a_reportable_terminal_status(monkeypatch):
-    error = ZepIngestionIncomplete("116 Zep activity batch(es) failed")
+    error = GraphIngestionIncomplete("116 Zep activity batch(es) failed")
     state = _stop_with(monkeypatch, "sim-degraded", error)
 
     try:
@@ -112,25 +112,25 @@ def test_unretryable_stop_drops_the_registration(monkeypatch):
     report barrier for the life of the process - the block the user hits.
     """
     monkeypatch.setitem(
-        ZepGraphMemoryManager._updaters,
+        GraphMemoryManager._updaters,
         "sim-drop",
-        _Updater(ZepIngestionIncomplete("batches failed")),
+        _Updater(GraphIngestionIncomplete("batches failed")),
     )
 
-    with pytest.raises(ZepIngestionIncomplete):
-        ZepGraphMemoryManager.stop_updater("sim-drop")
+    with pytest.raises(GraphIngestionIncomplete):
+        GraphMemoryManager.stop_updater("sim-drop")
 
-    assert ZepGraphMemoryManager.get_updater("sim-drop") is None
+    assert GraphMemoryManager.get_updater("sim-drop") is None
 
 
 def test_retryable_stop_keeps_the_registration(monkeypatch):
     monkeypatch.setitem(
-        ZepGraphMemoryManager._updaters,
+        GraphMemoryManager._updaters,
         "sim-keep",
         _Updater(TimeoutError("worker did not stop")),
     )
 
     with pytest.raises(TimeoutError):
-        ZepGraphMemoryManager.stop_updater("sim-keep")
+        GraphMemoryManager.stop_updater("sim-keep")
 
-    assert ZepGraphMemoryManager.get_updater("sim-keep") is not None
+    assert GraphMemoryManager.get_updater("sim-keep") is not None

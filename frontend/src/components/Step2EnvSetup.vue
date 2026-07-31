@@ -886,7 +886,7 @@ const startPrepareSimulation = async () => {
       if (res.data.expected_entities_count) {
         segmentCount.value = res.data.expected_entities_count
         expectedTotal.value = res.data.expected_agent_count || res.data.expected_entities_count
-        addLog(t('log.zepEntitiesFound', { count: res.data.expected_entities_count }))
+        addLog(t('log.graphEntitiesFound', { count: res.data.expected_entities_count }))
         if (res.data.entity_types && res.data.entity_types.length > 0) {
           addLog(t('log.entityTypes', { types: res.data.entity_types.join(', ') }))
         }
@@ -1194,7 +1194,7 @@ onMounted(async () => {
       if (res.success && res.data) {
         segmentCount.value = res.data.filtered_count
         entityTypes.value = res.data.entity_types || []
-        addLog(t('log.zepEntitiesFound', { count: res.data.filtered_count }))
+        addLog(t('log.graphEntitiesFound', { count: res.data.filtered_count }))
         if (entityTypes.value.length) {
           addLog(t('log.entityTypes', { types: entityTypes.value.join(', ') }))
         }

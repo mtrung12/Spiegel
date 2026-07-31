@@ -9,26 +9,25 @@ import traceback
 import threading
 from contextlib import ExitStack, nullcontext
 from flask import request, jsonify
-from zep_cloud import NotFoundError
 
 from . import graph_bp
 from ..config import Config
 from ..services.corpus import render_distribution
 from ..services.corpus_ingest import ingest_corpus
 from ..services.ontology_generator import OntologyGenerator
-from ..services.graph_builder import BatchSubmission, GraphBuilderService
+from ..services.graph_builder import GraphBuilderService
 from ..services.text_processor import TextProcessor
 from ..utils.file_parser import FileParser
 from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
 from ..utils.pipeline_logger import pipeline_log
-from ..utils.zep_lifecycle import get_graph_readers, graph_lifecycle_lock
+from ..utils.graph_lifecycle import get_graph_readers, graph_lifecycle_lock
 from ..models.task import TaskCancelled, TaskManager, TaskStatus
 from ..models.project import ProjectManager, ProjectStatus
 from ..services.simulation_manager import SimulationManager
 from ..services.simulation_runner import SimulationRunner, RunnerStatus
 from ..services.report_agent import ReportManager, ReportStatus
-from ..services.zep_graph_memory_updater import ZepGraphMemoryManager
+from ..services.graph_memory_updater import GraphMemoryManager
 from ..utils.llm_client import LLMResponseError
 
 # Logger
@@ -38,6 +37,12 @@ logger = get_logger('spiegel.api')
 # the image-only PDF that extracted to nothing, which otherwise passes silently
 # and produces an ontology, an audience and a report built on an empty string.
 MIN_DOCUMENT_CHARS = 200
+
+# Chunks per ingestion call. Zep took 350 because that was its Batch API's
+# per-request cap and the work happened elsewhere; here each batch is extraction
+# and resolution running locally, so the number is a progress-reporting and
+# cancellation granularity choice - smaller means a stop lands sooner.
+GRAPH_BATCH_SIZE = 20
 
 _build_locks: dict[str, threading.Lock] = {}
 _build_locks_guard = threading.Lock()
@@ -52,7 +57,7 @@ def _active_graph_consumers(graph_id: str) -> list[str]:
         f"report:{reader_id}"
         for reader_id in get_graph_readers(graph_id)
     }
-    for simulation_id in ZepGraphMemoryManager.get_simulation_ids_for_graph(graph_id):
+    for simulation_id in GraphMemoryManager.get_simulation_ids_for_graph(graph_id):
         finalization_lock = SimulationRunner._finalization_lock(simulation_id)
         if not finalization_lock.acquire(blocking=False):
             active.add(simulation_id)
@@ -62,7 +67,7 @@ def _active_graph_consumers(graph_id: str) -> list[str]:
             if run_state and run_state.runner_status == RunnerStatus.FAILED:
                 # reset/delete is the explicit recovery path for an incomplete,
                 # non-replayable write. Serialize it against a retry drain.
-                ZepGraphMemoryManager.discard_inactive_updater(simulation_id)
+                GraphMemoryManager.discard_inactive_updater(simulation_id)
                 SimulationRunner._graph_memory_enabled.pop(simulation_id, None)
                 continue
             active.add(simulation_id)
@@ -83,12 +88,12 @@ def _active_graph_consumers(graph_id: str) -> list[str]:
     return sorted(active)
 
 
-def _delete_cloud_graph_if_present(graph_id: str | None) -> None:
-    """Delete a referenced Cloud graph without retrying the mutation."""
+def _delete_graph_if_present(graph_id: str | None) -> None:
+    """Delete a referenced graph partition once no consumer still holds it."""
 
     if not graph_id:
         return
-    # Keep the consumer check and Cloud mutation in one critical section. The
+    # Keep the consumer check and the delete in one critical section. The
     # callers that also clear local references hold this re-entrant lock around
     # both operations.
     with graph_lifecycle_lock(graph_id):
@@ -98,17 +103,14 @@ def _delete_cloud_graph_if_present(graph_id: str | None) -> None:
                 f"Graph {graph_id} is in use by active consumer(s): "
                 f"{', '.join(active_simulations)}"
             )
-        try:
-            GraphBuilderService(api_key=Config.ZEP_API_KEY).delete_graph(graph_id)
-        except NotFoundError:
-            logger.info("Zep Cloud graph already absent: %s", graph_id)
+        # Deleting a partition that holds nothing is a no-op, so unlike the
+        # Cloud client there is no "already absent" case to swallow here.
+        GraphBuilderService().delete_graph(graph_id)
 
 
 def _clear_project_graph_reference(project) -> None:
     project.graph_id = None
     project.graph_build_task_id = None
-    project.zep_batch_id = None
-    project.zep_batch_operation_id = None
     project.error = None
 
 
@@ -443,7 +445,7 @@ def _delete_project_impl(project_id: str):
     )
     with graph_guard:
         try:
-            _delete_cloud_graph_if_present(graph_id)
+            _delete_graph_if_present(graph_id)
         except GraphInUseError as error:
             return jsonify({"success": False, "error": str(error)}), 409
         # The local reference remains protected until it is removed, so a new
@@ -498,7 +500,7 @@ def _reset_project_impl(project_id: str):
     )
     with graph_guard:
         try:
-            _delete_cloud_graph_if_present(graph_id)
+            _delete_graph_if_present(graph_id)
         except GraphInUseError as error:
             return jsonify({"success": False, "error": str(error)}), 409
 
@@ -780,8 +782,8 @@ def _build_graph_impl():
         
         # Validate the configuration
         errors = []
-        if not Config.ZEP_API_KEY:
-            errors.append(t('api.zepApiKeyMissing'))
+        if not Config.NEO4J_PASSWORD:
+            errors.append(t('api.graphStoreNotConfigured'))
         if errors:
             logger.error(f"configuration errors: {errors}")
             return jsonify({
@@ -822,7 +824,6 @@ def _build_graph_impl():
                 "error": t('api.ontologyNotGenerated')
             }), 400
         
-        resume_existing_batch = False
         if project.status == ProjectStatus.GRAPH_BUILDING:
             if _project_has_active_build(project):
                 return jsonify({
@@ -836,35 +837,23 @@ def _build_graph_impl():
                     }
                 })
 
-            if (
-                not force
-                and project.graph_id
-                and project.zep_batch_id
-                and project.zep_batch_operation_id
-            ):
-                builder = GraphBuilderService(api_key=Config.ZEP_API_KEY)
-                batch_summary = builder.get_batch_summary(project.zep_batch_id)
-                if getattr(batch_summary, "status", None) in {
-                    "queued",
-                    "processing",
-                    "succeeded",
-                }:
-                    resume_existing_batch = True
-
-            if not resume_existing_batch:
-                project.status = ProjectStatus.FAILED
-                project.error = (
-                    "Graph build task is no longer present; the persisted Zep "
-                    "batch cannot be resumed automatically"
-                )
-                ProjectManager.save_project(project)
-                if not force:
-                    return jsonify({
-                        "success": False,
-                        "error": project.error,
-                        "task_id": project.graph_build_task_id,
-                        "recoverable": True,
-                    }), 409
+            # GRAPH_BUILDING with no live task means the process died mid-build.
+            # Ingestion runs in that process, so nothing survived it to resume -
+            # the partial graph is dropped and the build starts over. Under Zep
+            # this was recoverable, because their queue kept working without us.
+            project.status = ProjectStatus.FAILED
+            project.error = (
+                "The graph build did not finish and cannot be resumed; "
+                "rebuild the graph"
+            )
+            ProjectManager.save_project(project)
+            if not force:
+                return jsonify({
+                    "success": False,
+                    "error": project.error,
+                    "task_id": project.graph_build_task_id,
+                    "recoverable": True,
+                }), 409
 
         if project.status == ProjectStatus.GRAPH_COMPLETED and not force:
             return jsonify({
@@ -940,7 +929,7 @@ def _build_graph_impl():
                 else nullcontext()
             )
             with graph_guard:
-                _delete_cloud_graph_if_present(graph_id_to_delete)
+                _delete_graph_if_present(graph_id_to_delete)
                 project.status = ProjectStatus.ONTOLOGY_GENERATED
                 _clear_project_graph_reference(project)
                 ProjectManager.save_project(project)
@@ -986,58 +975,50 @@ def _build_graph_impl():
                 check_cancelled()
                 
                 # Create the graph build service
-                builder = GraphBuilderService(api_key=Config.ZEP_API_KEY)
+                builder = GraphBuilderService()
                 
                 # Harvest public discussion about the category and code it into
                 # a theme distribution. Best-effort: a build that cannot reach
                 # the sources still proceeds on the brief alone.
                 build_text = text
-                if resume_existing_batch:
-                    # Resuming matches a batch by hashing the chunks, so the text
-                    # has to be byte-identical to the original run. Re-render the
-                    # stored distribution instead of re-harvesting, which would
-                    # produce different wording and break the match.
-                    stored_text = render_distribution(project.corpus_distribution)
-                    if stored_text:
-                        build_text = f"{text}\n\n{stored_text}"
+
+                def corpus_progress(message, state=None, **fields):
+                    task_manager.update_task(task_id, message=message, progress=3)
+                    if state:
+                        set_corpus_state(state, **fields)
+
+                set_corpus_state('starting')
+                with pipeline_log.step(
+                    'CorpusIngest', 'ingest_corpus', target=project_id,
+                ) as step:
+                    corpus = ingest_corpus(
+                        text,
+                        progress=corpus_progress,
+                        should_cancel=lambda: task_manager.is_cancelled(task_id),
+                    )
+                    step.metric(**{
+                        k: v for k, v in corpus['summary'].items()
+                        if isinstance(v, (int, float, str))
+                    })
+
+                project.corpus_distribution = corpus['distribution']
+                project.corpus_summary = corpus['summary']
+                ProjectManager.save_project(project)
+
+                if corpus['episode_text']:
+                    # Appended as text so the harvested priors travel through
+                    # the same chunk-and-episode path as the brief.
+                    build_text = f"{text}\n\n{corpus['episode_text']}"
+                    set_corpus_state(
+                        'done',
+                        themes=corpus['summary'].get('themes', 0),
+                        coded=corpus['summary'].get('coded', 0),
+                    )
                 else:
-                    def corpus_progress(message, state=None, **fields):
-                        task_manager.update_task(task_id, message=message, progress=3)
-                        if state:
-                            set_corpus_state(state, **fields)
-
-                    set_corpus_state('starting')
-                    with pipeline_log.step(
-                        'CorpusIngest', 'ingest_corpus', target=project_id,
-                    ) as step:
-                        corpus = ingest_corpus(
-                            text,
-                            progress=corpus_progress,
-                            should_cancel=lambda: task_manager.is_cancelled(task_id),
-                        )
-                        step.metric(**{
-                            k: v for k, v in corpus['summary'].items()
-                            if isinstance(v, (int, float, str))
-                        })
-
-                    project.corpus_distribution = corpus['distribution']
-                    project.corpus_summary = corpus['summary']
-                    ProjectManager.save_project(project)
-
-                    if corpus['episode_text']:
-                        # Appended as text so the harvested priors travel through
-                        # the same chunk-and-batch path as the brief.
-                        build_text = f"{text}\n\n{corpus['episode_text']}"
-                        set_corpus_state(
-                            'done',
-                            themes=corpus['summary'].get('themes', 0),
-                            coded=corpus['summary'].get('coded', 0),
-                        )
-                    else:
-                        set_corpus_state(
-                            'skipped',
-                            reason=corpus['summary'].get('skipped', 'no_results'),
-                        )
+                    set_corpus_state(
+                        'skipped',
+                        reason=corpus['summary'].get('skipped', 'no_results'),
+                    )
 
                 check_cancelled()
 
@@ -1057,129 +1038,72 @@ def _build_graph_impl():
                         chunk_size=chunk_size,
                         overlap=chunk_overlap
                     )
-                    builder.validate_batch_chunks(chunks, batch_size=350)
+                    builder.validate_batch_chunks(chunks, batch_size=GRAPH_BATCH_SIZE)
                     total_chunks = len(chunks)
                     step.metric(chunks=total_chunks, text_chars=len(build_text))
                     step.output(first_chunk_preview=chunks[0][:400] if chunks else '')
 
-                if resume_existing_batch:
-                    graph_id = project.graph_id
-                    operation_id = builder.build_operation_id(graph_id, chunks)
-                    if operation_id != project.zep_batch_operation_id:
-                        raise RuntimeError(
-                            "Persisted Zep batch does not match the current graph input"
-                        )
-                    submission = BatchSubmission(
-                        batch_id=project.zep_batch_id,
-                        operation_id=operation_id,
-                        episode_uuids=[],
-                        item_count=total_chunks,
-                    )
-                    task_manager.update_task(
-                        task_id,
-                        message=t('progress.waitingZepProcess'),
-                        progress=55,
-                    )
-                else:
-                    # Last point before anything is created in Zep Cloud, so a
-                    # stop here leaves nothing to clean up.
-                    check_cancelled()
+                # Last point before anything is written to the graph store, so a
+                # stop here leaves nothing to clean up.
+                check_cancelled()
 
-                    # Create the graph
-                    task_manager.update_task(
-                        task_id,
-                        message=t('progress.creatingZepGraph'),
-                        progress=10
-                    )
-
-                    def remember_graph(graph_id):
-                        project.graph_id = graph_id
-                        ProjectManager.save_project(project)
-
-                    with pipeline_log.step(
-                        'GraphBuilderService', 'create_graph', target=graph_name,
-                    ) as step:
-                        graph_id = builder.create_graph(
-                            name=graph_name,
-                            graph_id_callback=remember_graph,
-                        )
-                        step.target(graph_id).metric(graph_id=graph_id)
-
-                    # Install the ontology
-                    task_manager.update_task(
-                        task_id,
-                        message=t('progress.settingOntology'),
-                        progress=15
-                    )
-                    with pipeline_log.step(
-                        'GraphBuilderService', 'set_ontology', target=graph_id,
-                    ) as step:
-                        step.input(ontology=ontology)
-                        step.metric(
-                            entity_types=len(ontology.get('entity_types') or []),
-                            edge_types=len(ontology.get('edge_types') or []),
-                        )
-                        builder.set_ontology(graph_id, ontology)
-
-                    # Add the text (progress_callback takes (msg, progress_ratio))
-                    def add_progress_callback(msg, progress_ratio):
-                        progress = 15 + int(progress_ratio * 40)  # 15% - 55%
-                        task_manager.update_task(
-                            task_id,
-                            message=msg,
-                            progress=progress
-                        )
-
-                    task_manager.update_task(
-                        task_id,
-                        message=t('progress.addingChunks', count=total_chunks),
-                        progress=15
-                    )
-
-                    def remember_batch(batch_id, operation_id):
-                        project.zep_batch_id = batch_id
-                        project.zep_batch_operation_id = operation_id
-                        ProjectManager.save_project(project)
-
-                    with pipeline_log.step(
-                        'GraphBuilderService', 'add_text_batches', target=graph_id,
-                        batch_size=350, chunks=total_chunks,
-                    ) as step:
-                        submission = builder.add_text_batches(
-                            graph_id,
-                            chunks,
-                            batch_size=350,
-                            progress_callback=add_progress_callback,
-                            batch_created_callback=remember_batch,
-                        )
-                        step.metric(
-                            batch_id=submission.batch_id,
-                            items=submission.item_count,
-                        )
-
-                # Wait for Zep to finish (polls each episode's processed flag)
+                # Claim the graph partition
                 task_manager.update_task(
                     task_id,
-                    message=t('progress.waitingZepProcess'),
-                    progress=55
+                    message=t('progress.creatingGraph'),
+                    progress=10
                 )
-                
-                def wait_progress_callback(msg, progress_ratio):
-                    progress = 55 + int(progress_ratio * 35)  # 55% - 90%
+
+                def remember_graph(graph_id):
+                    project.graph_id = graph_id
+                    ProjectManager.save_project(project)
+
+                with pipeline_log.step(
+                    'GraphBuilderService', 'create_graph', target=graph_name,
+                ) as step:
+                    graph_id = builder.create_graph(
+                        name=graph_name,
+                        graph_id_callback=remember_graph,
+                    )
+                    step.target(graph_id).metric(graph_id=graph_id)
+
+                # Ingest the chunks. Extraction runs here rather than on a
+                # remote queue, so this single phase covers what used to be an
+                # upload followed by a wait: 10% - 90%.
+                def add_progress_callback(msg, progress_ratio):
+                    progress = 10 + int(progress_ratio * 80)
                     task_manager.update_task(
                         task_id,
                         message=msg,
                         progress=progress
                     )
-                    # The longest phase of the build, and the poll loop calls
-                    # this every pass, so a stop lands quickly here.
+                    # The longest phase of the build, and this runs once per
+                    # batch, so a stop lands between batches.
                     check_cancelled()
-                
+
+                task_manager.update_task(
+                    task_id,
+                    message=t('progress.addingChunks', count=total_chunks),
+                    progress=10
+                )
+
                 with pipeline_log.step(
-                    'GraphBuilderService', 'wait_for_batch',
-                    target=submission.batch_id, items=submission.item_count,
-                ):
-                    builder._wait_for_batch(submission, wait_progress_callback)
+                    'GraphBuilderService', 'add_text_batches', target=graph_id,
+                    batch_size=GRAPH_BATCH_SIZE, chunks=total_chunks,
+                ) as step:
+                    step.input(ontology=ontology)
+                    step.metric(
+                        entity_types=len(ontology.get('entity_types') or []),
+                        edge_types=len(ontology.get('edge_types') or []),
+                    )
+                    ingested = builder.add_text_batches(
+                        graph_id,
+                        chunks,
+                        ontology=ontology,
+                        batch_size=GRAPH_BATCH_SIZE,
+                        progress_callback=add_progress_callback,
+                    )
+                    step.metric(items=ingested)
 
                 # Fetch the graph data
                 task_manager.update_task(
@@ -1211,13 +1135,12 @@ def _build_graph_impl():
                             "node_count": node_count,
                             "edge_count": edge_count,
                             "chunk_count": total_chunks,
-                            "zep_batch_id": submission.batch_id,
                         }
                     )
                 
             except TaskCancelled:
                 # The user stopped the build. Whatever was already created in
-                # Zep Cloud is left in place and the project is marked FAILED,
+                # the graph store is left in place and the project is marked FAILED,
                 # which is the state reset and force-rebuild already recover
                 # from - a cancelled build needs no recovery path of its own.
                 build_logger.info(f"[{task_id}] graph build stopped by the user")
@@ -1348,13 +1271,13 @@ def get_graph_data(graph_id: str):
     Return the graph data: nodes and edges.
     """
     try:
-        if not Config.ZEP_API_KEY:
+        if not Config.NEO4J_PASSWORD:
             return jsonify({
                 "success": False,
-                "error": t('api.zepApiKeyMissing')
+                "error": t('api.graphStoreNotConfigured')
             }), 500
-        
-        builder = GraphBuilderService(api_key=Config.ZEP_API_KEY)
+
+        builder = GraphBuilderService()
         graph_data = builder.get_graph_data(graph_id)
         
         return jsonify({
@@ -1373,15 +1296,15 @@ def get_graph_data(graph_id: str):
 @graph_bp.route('/delete/<graph_id>', methods=['DELETE'])
 def delete_graph(graph_id: str):
     """
-    Delete the Zep graph.
+    Delete the graph.
     """
     try:
-        if not Config.ZEP_API_KEY:
+        if not Config.NEO4J_PASSWORD:
             return jsonify({
                 "success": False,
-                "error": t('api.zepApiKeyMissing')
+                "error": t('api.graphStoreNotConfigured')
             }), 500
-        
+
         projects = ProjectManager.find_projects_by_graph_id(graph_id)
         if not projects:
             return jsonify({
@@ -1403,7 +1326,7 @@ def delete_graph(graph_id: str):
                     "error": t('api.graphBuilding')
                 }), 409
 
-            _delete_cloud_graph_if_present(graph_id)
+            _delete_graph_if_present(graph_id)
 
             for project in projects:
                 _clear_project_graph_reference(project)

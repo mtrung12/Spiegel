@@ -31,7 +31,7 @@ logger = get_logger('spiegel.api.guards')
 
 # Parameter name -> identifier kind understood by validate_id. Names not listed
 # here are free-form and validated by the handler that consumes them
-# (`entity_type` is a Zep label, `script_name` has its own allowlist).
+# (`entity_type` is a graph node label, `script_name` has its own allowlist).
 _ID_PARAM_KINDS = {
     'simulation_id': 'simulation_id',
     'project_id': 'project_id',

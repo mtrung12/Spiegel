@@ -111,7 +111,7 @@ export function getProjectProgress(projectId) {
 }
 
 /**
- * Delete a project, its Zep graph and its simulations.
+ * Delete a project, its knowledge graph and its simulations.
  * @param {String} projectId - the project ID
  * @returns {Promise}
  */

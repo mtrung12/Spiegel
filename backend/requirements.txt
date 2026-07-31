@@ -20,8 +20,13 @@ openai>=1.0.0
 # self-hosted LM Studio box, see EMBEDDING_BASE_URL.
 qdrant-client>=1.9.0
 
-# ============= Zep Cloud =============
-zep-cloud==3.25.0
+# ============= Knowledge graph =============
+# Graphiti builds and queries the temporal knowledge graph; it talks to Neo4j
+# over Bolt and to the LLM/embedding endpoints configured in .env.
+# NOTE: camel-oasis pins neo4j==5.23.0 while graphiti needs >=5.26. pyproject.toml
+# carries a uv override for this; with plain pip, install neo4j last:
+#   pip install -r requirements.txt && pip install 'neo4j>=5.26,<6'
+graphiti-core>=0.29.3
 httpx>=0.27.0
 
 # ============= OASIS social media simulation =============

@@ -41,11 +41,11 @@ class Project:
     ontology: Optional[Dict[str, Any]] = None
     analysis_summary: Optional[str] = None
     
-    # Graph info (populated after endpoint 2 completes)
+    # Graph info (populated after endpoint 2 completes). Projects saved
+    # before ingestion moved in-process may still carry zep_batch_* keys in
+    # their JSON; from_dict ignores them.
     graph_id: Optional[str] = None
     graph_build_task_id: Optional[str] = None
-    zep_batch_id: Optional[str] = None
-    zep_batch_operation_id: Optional[str] = None
     
     # Audience priors harvested from public discussion during the graph build.
     # Absent when no source was configured or the harvest found nothing; the
@@ -75,8 +75,6 @@ class Project:
             "analysis_summary": self.analysis_summary,
             "graph_id": self.graph_id,
             "graph_build_task_id": self.graph_build_task_id,
-            "zep_batch_id": self.zep_batch_id,
-            "zep_batch_operation_id": self.zep_batch_operation_id,
             "corpus_distribution": self.corpus_distribution,
             "corpus_summary": self.corpus_summary,
             "simulation_requirement": self.simulation_requirement,
@@ -104,8 +102,6 @@ class Project:
             analysis_summary=data.get('analysis_summary'),
             graph_id=data.get('graph_id'),
             graph_build_task_id=data.get('graph_build_task_id'),
-            zep_batch_id=data.get('zep_batch_id'),
-            zep_batch_operation_id=data.get('zep_batch_operation_id'),
             corpus_distribution=data.get('corpus_distribution'),
             corpus_summary=data.get('corpus_summary'),
             simulation_requirement=data.get('simulation_requirement'),

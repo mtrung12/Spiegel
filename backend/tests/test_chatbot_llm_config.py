@@ -45,7 +45,7 @@ def test_chatbot_config_falls_back_to_the_agent_config(monkeypatch):
 
 
 def _chatbot_key_errors(monkeypatch, **attrs):
-    monkeypatch.setattr(Config, "ZEP_API_KEY", "zep-key")
+    monkeypatch.setattr(Config, "NEO4J_PASSWORD", "neo4j-password")
     for name, value in attrs.items():
         monkeypatch.setattr(Config, name, value)
     return [e for e in Config.validate() if e.startswith("CHATBOT_LLM_API_KEY")]

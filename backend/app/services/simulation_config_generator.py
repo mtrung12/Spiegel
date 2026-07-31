@@ -27,7 +27,7 @@ from ..utils.openai_chat_compat import create_chat_completion, extract_chat_comp
 from ..utils.pipeline_logger import pipeline_log
 from .agent_population import AgentSlot
 from .corpus import render_distribution
-from .zep_entity_reader import EntityNode
+from .graph_entity_reader import EntityNode
 
 logger = get_logger('spiegel.simulation_config')
 
