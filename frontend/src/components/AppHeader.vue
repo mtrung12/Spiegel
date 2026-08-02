@@ -2,10 +2,31 @@
   <div class="app-chrome">
     <header class="app-header">
       <div class="header-left">
+        <!-- The only exit used to be the wordmark, whose "go back" meaning
+             lived in a screen-reader-only span - so on screen the app had no
+             back control at all. This one is never disabled: it does not wait
+             on the progress fetch, and it still works when that fetch fails. -->
+        <button class="back-btn" :aria-label="backLabel" :title="backLabel" @click="goBack">
+          <span class="back-arrow" aria-hidden="true">←</span>
+          <span class="back-label">{{ backLabel }}</span>
+        </button>
+
+        <span class="header-divider" aria-hidden="true"></span>
+
         <button class="brand" @click="router.push('/')">
           <span class="sr-only">{{ $t('a11y.backToProjectList') }}</span>
           <span aria-hidden="true">SPIEGEL</span>
         </button>
+
+        <!-- Which campaign this is. Only step 1 ever said, so steps 2-5 were
+             five identical-looking pages across every project. -->
+        <template v-if="projectName">
+          <span class="header-divider" aria-hidden="true"></span>
+          <span class="project-name" :title="projectName">
+            <span class="sr-only">{{ $t('a11y.currentProject') }}:</span>
+            {{ projectName }}
+          </span>
+        </template>
       </div>
 
       <div class="header-center">
@@ -38,15 +59,19 @@
          the brand link, which drops all the way out to the project list. -->
     <nav class="step-bar" :aria-label="$t('a11y.workflowSteps')">
       <ol class="step-list">
-        <li v-for="(name, i) in stepNames" :key="i" class="step-item">
+        <!-- A step that cannot be opened stays focusable and keeps its tooltip:
+             `disabled` drops it out of the tab order and suppresses the title,
+             so the user got a dead click with no explanation. -->
+        <li v-for="(name, i) in stepNames" :key="i" class="step-item" :title="stepHint(i + 1)">
           <button
             class="step-btn"
             :class="{
               current: i + 1 === currentStep,
               done: i + 1 < currentStep,
-              reachable: !!stepTarget(i + 1)
+              reachable: !!stepTarget(i + 1),
+              locked: !stepTarget(i + 1) && i + 1 !== currentStep
             }"
-            :disabled="!stepTarget(i + 1) || i + 1 === currentStep"
+            :aria-disabled="!stepTarget(i + 1) || i + 1 === currentStep"
             :aria-current="i + 1 === currentStep ? 'step' : undefined"
             @click="goToStep(i + 1)"
           >
@@ -65,6 +90,7 @@ import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import LanguageSwitcher from './LanguageSwitcher.vue'
+import { setProjectTitle } from '../utils/pageTitle'
 import { getProjectProgress } from '../api/graph'
 
 const props = defineProps({
@@ -76,7 +102,9 @@ const props = defineProps({
   modelValue: { type: String, default: 'split' },
   projectId: { type: [String, Number], default: null },
   simulationId: { type: [String, Number], default: null },
-  reportId: { type: [String, Number], default: null }
+  reportId: { type: [String, Number], default: null },
+  // Shown next to the wordmark so a step page says which campaign it belongs to.
+  projectName: { type: String, default: '' }
 })
 
 const emit = defineEmits(['update:modelValue', 'readonly'])
@@ -85,6 +113,11 @@ const router = useRouter()
 const { t, tm } = useI18n()
 
 const stepNames = computed(() => tm('main.stepNames'))
+
+// `tm` hands back raw messages, which are only guaranteed to be strings for
+// rendering. Anything interpolated into another message goes through `t` with
+// an indexed path so it cannot arrive as a compiled message function.
+const stepName = (step) => t(`main.stepNames[${step - 1}]`)
 
 const layoutLabels = computed(() => ({
   graph: t('main.layoutGraph'),
@@ -157,7 +190,39 @@ const stepTarget = (step) => {
 
 const goToStep = (step) => {
   const target = stepTarget(step)
-  if (target) router.push(target)
+  if (target && step !== props.currentStep) router.push(target)
+}
+
+// Why a step cannot be opened, said out loud. A dead click with no explanation
+// reads as a broken button.
+const stepHint = (step) => {
+  if (step === props.currentStep) return t('a11y.stepCurrent')
+  if (!stepTarget(step)) return t('a11y.stepNotReached')
+  return stepName(step)
+}
+
+// The nearest earlier step this project can actually open. Walking down rather
+// than assuming currentStep - 1 matters when an intermediate step never ran:
+// its route has no id, so pushing to it lands on a page with nothing to load.
+const backStep = computed(() => {
+  for (let step = props.currentStep - 1; step >= 1; step -= 1) {
+    if (stepTarget(step)) return step
+  }
+  return null
+})
+
+const backLabel = computed(() =>
+  backStep.value
+    ? t('nav.backToStep', { step: stepName(backStep.value) })
+    : t('nav.projects')
+)
+
+// Falls through to the project list whenever no earlier step is open - which is
+// also the state during the progress fetch and after it fails, so this control
+// is never dead.
+const goBack = () => {
+  const target = backStep.value ? stepTarget(backStep.value) : null
+  router.push(target || '/')
 }
 
 // Reopening a project lands on the step it stopped at; every other step is
@@ -177,6 +242,10 @@ const readOnly = computed(() =>
 )
 
 watch(readOnly, (value) => emit('readonly', value), { immediate: true })
+
+// The header is the one component every step view mounts, so it is where the
+// tab title learns which project it is looking at.
+watch(() => props.projectName, (name) => setProjectTitle(name), { immediate: true })
 </script>
 
 <style scoped>
@@ -202,8 +271,57 @@ watch(readOnly, (value) => emit('readonly', value), { immediate: true })
 .header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   flex: 1;
+}
+
+.header-left {
+  min-width: 0; /* lets .project-name ellipsis instead of pushing the row wide */
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--white);
+  padding: 6px 12px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.back-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--ink);
+}
+
+.back-arrow {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.header-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.project-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .header-right {
@@ -312,11 +430,17 @@ watch(readOnly, (value) => emit('readonly', value), { immediate: true })
   border-bottom: 2px solid transparent;
 }
 
-.step-btn:disabled {
+.step-btn[aria-disabled="true"] {
   cursor: default;
 }
 
-.step-btn.reachable:not(:disabled):hover {
+/* A step the project never reached. Still focusable and still carries a
+   tooltip - it just does not go anywhere. */
+.step-btn.locked {
+  opacity: 0.45;
+}
+
+.step-btn.reachable:not([aria-disabled="true"]):hover {
   color: var(--ink);
   background: var(--surface-2);
 }
@@ -391,6 +515,17 @@ watch(readOnly, (value) => emit('readonly', value), { immediate: true })
 @media (max-width: 600px) {
   .brand {
     font-size: 14px;
+  }
+
+  /* The arrow alone still reads as back, and the accessible name survives on
+     the aria-label. The project name is the first thing to go. */
+  .back-label,
+  .project-name {
+    display: none;
+  }
+
+  .back-btn {
+    padding: 6px 10px;
   }
 }
 </style>

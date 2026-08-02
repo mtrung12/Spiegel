@@ -1,5 +1,13 @@
 <template>
   <div class="interaction-panel">
+    <AppBanner
+      :message="profilesError"
+      retryable
+      :busy="loadingProfiles"
+      @retry="loadProfiles"
+      @dismiss="profilesError = ''"
+    />
+
     <!-- The report itself is step 4's panel and stays there; this step is only
          the follow-up conversation, full width. -->
     <div class="main-split-layout">
@@ -348,6 +356,7 @@ import { useI18n } from 'vue-i18n'
 import { chatWithReport } from '../api/report'
 import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
 import { renderMarkdown } from '../utils/markdown'
+import AppBanner from './AppBanner.vue'
 
 const { t } = useI18n()
 
@@ -699,17 +708,30 @@ const submitSurvey = async () => {
   }
 }
 
+// A failed profile load used to be silent: the audience dropdown simply did not
+// appear, which reads as "this project has no agents" rather than "the list
+// could not be fetched".
+const profilesError = ref('')
+const loadingProfiles = ref(false)
+
 const loadProfiles = async () => {
   if (!props.simulationId) return
-  
+
+  loadingProfiles.value = true
+  profilesError.value = ''
   try {
     const res = await getSimulationProfilesRealtime(props.simulationId)
     if (res.success && res.data) {
       profiles.value = res.data.profiles || []
       addLog(t('log.loadedProfiles', { count: profiles.value.length }))
+    } else {
+      throw new Error(res.error || t('common.unknownError'))
     }
   } catch (err) {
+    profilesError.value = t('step5.profilesFailed', { error: err.message })
     addLog(t('log.loadProfilesFailed', { error: err.message }))
+  } finally {
+    loadingProfiles.value = false
   }
 }
 

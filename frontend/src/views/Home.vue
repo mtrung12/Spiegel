@@ -1,7 +1,12 @@
 <template>
   <div class="home-container">
     <nav class="navbar">
-      <div class="nav-brand">SPIEGEL</div>
+      <!-- A button, like the wordmark on every other page. As a plain div it
+           was the one place in the app where clicking the logo did nothing. -->
+      <button type="button" class="nav-brand" @click="router.push('/')">
+        <span class="sr-only">{{ $t('a11y.backToProjectList') }}</span>
+        <span aria-hidden="true">SPIEGEL</span>
+      </button>
       <div class="nav-links">
         <LanguageSwitcher />
       </div>
@@ -231,6 +236,10 @@ const startSimulation = () => {
 }
 
 .nav-brand {
+  background: none;
+  border: none;
+  padding: 4px;
+  color: inherit;
   font-family: var(--font-mono);
   font-weight: 700;
   letter-spacing: 1px;

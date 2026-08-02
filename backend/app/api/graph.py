@@ -24,7 +24,7 @@ from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
 from ..utils.pipeline_logger import pipeline_log
 from ..utils.zep_lifecycle import get_graph_readers, graph_lifecycle_lock
-from ..models.task import TaskCancelled, TaskManager, TaskStatus
+from ..models.task import TERMINAL_STATUSES, TaskCancelled, TaskManager, TaskStatus
 from ..models.project import ProjectManager, ProjectStatus
 from ..services.simulation_manager import SimulationManager
 from ..services.simulation_runner import SimulationRunner, RunnerStatus
@@ -546,29 +546,174 @@ def _reset_project_impl(project_id: str):
 
 # ============== Endpoint 1: upload files and generate the ontology ==============
 
+def _classify_ontology_error(error: Exception) -> tuple[str, int]:
+    """
+    Turn an ontology failure into a message safe to show and an HTTP status.
+
+    Provider exception bodies may echo the request content back, so nothing
+    derived from them reaches the caller except a status code and a scrubbed
+    request id; the detail stays in the server log.
+    """
+    provider_status = getattr(error, "status_code", None)
+    request_id = getattr(error, "request_id", None)
+
+    if isinstance(error, LLMResponseError):
+        logger.exception("LLM returned an unusable ontology response")
+        return str(error), 502
+
+    if isinstance(provider_status, int):
+        public_error = f"LLM provider request failed (HTTP {provider_status})"
+        if request_id:
+            safe_request_id = re.sub(r"[^a-zA-Z0-9._:-]", "", str(request_id))[:128]
+            if safe_request_id:
+                public_error += f" (request_id: {safe_request_id})"
+        logger.error(
+            "Ontology provider request failed: type=%s status=%s request_id=%s",
+            type(error).__name__,
+            provider_status,
+            request_id or "unknown",
+        )
+        return public_error, 502
+
+    logger.exception("Unexpected ontology generation failure")
+    return "Ontology generation failed; check the server logs", 500
+
+
+def _public_ontology_error(error: Exception, project_id: str) -> str:
+    """The background-task half of the above: message only, no status code."""
+    public_error, response_status = _classify_ontology_error(error)
+    pipeline_log.action(
+        'api.graph', 'ontology_generate_failed',
+        status='error',
+        target=project_id,
+        metrics={'http_status': response_status},
+        error=f"{type(error).__name__}: {error}",
+    )
+    return public_error
+
+
+def _start_ontology_task(
+    project,
+    document_texts: list,
+    simulation_requirement: str,
+    additional_context: str,
+) -> str:
+    """
+    Record the project and hand the LLM call to a background thread.
+
+    Returns the task id to poll. The caller must have saved everything the task
+    does not own - files, extracted text, the requirement - because this saves
+    the project once and then the task owns it.
+    """
+    task_manager = TaskManager()
+    task_id = task_manager.create_task(
+        f"generating ontology: {project.name}",
+        metadata={"project_id": project.project_id},
+    )
+    project.ontology_task_id = task_id
+    project.error = None
+    ProjectManager.save_project(project)
+    logger.info(
+        f"created ontology task: task_id={task_id}, project_id={project.project_id}"
+    )
+
+    # Captured before the thread starts: the request context, and the locale
+    # bound to it, are gone by the time the task runs.
+    current_locale = get_locale()
+    project_id = project.project_id
+
+    def ontology_task():
+        # A background thread starts with no request context, so the locale is
+        # carried across explicitly rather than inherited.
+        set_locale(current_locale)
+        try:
+            task_manager.update_task(
+                task_id,
+                status=TaskStatus.PROCESSING,
+                progress=10,
+                message=t('progress.generatingOntology'),
+            )
+            logger.info("calling the LLM to generate the ontology definition...")
+            generator = OntologyGenerator()
+            ontology = generator.generate(
+                document_texts=document_texts,
+                simulation_requirement=simulation_requirement,
+                additional_context=additional_context if additional_context else None
+            )
+
+            entity_count = len(ontology.get("entity_types", []))
+            edge_count = len(ontology.get("edge_types", []))
+            logger.info(
+                f"ontology generated: {entity_count} entity types, "
+                f"{edge_count} edge types"
+            )
+
+            # Re-read rather than closing over `project`: the request thread
+            # saved it after this closure captured it.
+            saved = ProjectManager.get_project(project_id)
+            if saved is None:
+                logger.warning(
+                    "project %s vanished while its ontology was generating",
+                    project_id,
+                )
+                task_manager.fail_task(task_id, t('api.projectNotFound', id=project_id))
+                return
+
+            saved.ontology = {
+                "entity_types": ontology.get("entity_types", []),
+                "edge_types": ontology.get("edge_types", [])
+            }
+            saved.analysis_summary = ontology.get("analysis_summary", "")
+            saved.status = ProjectStatus.ONTOLOGY_GENERATED
+            ProjectManager.save_project(saved)
+            logger.info(f"=== ontology generated === project_id: {project_id}")
+
+            task_manager.complete_task(task_id, {
+                "project_id": project_id,
+                "ontology": saved.ontology,
+                "analysis_summary": saved.analysis_summary,
+            })
+        except Exception as task_error:
+            public_error = _public_ontology_error(task_error, project_id)
+            failed = ProjectManager.get_project(project_id)
+            if failed is not None:
+                failed.status = ProjectStatus.FAILED
+                failed.error = public_error
+                try:
+                    ProjectManager.save_project(failed)
+                except Exception:
+                    logger.exception(
+                        "Failed to persist ontology failure for project %s",
+                        project_id,
+                    )
+            task_manager.fail_task(task_id, public_error)
+
+    threading.Thread(target=ontology_task, daemon=True).start()
+    return task_id
+
+
 @graph_bp.route('/ontology/generate', methods=['POST'])
 def generate_ontology():
     """
-    Endpoint 1: upload files and derive the ontology definition.
-    
+    Endpoint 1: upload files, then derive the ontology in the background.
+
     Request: multipart/form-data
-    
+
     Parameters:
         files: uploaded files (PDF/MD/TXT); several are allowed
         simulation_requirement: the simulation requirement (required)
         project_name: project name (optional)
         additional_context: extra notes (optional)
-        
-    Returns:
+
+    Returns as soon as the files are stored - the ontology itself is not ready
+    yet, and `task_id` is what reports on it (GET /api/graph/task/<task_id>):
         {
             "success": true,
             "data": {
                 "project_id": "proj_xxxx",
-                "ontology": {
-                    "entity_types": [...],
-                    "edge_types": [...],
-                    "analysis_summary": "..."
-                },
+                "project_name": "...",
+                "task_id": "task_xxxx",
+                "status": "created",
                 "files": [...],
                 "total_text_length": 12345
             }
@@ -667,70 +812,30 @@ def generate_ontology():
             simulation_requirement = all_text.strip()
         project.simulation_requirement = simulation_requirement
 
-        # Generate the ontology
-        logger.info("calling the LLM to generate the ontology definition...")
-        generator = OntologyGenerator()
-        ontology = generator.generate(
-            document_texts=document_texts,
-            simulation_requirement=simulation_requirement,
-            additional_context=additional_context if additional_context else None
+        # Everything above is fast and its failures are the caller's to fix, so
+        # it stays in the request. The LLM call is neither: it runs for minutes,
+        # and while it did this response held the only copy of the new project
+        # id. A reload in that window stranded the client on /process/new with
+        # its in-memory file list gone and nothing to recover from - the upload
+        # was simply lost. The id and a task to poll now come back immediately.
+        task_id = _start_ontology_task(
+            project, document_texts, simulation_requirement, additional_context
         )
-        
-        # Persist the ontology on the project
-        entity_count = len(ontology.get("entity_types", []))
-        edge_count = len(ontology.get("edge_types", []))
-        logger.info(f"ontology generated: {entity_count} entity types, {edge_count} edge types")
-        
-        project.ontology = {
-            "entity_types": ontology.get("entity_types", []),
-            "edge_types": ontology.get("edge_types", [])
-        }
-        project.analysis_summary = ontology.get("analysis_summary", "")
-        project.status = ProjectStatus.ONTOLOGY_GENERATED
-        ProjectManager.save_project(project)
-        logger.info(f"=== ontology generated === project_id: {project.project_id}")
-        
+
         return jsonify({
             "success": True,
             "data": {
                 "project_id": project.project_id,
                 "project_name": project.name,
-                "ontology": project.ontology,
-                "analysis_summary": project.analysis_summary,
+                "task_id": task_id,
+                "status": project.status.value,
                 "files": project.files,
                 "total_text_length": project.total_text_length
             }
         })
-        
-    except Exception as error:
-        provider_status = getattr(error, "status_code", None)
-        request_id = getattr(error, "request_id", None)
 
-        if isinstance(error, LLMResponseError):
-            public_error = str(error)
-            response_status = 502
-            logger.exception("LLM returned an unusable ontology response")
-        elif isinstance(provider_status, int):
-            public_error = f"LLM provider request failed (HTTP {provider_status})"
-            if request_id:
-                safe_request_id = re.sub(
-                    r"[^a-zA-Z0-9._:-]", "", str(request_id)
-                )[:128]
-                if safe_request_id:
-                    public_error += f" (request_id: {safe_request_id})"
-            response_status = 502
-            # Provider exception bodies may echo request content. Keep the
-            # server log useful without serializing the exception body.
-            logger.error(
-                "Ontology provider request failed: type=%s status=%s request_id=%s",
-                type(error).__name__,
-                provider_status,
-                request_id or "unknown",
-            )
-        else:
-            public_error = "Ontology generation failed; check the server logs"
-            response_status = 500
-            logger.exception("Unexpected ontology generation failure")
+    except Exception as error:
+        public_error, response_status = _classify_ontology_error(error)
 
         pipeline_log.action(
             'api.graph', 'ontology_generate_failed',
@@ -763,6 +868,72 @@ def generate_ontology():
 
     finally:
         log_scope.close()
+
+
+@graph_bp.route('/ontology/retry', methods=['POST'])
+def retry_ontology():
+    """
+    Re-run ontology generation for a project whose first attempt did not land.
+
+    The task manager keeps tasks in memory, so a backend restart mid-generation
+    leaves a project stuck at `created` pointing at a task id that no longer
+    resolves - a state the client can only poll forever. The uploaded documents
+    and the extracted text are on disk, so nothing needs re-uploading to try
+    again; this is also the recovery path for an ontology that simply failed.
+
+    Request (JSON): {"project_id": "proj_xxxx"}
+    Returns: {"success": true, "data": {"project_id": ..., "task_id": ...}}
+    """
+    data = request.get_json(silent=True) or {}
+    project_id = data.get('project_id')
+    if not project_id:
+        return jsonify({"success": False, "error": t('api.requireProjectId')}), 400
+
+    project = ProjectManager.get_project(project_id)
+    if not project:
+        return jsonify({
+            "success": False,
+            "error": t('api.projectNotFound', id=project_id)
+        }), 404
+
+    # Only the states this can actually repair. A project that already has an
+    # ontology moves on through /build; regenerating it here would orphan a
+    # graph that was built from the old one.
+    if project.status not in (ProjectStatus.CREATED, ProjectStatus.FAILED):
+        return jsonify({
+            "success": False,
+            "error": t('api.ontologyRetryNotApplicable', status=project.status.value)
+        }), 409
+
+    # An attempt that is genuinely still running must not be duplicated.
+    if project.ontology_task_id:
+        existing = TaskManager().get_task(project.ontology_task_id)
+        if existing is not None and existing.status not in TERMINAL_STATUSES:
+            return jsonify({
+                "success": True,
+                "data": {
+                    "project_id": project_id,
+                    "task_id": project.ontology_task_id,
+                    "reused": True,
+                }
+            })
+
+    extracted_text = ProjectManager.get_extracted_text(project_id)
+    if not extracted_text:
+        return jsonify({"success": False, "error": t('api.textNotFound')}), 400
+
+    project.status = ProjectStatus.CREATED
+    task_id = _start_ontology_task(
+        project,
+        [extracted_text],
+        project.simulation_requirement or extracted_text.strip(),
+        '',
+    )
+
+    return jsonify({
+        "success": True,
+        "data": {"project_id": project_id, "task_id": task_id}
+    })
 
 
 # ============== Endpoint 2: build the graph ==============

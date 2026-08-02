@@ -211,6 +211,9 @@ def test_force_restart_does_not_continue_while_old_ingestion_is_pending(monkeypa
         project_id="proj-1",
         graph_id="graph-1",
         status=SimulationStatus.STOPPING,
+        # Matches the real SimulationState default; without it start_simulation
+        # raises AttributeError before reaching the barrier under test.
+        user_config={},
     )
     cleanup_called = []
     monkeypatch.setattr(

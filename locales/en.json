@@ -31,7 +31,10 @@
     "description": "Spiegel - test a marketing campaign on simulated customers"
   },
   "nav": {
-    "visitGithub": "Visit our Github page"
+    "visitGithub": "Visit our Github page",
+    "back": "Back",
+    "projects": "Projects",
+    "backToStep": "Back to {step}"
   },
   "home": {
     "tagline": "Campaign testing on simulated customers",
@@ -107,7 +110,10 @@
     "statusGeneratingOntology": "Generating ontology",
     "statusInitializing": "Initializing",
     "graphRefreshFailed": "The graph could not be refreshed: {error}",
-    "graphLoadFailed": "The graph could not be loaded: {error}"
+    "graphLoadFailed": "The graph could not be loaded: {error}",
+    "noPendingUpload": "This page was opened without an upload. Start a new test from the project list.",
+    "ontologyTaskLost": "Ontology generation was interrupted, most likely by a server restart. Your uploaded documents are still here — retry to run it again.",
+    "retryOntology": "Retry ontology generation"
   },
   "step1": {
     "ontologyGeneration": "Ontology Generation",
@@ -221,7 +227,6 @@
     "estimatedDurationFull": "For 100 customers: est. {minutes} minutes",
     "recommendedRounds": "{rounds} (recommended)",
     "customTip": "Simulations consume a lot of tokens. For a first run, switch to 'Custom' and keep it under 40 rounds",
-    "backToGraphBuild": "Back to Graph Building",
     "startDualWorldSim": "Release Campaign to Both Feeds",
     "profileModalAge": "Age",
     "profileModalGender": "Gender",
@@ -249,7 +254,8 @@
     "idGraph": "Graph ID",
     "idSimulation": "Simulation ID",
     "idTask": "Task ID",
-    "systemDashboard": "System dashboard"
+    "systemDashboard": "System dashboard",
+    "setupFailed": "Audience setup failed: {error}"
   },
   "step3": {
     "waitingForActions": "Waiting for customer reactions...",
@@ -309,7 +315,9 @@
       "refresh": "Refresh"
     },
     "totalEvents": "Total events",
-    "searchQuery": "Search query"
+    "searchQuery": "Search query",
+    "startFailedBanner": "The campaign could not be released: {error}",
+    "reportFailedBanner": "Report generation could not be started: {error}"
   },
   "feedBoard": {
     "postCount": "Posts",
@@ -396,7 +404,8 @@
     "infoRequirement": "Requirement",
     "reportGenerationComplete": "Report generation complete",
     "waitingForAgentActivity": "Waiting for agent activity…",
-    "consoleOutput": "Console output"
+    "consoleOutput": "Console output",
+    "reportFailedBanner": "Report generation failed: {error}"
   },
   "step5": {
     "interactiveTools": "Interview Tools",
@@ -432,7 +441,8 @@
     "noResponse": "No response",
     "requestFailed": "Request failed",
     "selectAgentFirst": "Please select a customer first",
-    "reportTag": "Prediction report"
+    "reportTag": "Prediction report",
+    "profilesFailed": "The audience list could not be loaded: {error}"
   },
   "campaign": {
     "loading": "Measuring results...",
@@ -617,7 +627,8 @@
     "requireGraphIdAndQuery": "Please provide graph_id and query",
     "initReportAgent": "Initializing Report Agent...",
     "documentHasNoText": "No readable text could be extracted from {filename} ({chars} characters). If it is a scanned or image-only PDF, configure VISION_LLM_* so the pages can be read, or upload a version with a text layer.",
-    "envNotRunning": "Simulation environment not running or closed. Ensure simulation is complete and in command-wait mode."
+    "envNotRunning": "Simulation environment not running or closed. Ensure simulation is complete and in command-wait mode.",
+    "ontologyRetryNotApplicable": "This project has already moved past ontology generation (status: {status})."
   },
   "progress": {
     "initGraphService": "Initializing graph build service...",
@@ -679,7 +690,8 @@
     "readingGraphEntities": "Reading Graph Entities",
     "generatingProfiles": "Generating Agent Profiles",
     "generatingSimConfig": "Generating Simulation Config",
-    "preparingScripts": "Preparing Scripts"
+    "preparingScripts": "Preparing Scripts",
+    "generatingOntology": "Reading the campaign material and deriving the ontology..."
   },
   "log": {
     "preparingGoBack": "Preparing to return to Step 2, closing simulation...",
@@ -968,6 +980,18 @@
     "backToProjectList": "Back to the project list",
     "layoutSwitcher": "Panel layout",
     "statusLabel": "Status",
-    "workflowSteps": "Workflow steps"
+    "workflowSteps": "Workflow steps",
+    "stepNotReached": "Not reached yet",
+    "stepCurrent": "You are here",
+    "currentProject": "Current project"
+  },
+  "notFound": {
+    "code": "404",
+    "title": "This page does not exist",
+    "body": "The link may be out of date, or the project it pointed at was deleted.",
+    "home": "Back to projects"
+  },
+  "banner": {
+    "dismiss": "Dismiss"
   }
 }

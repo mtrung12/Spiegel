@@ -40,6 +40,11 @@ class Project:
     # Ontology info (populated after endpoint 1 runs)
     ontology: Optional[Dict[str, Any]] = None
     analysis_summary: Optional[str] = None
+    # The background task deriving the ontology. Recorded so a client that
+    # reloads mid-generation can re-attach to it: the LLM call takes minutes,
+    # and it used to be the request that also held the only copy of the new
+    # project id.
+    ontology_task_id: Optional[str] = None
     
     # Graph info (populated after endpoint 2 completes)
     graph_id: Optional[str] = None
@@ -78,6 +83,7 @@ class Project:
             "total_text_length": self.total_text_length,
             "ontology": self.ontology,
             "analysis_summary": self.analysis_summary,
+            "ontology_task_id": self.ontology_task_id,
             "graph_id": self.graph_id,
             "graph_build_task_id": self.graph_build_task_id,
             "zep_batch_id": self.zep_batch_id,
@@ -108,6 +114,7 @@ class Project:
             total_text_length=data.get('total_text_length', 0),
             ontology=data.get('ontology'),
             analysis_summary=data.get('analysis_summary'),
+            ontology_task_id=data.get('ontology_task_id'),
             graph_id=data.get('graph_id'),
             graph_build_task_id=data.get('graph_build_task_id'),
             zep_batch_id=data.get('zep_batch_id'),

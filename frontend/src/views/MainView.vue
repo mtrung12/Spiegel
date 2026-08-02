@@ -8,24 +8,35 @@
       :projectId="currentProjectId === 'new' ? null : currentProjectId"
       :simulationId="null"
       :reportId="null"
+      :projectName="projectData?.name || ''"
       @readonly="readOnly = $event"
     />
 
-    <!-- Failure banner: without it a failed project is a dead end on screen -->
-    <div v-if="error" class="error-banner" role="alert">
-      <span class="error-text">{{ error }}</span>
-      <button v-if="canRetry" class="error-retry" :disabled="retrying" @click="retryProject">
-        {{ retrying ? $t('common.loading') : $t('main.retryBuild') }}
-      </button>
-      <button class="error-back" @click="router.push('/')">{{ $t('main.backToProjects') }}</button>
-    </div>
+    <!-- Failure banner: without it a failed project is a dead end on screen.
+         The markup moved into AppBanner so steps 2-5 could get the same
+         treatment instead of reporting failures only to the log. -->
+    <AppBanner
+      :message="error"
+      :retryable="canRetry"
+      :retryLabel="retryLabel"
+      :busy="retrying"
+      :dismissible="false"
+      @retry="retryProject"
+    >
+      <template #actions>
+        <button class="banner-back" @click="router.push('/')">{{ $t('main.backToProjects') }}</button>
+      </template>
+    </AppBanner>
 
     <!-- A stale graph looks identical to a fresh one, so a failed refresh has to
          say so rather than only reaching the console. -->
-    <div v-if="graphError" class="warn-banner" role="status">
-      <span class="warn-text">{{ graphError }}</span>
-      <button class="warn-retry" @click="refreshGraph">{{ $t('common.retry') }}</button>
-    </div>
+    <AppBanner
+      :message="graphError"
+      tone="warn"
+      retryable
+      @retry="refreshGraph"
+      @dismiss="graphError = ''"
+    />
 
     <!-- Main Content Area.
          data-layout="stacked": the brief reads as a centered document with the
@@ -80,9 +91,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import GraphPanel from '../components/GraphPanel.vue'
 import Step1GraphBuild from '../components/Step1GraphBuild.vue'
-import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData, resetProject, cancelTask } from '../api/graph'
+import { generateOntology, retryOntology, getProject, buildGraph, getTaskStatus, getGraphData, resetProject, cancelTask } from '../api/graph'
 import { getPendingUpload, clearPendingUpload } from '../store/pendingUpload'
 import AppHeader from '../components/AppHeader.vue'
+import AppBanner from '../components/AppBanner.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { useSplitLayout, useSystemLog } from '../composables/useWorkbench'
 
@@ -149,7 +161,9 @@ const initProject = async () => {
 const handleNewProject = async () => {
   const pending = getPendingUpload()
   if (!pending.isPending || pending.files.length === 0) {
-    error.value = 'No pending files found.'
+    // Only reachable by opening /process/new directly - the upload path itself
+    // now rewrites the URL to a real project id before anything slow runs.
+    error.value = t('main.noPendingUpload')
     addLog('Error: No pending files found for new project.')
     return
   }
@@ -163,16 +177,21 @@ const handleNewProject = async () => {
     const formData = new FormData()
     pending.files.forEach(f => formData.append('files', f))
 
+    // Returns as soon as the files are stored; the ontology is still being
+    // derived behind `task_id`. The URL is rewritten to the real project id
+    // right here, so a reload from this point on reopens the project instead
+    // of landing on /process/new with the file list gone.
     const res = await generateOntology(formData)
     if (res.success) {
       clearPendingUpload()
       currentProjectId.value = res.data.project_id
-      projectData.value = res.data
-      
       router.replace({ name: 'Process', params: { projectId: res.data.project_id } })
-      ontologyProgress.value = null
-      addLog(`Ontology generated successfully for project ${res.data.project_id}`)
-      await startBuildGraph()
+      addLog(`Files uploaded. Project ${res.data.project_id} created.`)
+
+      const projRes = await getProject(res.data.project_id)
+      if (projRes.success) projectData.value = projRes.data
+
+      await waitForOntology(res.data.task_id)
     } else {
       error.value = res.error || 'Ontology generation failed'
       addLog(`Error generating ontology: ${error.value}`)
@@ -182,6 +201,71 @@ const handleNewProject = async () => {
     addLog(`Exception in handleNewProject: ${err.message}`)
   } finally {
     loading.value = false
+  }
+}
+
+// Follows the background ontology task through to the graph build. Used both by
+// a fresh upload and by a reload that landed on a project still generating.
+let ontologyPollTimer = null
+
+const stopOntologyPolling = () => {
+  if (ontologyPollTimer) {
+    clearInterval(ontologyPollTimer)
+    ontologyPollTimer = null
+  }
+}
+
+const waitForOntology = async (taskId) => {
+  if (!taskId) return
+  currentPhase.value = 0
+  ontologyProgress.value = { message: t('main.statusGeneratingOntology') }
+
+  // Tasks live in the backend's memory, so a restart mid-generation leaves an
+  // id that no longer resolves. Give up after a few misses rather than polling
+  // a task that will never answer - the retry button re-runs it from the
+  // documents already on disk.
+  let misses = 0
+  const MAX_MISSES = 3
+
+  const poll = async () => {
+    try {
+      const res = await getTaskStatus(taskId)
+      if (!res.success) return
+      misses = 0
+      const task = res.data
+
+      if (task.message && task.message !== ontologyProgress.value?.message) {
+        ontologyProgress.value = { message: task.message }
+        addLog(task.message)
+      }
+
+      if (task.status === 'completed') {
+        stopOntologyPolling()
+        ontologyProgress.value = null
+        addLog(`Ontology generated for project ${currentProjectId.value}`)
+        const projRes = await getProject(currentProjectId.value)
+        if (projRes.success) projectData.value = projRes.data
+        await startBuildGraph()
+      } else if (task.status === 'failed') {
+        stopOntologyPolling()
+        ontologyProgress.value = null
+        error.value = task.error || 'Ontology generation failed'
+        addLog(`Ontology generation failed: ${error.value}`)
+      }
+    } catch (err) {
+      misses += 1
+      if (misses >= MAX_MISSES) {
+        stopOntologyPolling()
+        ontologyProgress.value = null
+        error.value = t('main.ontologyTaskLost')
+        addLog(`Ontology task ${taskId} is no longer available: ${err.message}`)
+      }
+    }
+  }
+
+  await poll()
+  if (!ontologyPollTimer) {
+    ontologyPollTimer = setInterval(poll, 2000)
   }
 }
 
@@ -195,7 +279,12 @@ const loadProject = async () => {
       updatePhaseByStatus(res.data.status)
       addLog(`Project loaded. Status: ${res.data.status}`)
       
-      if (res.data.status === 'ontology_generated' && !res.data.graph_id) {
+      // A project still deriving its ontology. This is the state a reload used
+      // to be unable to represent, because the id only existed inside the
+      // request that was generating it.
+      if (res.data.status === 'created' && res.data.ontology_task_id) {
+        await waitForOntology(res.data.ontology_task_id)
+      } else if (res.data.status === 'ontology_generated' && !res.data.graph_id) {
         await startBuildGraph()
       } else if (res.data.status === 'graph_building' && res.data.graph_build_task_id) {
         currentPhase.value = 1
@@ -226,23 +315,43 @@ const updatePhaseByStatus = (status) => {
   }
 }
 
-// Reset only rewinds to the last good state, so it can only replay the graph
-// build. A project that never produced an ontology has nothing to rebuild from.
-const canRetry = computed(() =>
-  currentProjectId.value !== 'new' && !!projectData.value?.ontology
+// Two different failures are recoverable here, and they need different repairs.
+// A project that has an ontology can rewind and replay the graph build. One
+// that never got that far - a failed or lost ontology task - has its documents
+// on disk, so generation can simply be re-run. Only a project with neither is
+// beyond a retry.
+const canRetry = computed(() => {
+  if (currentProjectId.value === 'new') return false
+  if (projectData.value?.ontology) return true
+  return !!projectData.value?.total_text_length
+})
+
+const retryLabel = computed(() =>
+  projectData.value?.ontology ? t('main.retryBuild') : t('main.retryOntology')
 )
 
 const retryProject = async () => {
   if (retrying.value) return
   retrying.value = true
   try {
-    addLog(`Resetting project ${currentProjectId.value}...`)
-    await resetProject(currentProjectId.value)
-    error.value = ''
-    await loadProject()
+    if (projectData.value?.ontology) {
+      addLog(`Resetting project ${currentProjectId.value}...`)
+      await resetProject(currentProjectId.value)
+      error.value = ''
+      await loadProject()
+    } else {
+      addLog(`Re-running ontology generation for ${currentProjectId.value}...`)
+      const res = await retryOntology(currentProjectId.value)
+      error.value = ''
+      if (res.success) {
+        const projRes = await getProject(currentProjectId.value)
+        if (projRes.success) projectData.value = projRes.data
+        await waitForOntology(res.data.task_id)
+      }
+    }
   } catch (err) {
     error.value = err.message
-    addLog(`Reset failed: ${err.message}`)
+    addLog(`Retry failed: ${err.message}`)
   } finally {
     retrying.value = false
   }
@@ -445,6 +554,7 @@ onMounted(() => {
 onUnmounted(() => {
   stopPolling()
   stopGraphPolling()
+  stopOntologyPolling()
 })
 </script>
 
@@ -497,59 +607,16 @@ onUnmounted(() => {
   border-top: none;
 }
 
-/* Failure banner */
-.error-banner,
-.warn-banner {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 24px;
-  font-size: 14px;
-  flex-wrap: wrap;
-}
-
-.error-banner {
-  background: #FEF2F2;
-  border-bottom: 1px solid #FECACA;
-  color: #B91C1C;
-}
-
-.warn-banner {
-  background: #FFF7ED;
-  border-bottom: 1px solid #FDBA74;
-  color: #9A3412;
-}
-
-.error-text,
-.warn-text {
-  flex: 1;
-  min-width: 200px;
-}
-
-.error-retry,
-.error-back,
-.warn-retry {
+/* The banner itself lives in AppBanner; this is only the extra action this
+   view slots into it. `:deep` because the slot content is rendered inside the
+   child component's tree. */
+:deep(.banner-back) {
   flex-shrink: 0;
-  border: 1px solid currentColor;
+  border: 1px solid var(--border);
   background: none;
   padding: 7px 14px;
   font-family: var(--font-mono);
   font-size: 12px;
-  color: inherit;
-}
-
-.error-retry {
-  background: #B91C1C;
-  color: var(--white);
-}
-
-.error-retry:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.error-back {
   color: var(--muted);
-  border-color: var(--border);
 }
 </style>

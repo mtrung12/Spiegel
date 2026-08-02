@@ -8,6 +8,7 @@
       :projectId="projectData?.project_id"
       :simulationId="currentSimulationId"
       :reportId="null"
+      :projectName="projectData?.name || ''"
       @readonly="readOnly = $event"
     />
 
@@ -33,7 +34,6 @@
           :systemLogs="systemLogs"
           :readOnly="readOnly"
           :userConfig="userConfig"
-          @go-back="handleGoBack"
           @next-step="handleNextStep"
           @add-log="addLog"
           @update-status="updateStatus"
@@ -89,15 +89,6 @@ const statusText = computed(() => {
 
 const updateStatus = (status) => {
   currentStatus.value = status
-}
-
-const handleGoBack = () => {
-  // Back to the process page
-  if (projectData.value?.project_id) {
-    router.push({ name: 'Process', params: { projectId: projectData.value.project_id } })
-  } else {
-    router.push('/')
-  }
 }
 
 const handleNextStep = async (params = {}) => {

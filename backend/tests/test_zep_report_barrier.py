@@ -152,6 +152,10 @@ def test_report_reader_lease_blocks_graph_start_and_delete(monkeypatch):
         project_id="proj-1",
         graph_id="graph-1",
         status=SimulationStatus.READY,
+        # start_simulation reads the round cap saved in step 2 off this. The
+        # real SimulationState defaults it to {}; a double without it raises
+        # AttributeError, which turns the 409 this test is about into a 500.
+        user_config={},
     )
     project = SimpleNamespace(
         project_id="proj-1",

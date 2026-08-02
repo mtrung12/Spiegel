@@ -1,5 +1,10 @@
 <template>
   <div class="report-panel">
+    <AppBanner
+      :message="reportError ? $t('step4.reportFailedBanner', { error: reportError }) : ''"
+      @dismiss="reportError = ''"
+    />
+
     <!-- Main Split Layout -->
     <div class="main-split-layout" :class="{ 'progress-collapsed': !showProgress }">
       <!-- LEFT PANEL: the rendered report (shared with step 5) -->
@@ -406,6 +411,7 @@ import ReportPane from './ReportPane.vue'
 import { renderMarkdown } from '../utils/markdown'
 import CampaignKpiPanel from './CampaignKpiPanel.vue'
 import SentimentDigestPanel from './SentimentDigestPanel.vue'
+import AppBanner from './AppBanner.vue'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -417,6 +423,11 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['add-log', 'update-status'])
+
+// Set from the agent log's `error` action. Retry is deliberately absent: the
+// button that writes another report is step 3's, and offering it here would
+// start a second generation against the same simulation.
+const reportError = ref('')
 
 // Navigation
 const goToInteraction = () => {
@@ -1967,6 +1978,15 @@ const fetchAgentLog = async () => {
           
           if (log.action === 'report_start') {
             startTime.value = new Date(log.timestamp)
+          }
+
+          // The agent has always written this on failure and nothing read it,
+          // so a report that died mid-generation polled forever behind a
+          // spinner that never resolved.
+          if (log.action === 'error') {
+            reportError.value = log.details?.error || t('common.unknownError')
+            emit('update-status', 'error')
+            stopPolling()
           }
         })
         

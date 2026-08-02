@@ -3,6 +3,16 @@
     <!-- Header -->
     <header class="app-header">
       <div class="header-left">
+        <!-- The workspace is opened from a report, and used to have no way back
+             to it: the wordmark dropped the user all the way out to the project
+             list, losing the report they were reading. -->
+        <button type="button" class="back-btn" :aria-label="backLabel" :title="backLabel" @click="goBack">
+          <span class="back-arrow" aria-hidden="true">←</span>
+          <span class="back-label">{{ backLabel }}</span>
+        </button>
+
+        <span class="header-divider" aria-hidden="true"></span>
+
         <button type="button" class="brand" @click="router.push('/')">
           <span class="sr-only">{{ $t('a11y.backToProjectList') }}</span>
           <span aria-hidden="true">SPIEGEL</span>
@@ -186,10 +196,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
+import { setProjectTitle } from '../utils/pageTitle'
 import { renderMarkdown } from '../utils/markdown'
 import { getProject } from '../api/graph'
 import { listSimulations } from '../api/simulation'
@@ -231,6 +242,34 @@ const reportsBySimulation = computed(() => {
 const outlineSections = computed(() => selectedReport.value?.outline?.sections || [])
 const selectedSimulationId = computed(() => selectedReport.value?.simulation_id || null)
 const chatHistory = computed(() => chatByReport.value[selectedReportId.value] || [])
+
+// Where this workspace was opened from, stamped into the query by the report
+// and interview views. A workspace reached any other way - a bookmark, a pasted
+// link - falls back to the project's step 1, which is always loadable.
+const FROM_ROUTES = { Report: 'reportId', Interaction: 'reportId' }
+
+const backTarget = computed(() => {
+  const { from, fromId } = route.query
+  if (from && fromId && FROM_ROUTES[from]) {
+    return { name: from, params: { [FROM_ROUTES[from]]: fromId } }
+  }
+  if (project.value?.project_id) {
+    return { name: 'Process', params: { projectId: project.value.project_id } }
+  }
+  return '/'
+})
+
+const backLabel = computed(() => {
+  const { from } = route.query
+  if (from === 'Report') return t('nav.backToStep', { step: t('main.stepNames[3]') })
+  if (from === 'Interaction') return t('nav.backToStep', { step: t('main.stepNames[4]') })
+  if (project.value?.project_id) return t('nav.backToStep', { step: t('main.stepNames[0]') })
+  return t('nav.projects')
+})
+
+const goBack = () => router.push(backTarget.value)
+
+watch(() => project.value?.name, (name) => setProjectTitle(name), { immediate: true })
 
 const goToGraph = () => {
   if (project.value?.project_id) {
@@ -372,6 +411,43 @@ onMounted(async () => {
   z-index: 100;
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Matches the back control in AppHeader so the affordance is the same shape
+   wherever the user meets it. */
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--white);
+  padding: 6px 12px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.back-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--ink);
+}
+
+.back-arrow {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1;
+}
+
 .brand {
   background: none;
   border: none;
@@ -382,6 +458,12 @@ onMounted(async () => {
   font-size: 18px;
   letter-spacing: 1px;
   cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  .back-label {
+    display: none;
+  }
 }
 
 .header-center {

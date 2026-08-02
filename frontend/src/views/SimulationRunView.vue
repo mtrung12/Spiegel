@@ -8,6 +8,7 @@
       :projectId="projectData?.project_id"
       :simulationId="currentSimulationId"
       :reportId="existingReportId"
+      :projectName="projectData?.name || ''"
       @readonly="readOnly = $event"
     ></AppHeader>
 
@@ -36,7 +37,6 @@
           :graphData="graphData"
           :systemLogs="systemLogs"
           :readOnly="readOnly"
-          @go-back="handleGoBack"
           @next-step="handleNextStep"
           @add-log="addLog"
           @update-status="updateStatus"
@@ -103,13 +103,10 @@ const updateStatus = (status) => {
   currentStatus.value = status
 }
 
-const handleGoBack = () => {
-  // Navigating away leaves the run alone: it used to be torn down here, which
-  // meant a glance at step 2 cost the whole run. Step 3's Stop button is the
-  // one way to end a run, and starting a new one from step 2 clears the old.
-  stopGraphRefresh()
-  router.push({ name: 'Simulation', params: { simulationId: currentSimulationId.value } })
-}
+// Navigating away leaves the run alone: it used to be torn down on the way out,
+// which meant a glance at step 2 cost the whole run. Step 3's Stop button is the
+// one way to end a run, and starting a new one from step 2 clears the old. The
+// polling timer is released in onUnmounted, whichever route the user takes.
 
 const handleNextStep = () => {
   // Step3Simulation handles report generation and navigation itself;

@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 /**
  * The graph/split/workbench split-pane layout shared by every step view.
@@ -8,8 +8,24 @@ import { ref } from 'vue'
  * inline styles, so the responsive rules can override them - an inline style
  * wins over any stylesheet rule and made the layout unresponsive.
  */
+const MODES = ['graph', 'split', 'workbench']
+const STORAGE_KEY = 'layoutMode'
+
 export function useSplitLayout(initialMode = 'split') {
-  const viewMode = ref(initialMode) // graph | split | workbench
+  // A choice made on one step used to be thrown away on the next, because each
+  // view hard-coded its own starting mode - so the layout jumped on every
+  // navigation and the switcher never held. The per-view default now applies
+  // only until the user picks something.
+  const stored = localStorage.getItem(STORAGE_KEY)
+  const viewMode = ref(MODES.includes(stored) ? stored : initialMode)
+
+  watch(viewMode, (mode) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, mode)
+    } catch {
+      // Private-browsing quota. The layout still works, it just stops carrying.
+    }
+  })
 
   // Clicking maximise on an already-maximised panel returns to the split view,
   // so the control is a toggle rather than a dead end.

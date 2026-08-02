@@ -17,6 +17,21 @@ export function generateOntology(formData) {
 }
 
 /**
+ * Re-run ontology generation from the documents already stored on a project.
+ * Recovers a project whose generation task was lost to a backend restart, or
+ * whose ontology failed. Nothing needs re-uploading.
+ * @param {String} projectId
+ * @returns {Promise}
+ */
+export function retryOntology(projectId) {
+  return service({
+    url: '/api/graph/ontology/retry',
+    method: 'post',
+    data: { project_id: projectId }
+  })
+}
+
+/**
  * Build the graph.
  * @param {Object} data - project_id, graph_name, ...
  * @returns {Promise}

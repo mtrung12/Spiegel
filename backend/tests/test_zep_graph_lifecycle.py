@@ -337,6 +337,10 @@ def test_graph_reset_and_memory_start_cannot_cross_between_delete_and_clear(
         project_id=project.project_id,
         graph_id=project.graph_id,
         status=SimulationStatus.READY,
+        # Matches the real SimulationState default. Without it the start thread
+        # dies on AttributeError instead of parking on the barrier, so the
+        # delete handshake this test drives never completes.
+        user_config={},
     )
     delete_entered = threading.Event()
     allow_delete = threading.Event()

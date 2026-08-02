@@ -1,5 +1,15 @@
 <template>
   <div class="env-setup-panel">
+    <!-- Setup failures used to exist only as a log line and a status dot, so a
+         dead prepare looked exactly like a slow one. -->
+    <AppBanner
+      :message="setupError"
+      :retryable="!readOnly"
+      :busy="retryingSetup"
+      @retry="retrySetup"
+      @dismiss="setupError = ''"
+    />
+
     <div class="scroll-container">
       <!-- Step 01: the simulation instance -->
       <div class="step-card" :class="{ 'active': phase === 0, 'completed': phase > 0 }">
@@ -575,13 +585,10 @@
             </Transition>
           </div>
 
-          <div class="action-group dual">
-            <button 
-              class="action-btn secondary"
-              @click="$emit('go-back')"
-            >
-              ← {{ $t('step2.backToGraphBuild') }}
-            </button>
+          <!-- Back lives in the header now, on every step. This was the only
+               step that carried its own, so the control appeared on step 2 and
+               vanished on the other four. -->
+          <div class="action-group">
             <button
               v-if="!readOnly"
               class="action-btn primary"
@@ -711,6 +718,7 @@ import {
   getSimulationConfigRealtime,
   saveSimulationUserConfig
 } from '../api/simulation'
+import AppBanner from './AppBanner.vue'
 
 const { t } = useI18n()
 
@@ -727,7 +735,7 @@ const props = defineProps({
   userConfig: Object
 })
 
-const emit = defineEmits(['go-back', 'next-step', 'add-log', 'update-status'])
+const emit = defineEmits(['next-step', 'add-log', 'update-status'])
 
 // State
 const phase = ref(0) // 0: initialising, 1: personas, 2: config, 3: done
@@ -851,12 +859,32 @@ const addLog = (msg) => {
   emit('add-log', msg)
 }
 
+// Every setup failure funnels through here, so this is the one place that has
+// to put the reason on screen rather than only into the log.
+const setupError = ref('')
+const retryingSetup = ref(false)
+
 const handlePrepareFailure = (message) => {
   stopPolling()
   stopProfilesPolling()
   stopConfigPolling()
-  addLog(t('log.prepareFailedWithError', { error: message || t('common.unknownError') }))
+  const reason = message || t('common.unknownError')
+  addLog(t('log.prepareFailedWithError', { error: reason }))
+  setupError.value = t('step2.setupFailed', { error: reason })
   emit('update-status', 'error')
+}
+
+// Re-runs the prepare that failed. The backend answers `already_prepared` when
+// the earlier attempt did land, so a retry cannot duplicate the audience.
+const retrySetup = async () => {
+  if (retryingSetup.value) return
+  retryingSetup.value = true
+  setupError.value = ''
+  try {
+    await startPrepareSimulation()
+  } finally {
+    retryingSetup.value = false
+  }
 }
 
 // Handle a click on the start button
@@ -899,8 +927,7 @@ const selectProfile = (profile) => {
 // Start preparation automatically
 const startPrepareSimulation = async () => {
   if (!props.simulationId) {
-    addLog(t('log.errorMissingSimId'))
-    emit('update-status', 'error')
+    handlePrepareFailure(t('log.errorMissingSimId'))
     return
   }
   
@@ -952,12 +979,10 @@ const startPrepareSimulation = async () => {
       // Start streaming the profiles
       startProfilesPolling()
     } else {
-      addLog(t('log.prepareFailed', { error: res.error || t('common.unknownError') }))
-      emit('update-status', 'error')
+      handlePrepareFailure(res.error)
     }
   } catch (err) {
-    addLog(t('log.prepareException', { error: err.message }))
-    emit('update-status', 'error')
+    handlePrepareFailure(err.message)
   }
 }
 
@@ -1425,15 +1450,6 @@ onUnmounted(() => {
   display: flex;
   gap: 12px;
   margin-top: 16px;
-}
-
-.action-group.dual {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-}
-
-.action-group.dual .action-btn {
-  width: 100%;
 }
 
 /* Info Card */

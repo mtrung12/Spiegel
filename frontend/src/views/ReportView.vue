@@ -8,6 +8,7 @@
       :projectId="projectData?.project_id"
       :simulationId="simulationId"
       :reportId="currentReportId"
+      :projectName="projectData?.name || ''"
     >
       <template #actions>
         <button class="workspace-btn" :disabled="!projectData?.project_id" @click="goToWorkspace">
@@ -87,9 +88,15 @@ const updateStatus = (status) => {
   currentStatus.value = status
 }
 
+// `from` is what the workspace's back button reads: without it the workspace is
+// a dead end whose only exit drops the user out to the project list.
 const goToWorkspace = () => {
   if (projectData.value?.project_id) {
-    router.push({ name: 'Workspace', params: { projectId: projectData.value.project_id } })
+    router.push({
+      name: 'Workspace',
+      params: { projectId: projectData.value.project_id },
+      query: { from: 'Report', fromId: currentReportId.value }
+    })
   }
 }
 

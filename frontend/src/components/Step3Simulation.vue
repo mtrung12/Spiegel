@@ -1,5 +1,15 @@
 <template>
   <div class="simulation-panel">
+    <!-- `startError` was set on every failed launch and never rendered, so a
+         run that never started looked like one still warming up. -->
+    <AppBanner
+      :message="runError"
+      :retryable="!readOnly"
+      :busy="isStarting || isGeneratingReport"
+      @retry="retryRunError"
+      @dismiss="dismissRunError"
+    />
+
     <!-- Top Control Bar -->
     <div class="control-bar">
       <!-- One compact progress line; the per-platform detail is behind the chevron -->
@@ -352,6 +362,7 @@ import {
 } from '../api/simulation'
 import { generateReport, getReportBySimulation } from '../api/report'
 import FeedBoard from './FeedBoard.vue'
+import AppBanner from './AppBanner.vue'
 
 const { t } = useI18n()
 
@@ -373,7 +384,7 @@ const props = defineProps({
   readOnly: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['go-back', 'next-step', 'add-log', 'update-status'])
+const emit = defineEmits(['next-step', 'add-log', 'update-status'])
 
 const router = useRouter()
 
@@ -389,6 +400,7 @@ const phase = ref(0) // 0: not started, 1: running, 2: finished
 const isStarting = ref(false)
 const isStopping = ref(false)
 const startError = ref(null)
+const reportError = ref(null)
 const runStatus = ref({})
 const allActions = ref([]) // Every action, accumulated incrementally
 const actionIds = ref(new Set()) // Action IDs, used to deduplicate
@@ -445,6 +457,24 @@ const resetAllState = () => {
   isStarting.value = false
   isStopping.value = false
   stopPolling()  // Stop any polling left over
+}
+
+// The two ways this step fails, sharing one banner. Whichever is set decides
+// what Retry does, so the button never re-runs the wrong half of the step.
+const runError = computed(() => {
+  if (startError.value) return t('step3.startFailedBanner', { error: startError.value })
+  if (reportError.value) return t('step3.reportFailedBanner', { error: reportError.value })
+  return ''
+})
+
+const dismissRunError = () => {
+  startError.value = null
+  reportError.value = null
+}
+
+const retryRunError = () => {
+  if (startError.value) return doStartSimulation()
+  if (reportError.value) return handleNextStep()
 }
 
 // Start the simulation
@@ -743,6 +773,7 @@ const handleNextStep = async () => {
   }
   
   isGeneratingReport.value = true
+  reportError.value = null
 
   try {
     // Coming back to step 3 from step 4 must not cost another full report
@@ -768,11 +799,14 @@ const handleNextStep = async () => {
       // Navigate to the report page
       router.push({ name: 'Report', params: { reportId } })
     } else {
-      addLog(t('log.reportGenFailed', { error: res.error || t('common.unknownError') }))
+      const reason = res.error || t('common.unknownError')
+      addLog(t('log.reportGenFailed', { error: reason }))
+      reportError.value = reason
       isGeneratingReport.value = false
     }
   } catch (err) {
     addLog(t('log.reportGenException', { error: err.message }))
+    reportError.value = err.message
     isGeneratingReport.value = false
   }
 }
