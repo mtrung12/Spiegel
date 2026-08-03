@@ -1178,7 +1178,9 @@ def _build_graph_impl():
             "data": {
                 "project_id": project_id,
                 "task_id": task_id,
-                "resumed": resume_existing_batch,
+                # No "resumed" flag: ingestion runs in this process, so a build
+                # that was interrupted has nothing left running to rejoin. The
+                # only outcomes are a fresh build or a rebuild.
                 "message": t('api.graphBuildStarted', taskId=task_id)
             }
         })

@@ -157,7 +157,7 @@ class Config:
     # so the collection is rebuilt on the next search - see
     # content_index._ensure_collection.
     EMBEDDING_BASE_URL = os.environ.get(
-        'EMBEDDING_BASE_URL', 'http://172.24.247.130:1234/v1'
+        'EMBEDDING_BASE_URL', 'http://172.24.247.135:1234/v1'
     )
     EMBEDDING_API_KEY = resolve_llm_api_key(
         os.environ.get('EMBEDDING_API_KEY')

@@ -101,7 +101,7 @@ def get_graph_entities(graph_id: str):
         enrich: also fetch the related edges (default true)
     """
     try:
-        if not Config.ZEP_API_KEY:
+        if not Config.NEO4J_PASSWORD:
             return jsonify({
                 "success": False,
                 "error": t('api.graphStoreNotConfigured')
@@ -137,7 +137,7 @@ def get_graph_entities(graph_id: str):
 def get_entity_detail(graph_id: str, entity_uuid: str):
     """Return the detail for one entity."""
     try:
-        if not Config.ZEP_API_KEY:
+        if not Config.NEO4J_PASSWORD:
             return jsonify({
                 "success": False,
                 "error": t('api.graphStoreNotConfigured')
@@ -169,7 +169,7 @@ def get_entity_detail(graph_id: str, entity_uuid: str):
 def get_entities_by_type(graph_id: str, entity_type: str):
     """Return every entity of a given type."""
     try:
-        if not Config.ZEP_API_KEY:
+        if not Config.NEO4J_PASSWORD:
             return jsonify({
                 "success": False,
                 "error": t('api.graphStoreNotConfigured')

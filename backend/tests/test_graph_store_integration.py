@@ -32,12 +32,15 @@ pytestmark = pytest.mark.skipif(
 def graph_store():
     """Point the app's config at the test database and hand back the engine."""
 
-    from app.config import Config
+    import app.config
     from app.utils import graphiti_client
 
-    Config.NEO4J_URI = os.environ["NEO4J_TEST_URI"]
-    Config.NEO4J_USER = os.environ.get("NEO4J_TEST_USER", "neo4j")
-    Config.NEO4J_PASSWORD = os.environ["NEO4J_TEST_PASSWORD"]
+    # Read the module attribute rather than a previously imported name: other
+    # tests reload app.config, which rebinds Config to a new class object.
+    config = app.config.Config
+    config.NEO4J_URI = os.environ["NEO4J_TEST_URI"]
+    config.NEO4J_USER = os.environ.get("NEO4J_TEST_USER", "neo4j")
+    config.NEO4J_PASSWORD = os.environ["NEO4J_TEST_PASSWORD"]
 
     graphiti_client.close_graphiti()
     client = graphiti_client.get_graphiti()
@@ -59,7 +62,7 @@ def graph_id(graph_store):
 def _seed(graph_store, graph_id, node_count=1, with_edge=False):
     """Write nodes (and optionally one edge) straight to the store."""
 
-    from app.config import Config
+    import app.config
     from app.utils.graphiti_client import run_sync
     from graphiti_core.edges import EntityEdge
     from graphiti_core.nodes import EntityNode
@@ -67,7 +70,7 @@ def _seed(graph_store, graph_id, node_count=1, with_edge=False):
     now = datetime.now(timezone.utc)
     # Graphiti fills these from the embedder; supplied here so the test needs no
     # embedding server. The width must match the index the engine created.
-    vector = [0.01] * Config.EMBEDDING_DIMENSIONS
+    vector = [0.01] * app.config.Config.EMBEDDING_DIMENSIONS
 
     nodes = [
         EntityNode(

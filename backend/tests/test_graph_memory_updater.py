@@ -272,3 +272,21 @@ def test_a_graph_with_no_stored_ontology_still_ingests(monkeypatch):
 
     assert writes[0]["entity_types"] == {}
     assert updater.get_stats()["failed_count"] == 0
+
+
+def test_simulation_activity_also_overrides_the_segment_refusal(monkeypatch):
+    """Same reason as the document build: Graphiti's stock prompt discards
+    audience segments, and the simulation writes about them constantly."""
+
+    from app.utils.ontology import SEGMENT_EXTRACTION_INSTRUCTIONS
+
+    writes = []
+    updater = _updater(
+        monkeypatch,
+        lambda **kwargs: writes.append(kwargs) or _episode(),
+    )
+    updater._send_batch_activities([_activity()], "twitter")
+
+    assert writes[0]["custom_extraction_instructions"] == (
+        SEGMENT_EXTRACTION_INSTRUCTIONS
+    )

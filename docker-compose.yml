@@ -52,6 +52,13 @@ services:
       # Reach the graph store by service name, overriding the localhost default
       # that a bare `flask run` on the host uses.
       NEO4J_URI: bolt://neo4j:7687
+    extra_hosts:
+      # Lets the container reach a model server running on the host itself -
+      # LM Studio on :1234 is the usual case, via
+      # EMBEDDING_BASE_URL/LLM_BASE_URL=http://host.docker.internal:...
+      # Docker Desktop provides this name already; Linux hosts do not, so it is
+      # mapped explicitly and a .env that works here keeps working there.
+      - "host.docker.internal:host-gateway"
     volumes:
       # Uploads, projects, simulations and reports live here; the image runs as
       # uid 10001, which needs write access to this path on the host.

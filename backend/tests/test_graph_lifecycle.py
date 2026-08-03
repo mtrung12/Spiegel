@@ -396,3 +396,67 @@ def test_graph_reset_and_memory_start_cannot_cross_between_delete_and_clear(
     assert results["start"][1] == 409
     assert runner_called == []
     assert project.graph_id is None
+
+
+def test_a_new_build_returns_a_task_and_starts_the_worker(monkeypatch):
+    """Covers the success path of POST /api/graph/build end to end.
+
+    Every other build test here exercises a rejection - reused, stale, already
+    complete - so nothing executed the response payload itself. That let a
+    NameError on a variable removed during the Graphiti migration reach a real
+    request: the route 500'd after the task had already been created, leaving a
+    project stuck in GRAPH_BUILDING with no worker behind it.
+    """
+
+    project = _project(ProjectStatus.ONTOLOGY_GENERATED)
+    started = []
+
+    class Tasks:
+        def get_task(self, _task_id):
+            return None
+
+        def create_task(self, _description):
+            return "task-new"
+
+    class Thread:
+        def __init__(self, *, target, daemon):
+            started.append(daemon)
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(graph_api.Config, "NEO4J_PASSWORD", "test-password")
+    monkeypatch.setattr(graph_api, "TaskManager", Tasks)
+    monkeypatch.setattr(graph_api.threading, "Thread", Thread)
+    monkeypatch.setattr(
+        graph_api.ProjectManager,
+        "get_project",
+        classmethod(lambda _cls, _project_id: project),
+    )
+    monkeypatch.setattr(
+        graph_api.ProjectManager,
+        "get_extracted_text",
+        classmethod(lambda _cls, _project_id: "source text " * 50),
+    )
+    monkeypatch.setattr(
+        graph_api.ProjectManager,
+        "save_project",
+        classmethod(lambda _cls, _project: None),
+    )
+
+    app = Flask(__name__)
+    with app.test_request_context(
+        "/api/graph/build",
+        method="POST",
+        json={"project_id": "proj-1"},
+    ):
+        body, status = _json_result(graph_api.build_graph())
+
+    assert status == 200
+    assert body["success"] is True
+    assert body["data"]["task_id"] == "task-new"
+    assert body["data"]["project_id"] == "proj-1"
+    # The worker must actually have been handed off, not just a task id minted.
+    assert started == [True]
+    assert project.status == ProjectStatus.GRAPH_BUILDING
+    assert project.graph_build_task_id == "task-new"

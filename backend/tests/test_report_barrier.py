@@ -23,7 +23,7 @@ def _json_result(result):
     return response.get_json(), status
 
 
-def test_report_generation_waits_for_zep_ingestion(monkeypatch):
+def test_report_generation_waits_for_graph_ingestion(monkeypatch):
     simulation = SimpleNamespace(project_id="proj-1", graph_id="graph-1")
     monkeypatch.setattr(
         report_api,

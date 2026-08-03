@@ -27,6 +27,8 @@ from concurrent.futures import Future
 from typing import Any, Coroutine, TypeVar
 from urllib.parse import urlparse
 
+from openai import AsyncOpenAI
+
 from graphiti_core import Graphiti
 from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
 from graphiti_core.driver.neo4j_driver import Neo4jDriver
@@ -36,7 +38,6 @@ from graphiti_core.llm_client.config import LLMConfig
 from graphiti_core.llm_client.openai_client import OpenAIClient
 from graphiti_core.llm_client.openai_generic_client import OpenAIGenericClient
 
-from ..config import Config
 from .logger import get_logger
 
 logger = get_logger("spiegel.graphiti")
@@ -47,6 +48,10 @@ T = TypeVar("T")
 # resolution and edge invalidation calls. Left unbounded against a self-hosted
 # server this is what melts it, so cap the concurrency in one place.
 GRAPHITI_MAX_COROUTINES = 8
+
+# One embedding request should be fast even on a busy self-hosted box. The SDK
+# default is 10 minutes, which is indistinguishable from a hang.
+EMBEDDING_REQUEST_TIMEOUT_SECONDS = 60.0
 
 # Hosts whose /v1 is OpenAI's own API rather than an OpenAI-compatible server.
 _OPENAI_API_HOSTS = {"api.openai.com"}
@@ -150,14 +155,30 @@ _client: Graphiti | None = None
 _client_lock = threading.Lock()
 
 
+def _config():
+    """Read Config through the module rather than the name bound at import.
+
+    ``app.config`` is reloaded in places (the LLM configuration tests do it to
+    re-evaluate the environment), which rebinds ``app.config.Config`` to a new
+    class object. A ``from ..config import Config`` reference captured at import
+    time would keep pointing at the old class, and this would then build a
+    driver from settings nobody can see or change.
+    """
+
+    import app.config
+
+    return app.config.Config
+
+
 def _build_client() -> Graphiti:
-    if not Config.NEO4J_PASSWORD:
+    config = _config()
+    if not config.NEO4J_PASSWORD:
         raise ValueError("NEO4J_PASSWORD is not configured")
 
     llm_config = LLMConfig(
-        api_key=Config.LLM_API_KEY,
-        model=Config.LLM_MODEL_NAME,
-        base_url=Config.LLM_BASE_URL,
+        api_key=config.LLM_API_KEY,
+        model=config.LLM_MODEL_NAME,
+        base_url=config.LLM_BASE_URL,
         # Extraction is a structured-output task, not a creative one. Zep ran it
         # deterministically and the graph is much noisier when this drifts.
         temperature=0.0,
@@ -165,18 +186,29 @@ def _build_client() -> Graphiti:
 
     embedder = OpenAIEmbedder(
         config=OpenAIEmbedderConfig(
-            api_key=Config.EMBEDDING_API_KEY,
-            embedding_model=Config.EMBEDDING_MODEL_NAME,
-            embedding_dim=Config.EMBEDDING_DIMENSIONS,
-            base_url=Config.EMBEDDING_BASE_URL,
-        )
+            api_key=config.EMBEDDING_API_KEY,
+            embedding_model=config.EMBEDDING_MODEL_NAME,
+            embedding_dim=config.EMBEDDING_DIMENSIONS,
+            base_url=config.EMBEDDING_BASE_URL,
+        ),
+        # Graphiti builds its own AsyncOpenAI with no timeout, which leaves the
+        # SDK default (10 minutes) governing every embedding call. Embeddings
+        # are usually served by a self-hosted box (EMBEDDING_BASE_URL), and when
+        # that box is loaded or unreachable the whole ingestion sits on it -
+        # a graph build that looks hung rather than one that failed.
+        client=AsyncOpenAI(
+            api_key=config.EMBEDDING_API_KEY,
+            base_url=config.EMBEDDING_BASE_URL,
+            timeout=EMBEDDING_REQUEST_TIMEOUT_SECONDS,
+            max_retries=2,
+        ),
     )
 
     driver = Neo4jDriver(
-        uri=Config.NEO4J_URI,
-        user=Config.NEO4J_USER,
-        password=Config.NEO4J_PASSWORD,
-        database=Config.NEO4J_DATABASE,
+        uri=config.NEO4J_URI,
+        user=config.NEO4J_USER,
+        password=config.NEO4J_PASSWORD,
+        database=config.NEO4J_DATABASE,
     )
 
     client = Graphiti(
@@ -196,10 +228,10 @@ def _build_client() -> Graphiti:
     run_sync(client.build_indices_and_constraints())
     logger.info(
         "Graphiti ready: neo4j=%s db=%s model=%s embedder=%s",
-        Config.NEO4J_URI,
-        Config.NEO4J_DATABASE,
-        Config.LLM_MODEL_NAME,
-        Config.EMBEDDING_MODEL_NAME,
+        config.NEO4J_URI,
+        config.NEO4J_DATABASE,
+        config.LLM_MODEL_NAME,
+        config.EMBEDDING_MODEL_NAME,
     )
     return client
 
