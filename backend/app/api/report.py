@@ -11,13 +11,13 @@ from . import report_bp
 from ..services.report_agent import ReportAgent, ReportManager, ReportStatus
 from ..services.simulation_manager import SimulationManager
 from ..services.simulation_runner import SimulationRunner, RunnerStatus
-from ..services.zep_graph_memory_updater import ZepGraphMemoryManager
+from ..services.graph_memory_updater import GraphMemoryManager
 from ..models.project import ProjectManager, ProjectStatus
 from ..models.task import TaskManager, TaskStatus
 from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
-from ..utils.zep_lifecycle import (
+from ..utils.graph_lifecycle import (
     graph_lifecycle_lock,
     register_graph_reader,
     unregister_graph_reader,
@@ -81,7 +81,7 @@ def generate_report():
             }), 404
 
         run_state = SimulationRunner.get_run_state(simulation_id)
-        updater = ZepGraphMemoryManager.get_updater(simulation_id)
+        updater = GraphMemoryManager.get_updater(simulation_id)
         active_statuses = {
             RunnerStatus.STARTING,
             RunnerStatus.RUNNING,
@@ -94,7 +94,7 @@ def generate_report():
             return jsonify({
                 "success": False,
                 "error": (
-                    "Simulation or Zep graph ingestion is still active; "
+                    "Simulation or graph ingestion is still active; "
                     "wait for a terminal run status before generating a report"
                 ),
                 "ingestion_pending": updater is not None,
@@ -167,7 +167,7 @@ def generate_report():
                 else None
             )
             refreshed_run_state = SimulationRunner.get_run_state(simulation_id)
-            refreshed_updater = ZepGraphMemoryManager.get_updater(simulation_id)
+            refreshed_updater = GraphMemoryManager.get_updater(simulation_id)
             if (
                 refreshed_state is None
                 or refreshed_project is None
@@ -189,7 +189,7 @@ def generate_report():
                 return jsonify({
                     "success": False,
                     "error": (
-                        "Simulation or Zep graph ingestion became active; "
+                        "Simulation or graph ingestion became active; "
                         "retry after it reaches a terminal state"
                     ),
                     "ingestion_pending": refreshed_updater is not None,
@@ -1063,9 +1063,9 @@ def search_graph_tool():
                 "error": t('api.requireGraphIdAndQuery')
             }), 400
         
-        from ..services.zep_tools import ZepToolsService
+        from ..services.graph_tools import GraphToolsService
         
-        tools = ZepToolsService()
+        tools = GraphToolsService()
         result = tools.search_graph(
             graph_id=graph_id,
             query=query,
@@ -1106,9 +1106,9 @@ def get_graph_statistics_tool():
                 "error": t('api.requireGraphId')
             }), 400
         
-        from ..services.zep_tools import ZepToolsService
+        from ..services.graph_tools import GraphToolsService
         
-        tools = ZepToolsService()
+        tools = GraphToolsService()
         result = tools.get_graph_statistics(graph_id)
         
         return jsonify({

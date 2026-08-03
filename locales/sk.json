@@ -123,7 +123,7 @@
     "ontologyDesc": "LLM prečíta zadanie kampane a váš opis zákazníkov a vygeneruje ontológiu, podľa ktorej sa štruktúruje znalostný graf kampane",
     "analyzingDocs": "Analyzujú sa podklady kampane...",
     "graphRagBuild": "Tvorba GraphRAG",
-    "graphRagDesc": "Zadanie a kreatíva sa rozdelia na časti a odošlú do Zep Cloud, kde vznikne znalostný graf kampane — produkty, posolstvá, entity zákazníkov a vzťahy medzi nimi",
+    "graphRagDesc": "Zadanie a kreatíva sa rozdelia na časti a načítajú do znalostného grafu kampane — produkty, posolstvá, entity zákazníkov a vzťahy medzi nimi",
     "crawlerLabel": "Výskum publika",
     "crawlerStarting": "Pripravuje sa vyhľadávanie...",
     "crawlerSearching": "Hľadajú sa verejné diskusie...",

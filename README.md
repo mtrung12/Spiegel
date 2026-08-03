@@ -6,7 +6,7 @@ Upload the campaign brief and creative, describe the target audience, and the en
 
 ## How it works
 
-1. **Graph building** — the uploaded material (PDF/MD/TXT) is extracted into a Zep Cloud GraphRAG knowledge graph
+1. **Graph building** — the uploaded material (PDF/MD/TXT) is extracted into a GraphRAG knowledge graph ([Graphiti](https://github.com/getzep/graphiti) over Neo4j)
 2. **Audience setup** — entities become buyer personas: demographics, needs, brand attitude, purchase behaviour, media habits
 3. **Simulation** — the campaign creative is seeded into simulated Twitter and Reddit feeds, and the audience agents react over N rounds
 4. **Measurement** — every action is logged and counted into marketing metrics
@@ -15,8 +15,8 @@ Upload the campaign brief and creative, describe the target audience, and the en
 ### What is real and what is simulated
 
 - The social platforms are **simulated** ([OASIS](https://github.com/camel-ai/oasis)). Nothing reads or posts to real Twitter or Reddit, and there is no crawler — input is manual file upload only.
-- The knowledge graph lives on **Zep Cloud** (SaaS), not a local database.
-- The metrics are **counted** from the action log, not estimated by an LLM. Purchase intent and objections are the exception — they aren't countable from likes and reposts, so they come from agent interviews and what the agents actually wrote.
+- The knowledge graph lives in **your own Neo4j**. Entity extraction, deduplication and temporal edge invalidation are done by [Graphiti](https://github.com/getzep/graphiti) (Apache-2.0) using the same LLM and embedding endpoints you configure below — no third-party graph service, no data leaving your deployment.
+- KPIs are **counted** from the action log, not estimated by an LLM. Purchase intent and objections are the exception — they aren't countable from likes and reposts, so they come from agent interviews and what the agents actually wrote.
 
 ## Metrics produced
 
@@ -48,8 +48,8 @@ LLM_API_KEY=your_api_key
 LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 LLM_MODEL_NAME=qwen-plus
 
-# Zep Cloud — the free tier is enough to start: https://app.getzep.com/
-ZEP_API_KEY=your_zep_api_key
+# Neo4j — the knowledge graph store. `docker compose up` starts one.
+NEO4J_PASSWORD=change_me
 ```
 
 Never commit `.env`.
@@ -142,4 +142,4 @@ jq 'select(.action_id == "act_xxxxxxxx")' local-doc/logs/debug.jsonl
 
 ## Acknowledgments
 
-Forked from [MiroFish](https://github.com/666ghj/MiroFish) and retargeted from general-purpose prediction to marketing campaign assessment. The simulation engine is [OASIS](https://github.com/camel-ai/oasis) by the CAMEL-AI team. Memory and retrieval are powered by [Zep](https://www.getzep.com/).
+Forked from [MiroFish](https://github.com/666ghj/MiroFish) and retargeted from general-purpose prediction to marketing campaign assessment. The simulation engine is [OASIS](https://github.com/camel-ai/oasis) by the CAMEL-AI team. The knowledge graph engine is [Graphiti](https://github.com/getzep/graphiti) by Zep Software, running against a self-hosted [Neo4j](https://neo4j.com/).

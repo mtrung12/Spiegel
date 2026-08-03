@@ -7,7 +7,7 @@ Demo walkthrough for Spiegel. Everything below is ready to copy and paste.
 | **Test case ID** | TC-DEMO-ASSECO-01 |
 | **Upload file** | `testdata/asseco-campaign-brief.pdf` (5 pages, ~11,800 characters) |
 | **Regenerate the PDF** | `pip install reportlab && python testdata/make_pdf.py` |
-| **Prerequisites** | `.env` has a working `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL_NAME` and `ZEP_API_KEY`; backend on :5001, frontend on :3000 |
+| **Prerequisites** | `.env` has a working `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL_NAME` and `NEO4J_PASSWORD` with a reachable Neo4j; backend on :5001, frontend on :3000 |
 | **Runtime** | ~30–45 min end to end at 15 rounds (the simulation is the slow part) |
 | **Cost warning** | Simulations burn tokens. Use **15 rounds** for a demo, not the auto-generated number. |
 
@@ -211,7 +211,7 @@ organisation worth joining, or like a legacy enterprise IT shop?
 | N1 | Upload the PDF, leave **02 / Target customers** empty | 400, "simulation requirement required" |
 | N2 | Fill in the audience, upload nothing | 400, "file upload required" |
 | N3 | Upload a `.docx` or `.png` | Rejected — only `.pdf`, `.md`, `.markdown`, `.txt` are allowed |
-| N4 | Blank `ZEP_API_KEY` in `.env`, then build the graph | 500, "Zep API key missing" |
+| N4 | Blank `NEO4J_PASSWORD` in `.env`, then build the graph | 500, "Knowledge graph store is not configured" |
 | N5 | Delete a project while its graph build is running | 409, "graph is building" |
 | N6 | `POST /api/graph/build` with `chunk_overlap` >= `chunk_size` | 400, "chunk_overlap must satisfy 0 <= chunk_overlap < chunk_size" |
 

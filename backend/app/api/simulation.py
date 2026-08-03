@@ -1,6 +1,6 @@
 """
 Simulation API routes.
-Step 2: read and filter Zep entities, then prepare and run the OASIS
+Step 2: read and filter graph entities, then prepare and run the OASIS
 simulation end to end.
 """
 
@@ -11,7 +11,7 @@ from flask import request, jsonify, send_file
 from . import simulation_bp
 from ..config import Config
 from ..services.agent_population import MAX_AGENTS, planned_population_size
-from ..services.zep_entity_reader import ZepEntityReader
+from ..services.graph_entity_reader import GraphEntityReader
 from ..services.oasis_profile_generator import OasisProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
 from ..services.simulation_runner import (
@@ -19,10 +19,10 @@ from ..services.simulation_runner import (
     RunnerStatus,
     SimulationStopPending,
 )
-from ..services.zep_graph_memory_updater import ZepGraphMemoryManager
+from ..services.graph_memory_updater import GraphMemoryManager
 from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
-from ..utils.zep_lifecycle import get_graph_readers, graph_lifecycle_lock
+from ..utils.graph_lifecycle import get_graph_readers, graph_lifecycle_lock
 from ..models.project import ProjectManager
 
 logger = get_logger('spiegel.api.simulation')
@@ -101,10 +101,10 @@ def get_graph_entities(graph_id: str):
         enrich: also fetch the related edges (default true)
     """
     try:
-        if not Config.ZEP_API_KEY:
+        if not Config.NEO4J_PASSWORD:
             return jsonify({
                 "success": False,
-                "error": t('api.zepApiKeyMissing')
+                "error": t('api.graphStoreNotConfigured')
             }), 500
         
         entity_types_str = request.args.get('entity_types', '')
@@ -113,7 +113,7 @@ def get_graph_entities(graph_id: str):
         
         logger.info(f"fetching graph entities: graph_id={graph_id}, entity_types={entity_types}, enrich={enrich}")
         
-        reader = ZepEntityReader()
+        reader = GraphEntityReader()
         result = reader.filter_defined_entities(
             graph_id=graph_id,
             defined_entity_types=entity_types,
@@ -137,13 +137,13 @@ def get_graph_entities(graph_id: str):
 def get_entity_detail(graph_id: str, entity_uuid: str):
     """Return the detail for one entity."""
     try:
-        if not Config.ZEP_API_KEY:
+        if not Config.NEO4J_PASSWORD:
             return jsonify({
                 "success": False,
-                "error": t('api.zepApiKeyMissing')
+                "error": t('api.graphStoreNotConfigured')
             }), 500
         
-        reader = ZepEntityReader()
+        reader = GraphEntityReader()
         entity = reader.get_entity_with_context(graph_id, entity_uuid)
         
         if not entity:
@@ -169,15 +169,15 @@ def get_entity_detail(graph_id: str, entity_uuid: str):
 def get_entities_by_type(graph_id: str, entity_type: str):
     """Return every entity of a given type."""
     try:
-        if not Config.ZEP_API_KEY:
+        if not Config.NEO4J_PASSWORD:
             return jsonify({
                 "success": False,
-                "error": t('api.zepApiKeyMissing')
+                "error": t('api.graphStoreNotConfigured')
             }), 500
         
         enrich = request.args.get('enrich', 'true').lower() == 'true'
         
-        reader = ZepEntityReader()
+        reader = GraphEntityReader()
         entities = reader.get_entities_by_type(
             graph_id=graph_id,
             entity_type=entity_type,
@@ -411,7 +411,7 @@ def prepare_simulation():
     
     Steps:
     1. Check for preparation that has already finished
-    2. Read and filter the entities from the Zep graph
+    2. Read and filter the entities from the knowledge graph
     3. Generate an OASIS agent profile per entity, with retries
     4. Generate the simulation config with the LLM, with retries
     5. Write the config file and the preset scripts
@@ -533,7 +533,7 @@ def prepare_simulation():
         # so the frontend knows the expected agent total as soon as prepare returns
         try:
             logger.info(f"fetching entity count synchronously: graph_id={state.graph_id}")
-            reader = ZepEntityReader()
+            reader = GraphEntityReader()
             # Fast read: only the count is needed, so skip the edges
             filtered_preview = reader.filter_defined_entities(
                 graph_id=state.graph_id,
@@ -1356,7 +1356,7 @@ def generate_profiles():
         use_llm = data.get('use_llm', True)
         platform = data.get('platform', 'reddit')
         
-        reader = ZepEntityReader()
+        reader = GraphEntityReader()
         filtered = reader.filter_defined_entities(
             graph_id=graph_id,
             defined_entity_types=entity_types,
@@ -1418,7 +1418,7 @@ def start_simulation():
             "simulation_id": "sim_xxxx",          // required, the simulation ID
             "platform": "parallel",                // optional: twitter / reddit / parallel (default)
             "max_rounds": 100,                     // optional: round cap, truncates an over-long run
-            "enable_graph_memory_update": false,   // optional: stream agent activity into the Zep graph
+            "enable_graph_memory_update": false,   // optional: stream agent activity into the knowledge graph
             "force": false                         // optional: force a restart (stops the run and clears the logs)
         }
 
@@ -1429,7 +1429,7 @@ def start_simulation():
         - Use it when the simulation needs to be run again
 
     About enable_graph_memory_update:
-        - When set, every agent action (posts, comments, likes, ...) is streamed into the Zep graph
+        - When set, every agent action (posts, comments, likes, ...) is streamed into the knowledge graph
         - That lets the graph remember the run, for later analysis or AI chat
         - The linked project must have a valid graph_id
         - Updates are batched, to keep the API call count down
@@ -1522,7 +1522,7 @@ def start_simulation():
 
             if is_prepared:
                 run_state = SimulationRunner.get_run_state(simulation_id)
-                updater = ZepGraphMemoryManager.get_updater(simulation_id)
+                updater = GraphMemoryManager.get_updater(simulation_id)
                 needs_finalization = bool(
                     run_state
                     and run_state.runner_status in {

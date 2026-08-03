@@ -1,4 +1,33 @@
 services:
+  neo4j:
+    # Community Edition, GPLv3, no licence key. Spiegel talks to it over Bolt,
+    # which is why its licence does not reach this project's code.
+    image: neo4j:5.26-community
+    container_name: spiegel-neo4j
+    environment:
+      # NEO4J_PASSWORD is read from .env and must match what the backend uses.
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:?NEO4J_PASSWORD must be set in .env}"
+      # Graph extraction writes a lot of small nodes at once; the defaults are
+      # sized for a laptop demo and spill to disk almost immediately.
+      NEO4J_server_memory_heap_initial__size: 1G
+      NEO4J_server_memory_heap_max__size: 2G
+      NEO4J_server_memory_pagecache_size: 1G
+    ports:
+      # 7474 is the browser UI, useful for inspecting a built graph by hand.
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j-data:/data
+    restart: unless-stopped
+    healthcheck:
+      # The backend builds its indexes on first use and fails hard if the
+      # database is not accepting connections yet.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
   spiegel:
     # Builds this repo's code. To run the upstream published image instead,
     # comment out `build` and uncomment one of the image lines below.
@@ -16,6 +45,20 @@ services:
     ports:
       - "3000:3000"
     restart: unless-stopped
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    environment:
+      # Reach the graph store by service name, overriding the localhost default
+      # that a bare `flask run` on the host uses.
+      NEO4J_URI: bolt://neo4j:7687
+    extra_hosts:
+      # Lets the container reach a model server running on the host itself -
+      # LM Studio on :1234 is the usual case, via
+      # EMBEDDING_BASE_URL/LLM_BASE_URL=http://host.docker.internal:...
+      # Docker Desktop provides this name already; Linux hosts do not, so it is
+      # mapped explicitly and a .env that works here keeps working there.
+      - "host.docker.internal:host-gateway"
     volumes:
       # Uploads, projects, simulations and reports live here; the image runs as
       # uid 10001, which needs write access to this path on the host.
@@ -27,3 +70,6 @@ services:
       # this mount it is written inside the container and lost on every
       # rebuild, which is exactly when it is needed to explain a token bill.
       - ./local-doc/logs:/app/local-doc/logs
+
+volumes:
+  neo4j-data:

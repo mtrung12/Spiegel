@@ -21,11 +21,11 @@ from queue import Queue
 from ..utils.logger import get_logger
 from ..utils.locale import get_locale, set_locale
 from ..utils.pipeline_logger import pipeline_log
-from ..utils.zep import (
-    ZEP_HTTP_REQUEST_TIMEOUT_SECONDS,
-    ZEP_INGESTION_WAIT_TIMEOUT_SECONDS,
+from .graph_memory_updater import (
+    GRAPH_INGESTION_WAIT_TIMEOUT_SECONDS,
+    GraphMemoryManager,
+    GraphIngestionIncomplete,
 )
-from .zep_graph_memory_updater import ZepGraphMemoryManager, ZepIngestionIncomplete
 from .simulation_ipc import SimulationIPCClient
 from . import offline_interview
 
@@ -553,7 +553,7 @@ class SimulationRunner:
             }
             if (
                 existing and existing.runner_status in active_statuses
-            ) or ZepGraphMemoryManager.get_updater(simulation_id) is not None:
+            ) or GraphMemoryManager.get_updater(simulation_id) is not None:
                 raise ValueError(f"simulation is already running or finalising: {simulation_id}")
             cls._save_run_state(state)
         
@@ -563,7 +563,7 @@ class SimulationRunner:
                 raise ValueError("graph_id is required when graph memory updates are enabled")
             
             try:
-                ZepGraphMemoryManager.create_updater(simulation_id, graph_id)
+                GraphMemoryManager.create_updater(simulation_id, graph_id)
                 cls._graph_memory_enabled[simulation_id] = True
                 logger.info(f"graph memory updates enabled: simulation_id={simulation_id}, graph_id={graph_id}")
             except Exception as e:
@@ -603,7 +603,7 @@ class SimulationRunner:
             cleanup_error = None
             if cls._graph_memory_enabled.get(simulation_id, False):
                 try:
-                    ZepGraphMemoryManager.stop_updater(simulation_id)
+                    GraphMemoryManager.stop_updater(simulation_id)
                     cls._graph_memory_enabled.pop(simulation_id, None)
                 except Exception as error:
                     cleanup_error = error
@@ -726,7 +726,7 @@ class SimulationRunner:
                     cleanup_errors.append(f"failed to close log file: {error}")
             if cls._graph_memory_enabled.get(simulation_id, False):
                 try:
-                    ZepGraphMemoryManager.stop_updater(simulation_id)
+                    GraphMemoryManager.stop_updater(simulation_id)
                     cls._graph_memory_enabled.pop(simulation_id, None)
                 except Exception as error:
                     cleanup_errors.append(f"Zep graph write cleanup failed: {error}")
@@ -844,13 +844,13 @@ class SimulationRunner:
                         RunnerStatus.STOPPING,
                     )
                     try:
-                        ZepGraphMemoryManager.stop_updater(simulation_id)
+                        GraphMemoryManager.stop_updater(simulation_id)
                         cls._graph_memory_enabled.pop(simulation_id, None)
                         logger.info(
                             "stopped graph memory updates: simulation_id=%s",
                             simulation_id,
                         )
-                    except ZepIngestionIncomplete as error:
+                    except GraphIngestionIncomplete as error:
                         # The run produced everything it was asked to; only the
                         # optional export of it to Zep came up short, and no
                         # retry can change that. Failing the run here would
@@ -1136,7 +1136,7 @@ class SimulationRunner:
         graph_memory_enabled = cls._graph_memory_enabled.get(state.simulation_id, False)
         graph_updater = None
         if graph_memory_enabled:
-            graph_updater = ZepGraphMemoryManager.get_updater(state.simulation_id)
+            graph_updater = GraphMemoryManager.get_updater(state.simulation_id)
         
         try:
             with open(log_path, 'r', encoding='utf-8') as f:
@@ -1384,7 +1384,7 @@ class SimulationRunner:
             if state.runner_status == RunnerStatus.STOPPED:
                 return state
 
-            pending_updater = ZepGraphMemoryManager.get_updater(simulation_id)
+            pending_updater = GraphMemoryManager.get_updater(simulation_id)
             retrying_finalization = (
                 pending_updater is not None
                 and state.runner_status in {
@@ -1444,11 +1444,12 @@ class SimulationRunner:
             and monitor is not threading.current_thread()
             and monitor.is_alive()
         ):
+            # The monitor may be inside a drain, which is bounded by the
+            # ingestion deadline; the slack covers the in-flight episode the
+            # deadline check cannot interrupt.
             wait_timeout = max(
                 30.0,
-                ZEP_INGESTION_WAIT_TIMEOUT_SECONDS
-                + ZEP_HTTP_REQUEST_TIMEOUT_SECONDS
-                + 5,
+                GRAPH_INGESTION_WAIT_TIMEOUT_SECONDS + 65,
             )
             monitor.join(timeout=wait_timeout)
             if monitor.is_alive():
@@ -1466,9 +1467,9 @@ class SimulationRunner:
                 state = cls.get_run_state(simulation_id) or state
                 if cls._graph_memory_enabled.get(simulation_id, False):
                     try:
-                        ZepGraphMemoryManager.stop_updater(simulation_id)
+                        GraphMemoryManager.stop_updater(simulation_id)
                         cls._graph_memory_enabled.pop(simulation_id, None)
-                    except ZepIngestionIncomplete as error:
+                    except GraphIngestionIncomplete as error:
                         # Unretryable, so the stop succeeds and records the
                         # loss - see the monitor path for why this must not
                         # fail the run.
@@ -1893,7 +1894,7 @@ class SimulationRunner:
             return
         cls._cleanup_done = True
 
-        updater_ids = set(ZepGraphMemoryManager.get_simulation_ids())
+        updater_ids = set(GraphMemoryManager.get_simulation_ids())
         simulation_ids = sorted(
             set(cls._processes)
             | set(cls._graph_memory_enabled)
@@ -1912,7 +1913,7 @@ class SimulationRunner:
         for simulation_id in simulation_ids:
             try:
                 state = cls.get_run_state(simulation_id)
-                updater = ZepGraphMemoryManager.get_updater(simulation_id)
+                updater = GraphMemoryManager.get_updater(simulation_id)
                 process = cls._processes.get(simulation_id)
 
                 if state is None:
@@ -1921,7 +1922,7 @@ class SimulationRunner:
                     if process is not None and process.poll() is None:
                         cls._terminate_process(process, simulation_id, timeout=5)
                     if updater is not None:
-                        ZepGraphMemoryManager.stop_updater(simulation_id)
+                        GraphMemoryManager.stop_updater(simulation_id)
                     continue
 
                 if updater is not None:

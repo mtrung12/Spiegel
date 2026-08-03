@@ -1,22 +1,23 @@
 """
-Zep entity reading and filtering service.
-Reads nodes from a Zep graph and keeps the ones matching the predefined entity types.
+Entity reading and filtering service.
+Reads nodes from the knowledge graph and keeps the ones matching the predefined
+entity types.
 """
 
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Set, Callable, TypeVar
+from typing import Dict, Any, List, Optional, Set
 from dataclasses import dataclass, field
-from zep_cloud import NotFoundError
 
-from ..config import Config
 from ..utils.logger import get_logger
-from ..utils.zep_paging import fetch_all_nodes, fetch_all_edges
-from ..utils.zep import call_zep_read_with_retry, get_zep_client
+from ..utils.graphiti_graph import (
+    fetch_all_edges,
+    fetch_all_nodes,
+    fetch_node,
+    fetch_node_edges,
+)
 
-logger = get_logger('spiegel.zep_entity_reader')
-
-# Generic return type
-T = TypeVar('T')
+logger = get_logger('spiegel.graph_entity_reader')
 
 
 def _parse_iso(value: str) -> Optional[datetime]:
@@ -114,50 +115,17 @@ class FilteredEntities:
         }
 
 
-class ZepEntityReader:
+class GraphEntityReader:
     """
-    Zep entity reading and filtering service.
+    Entity reading and filtering service.
 
     Responsibilities:
-    1. Read every node from a Zep graph
+    1. Read every node from the graph
     2. Keep the nodes matching the predefined entity types (those whose labels
        are not just "Entity")
     3. Fetch the related edges and connected nodes for each entity
     """
-    
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or Config.ZEP_API_KEY
-        if not self.api_key:
-            raise ValueError("ZEP_API_KEY is not configured")
-        
-        self.client = get_zep_client(self.api_key)
-    
-    def _call_with_retry(
-        self, 
-        func: Callable[[], T], 
-        operation_name: str,
-        max_retries: int = 3,
-        initial_delay: float = 2.0
-    ) -> T:
-        """
-        Call the Zep API with retries.
 
-        Args:
-            func: Callable to run (a zero-argument lambda or callable)
-            operation_name: Operation name, used in log output
-            max_retries: Maximum number of retries (default 3)
-            initial_delay: Initial delay in seconds
-
-        Returns:
-            The API call result
-        """
-        return call_zep_read_with_retry(
-            func,
-            operation_name=operation_name,
-            max_attempts=max_retries,
-            initial_delay=initial_delay,
-        )
-    
     def get_all_nodes(self, graph_id: str) -> List[Dict[str, Any]]:
         """
         Fetch every node in the graph (paginated).
@@ -170,18 +138,16 @@ class ZepEntityReader:
         """
         logger.info(f"fetching all nodes for graph {graph_id}...")
 
-        nodes = fetch_all_nodes(self.client, graph_id)
-
-        nodes_data = []
-        for node in nodes:
-            nodes_data.append({
-                "uuid": getattr(node, 'uuid_', None) or getattr(node, 'uuid', ''),
+        nodes_data = [
+            {
+                "uuid": node.uuid,
                 "name": node.name or "",
                 "labels": node.labels or [],
                 "summary": node.summary or "",
                 "attributes": node.attributes or {},
-                "created_at": getattr(node, 'created_at', '') or "",
-            })
+            }
+            for node in fetch_all_nodes(graph_id)
+        ]
 
         logger.info(f"fetched {len(nodes_data)} nodes")
         return nodes_data
@@ -198,22 +164,22 @@ class ZepEntityReader:
         """
         logger.info(f"fetching all edges for graph {graph_id}...")
 
-        edges = fetch_all_edges(self.client, graph_id)
-
-        edges_data = []
-        for edge in edges:
-            edges_data.append({
-                "uuid": getattr(edge, 'uuid_', None) or getattr(edge, 'uuid', ''),
-                "name": edge.name or "",
-                "fact": edge.fact or "",
-                "source_node_uuid": edge.source_node_uuid,
-                "target_node_uuid": edge.target_node_uuid,
-                "attributes": edge.attributes or {},
-            })
+        edges_data = [self._edge_to_dict(edge) for edge in fetch_all_edges(graph_id)]
 
         logger.info(f"fetched {len(edges_data)} edges")
         return edges_data
-    
+
+    @staticmethod
+    def _edge_to_dict(edge) -> Dict[str, Any]:
+        return {
+            "uuid": edge.uuid,
+            "name": edge.name or "",
+            "fact": edge.fact or "",
+            "source_node_uuid": edge.source_node_uuid,
+            "target_node_uuid": edge.target_node_uuid,
+            "attributes": edge.attributes or {},
+        }
+
     def get_node_edges(
         self,
         node_uuid: str,
@@ -221,50 +187,25 @@ class ZepEntityReader:
         graph_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
-        Fetch the edges attached to a node.
+        Fetch the edges attached to a node, in both directions.
 
-        In Zep Cloud 3.25, ``graph.node.get_edges`` only returns edges where the
-        node is the source, despite the docs describing it as "all edges". Pass
-        graph_id to get complete context: the whole graph is paginated and both
-        incoming and outgoing edges are selected.
-        
+        ``graph_id`` is accepted and ignored. It used to force a scan of the
+        whole graph, because Zep's per-node edge endpoint silently returned only
+        the edges where the node was the source; the graph query underneath this
+        matches an undirected pattern, so the workaround is no longer needed.
+
         Args:
             node_uuid: Node UUID
-            graph_id: Graph ID; when supplied, both directions are returned
-            
+            graph_id: Unused, kept so existing callers need no change
+
         Returns:
             The edges
         """
         try:
-            if graph_id:
-                return [
-                    edge
-                    for edge in self.get_all_edges(graph_id)
-                    if edge["source_node_uuid"] == node_uuid
-                    or edge["target_node_uuid"] == node_uuid
-                ]
-
-            # Call the Zep API through the retry helper
-            edges = self._call_with_retry(
-                func=lambda: self.client.graph.node.get_edges(node_uuid=node_uuid),
-                operation_name=f"fetch node edges (node={node_uuid[:8]}...)"
-            )
-            
-            edges_data = []
-            for edge in edges:
-                edges_data.append({
-                    "uuid": getattr(edge, 'uuid_', None) or getattr(edge, 'uuid', ''),
-                    "name": edge.name or "",
-                    "fact": edge.fact or "",
-                    "source_node_uuid": edge.source_node_uuid,
-                    "target_node_uuid": edge.target_node_uuid,
-                    "attributes": edge.attributes or {},
-                })
-            
-            return edges_data
+            return [self._edge_to_dict(edge) for edge in fetch_node_edges(node_uuid)]
         except Exception as e:
-            # An empty edge list is valid data. Authentication, permission and
-            # transport failures must not be made indistinguishable from it.
+            # An empty edge list is valid data. A failure to reach the graph
+            # store must not be made indistinguishable from it.
             logger.error(f"failed to fetch edges for node {node_uuid}: {str(e)}")
             raise
     
@@ -419,17 +360,12 @@ class ZepEntityReader:
             The EntityNode, or None
         """
         try:
-            # Fetch the node through the retry helper
-            node = self._call_with_retry(
-                func=lambda: self.client.graph.node.get(uuid_=entity_uuid),
-                operation_name=f"fetch node detail (uuid={entity_uuid[:8]}...)"
-            )
-            
+            node = fetch_node(entity_uuid)
             if not node:
                 return None
-            
+
             # Fetch the node's edges
-            edges = self.get_node_edges(entity_uuid, graph_id=graph_id)
+            edges = self.get_node_edges(entity_uuid)
             
             # Fetch every node for relationship lookups
             all_nodes = self.get_all_nodes(graph_id)
@@ -470,7 +406,7 @@ class ZepEntityReader:
                     })
             
             return EntityNode(
-                uuid=getattr(node, 'uuid_', None) or getattr(node, 'uuid', ''),
+                uuid=node.uuid,
                 name=node.name or "",
                 labels=node.labels or [],
                 summary=node.summary or "",
@@ -478,13 +414,11 @@ class ZepEntityReader:
                 related_edges=related_edges,
                 related_nodes=related_nodes,
             )
-            
-        except NotFoundError:
-            return None
+
         except Exception as e:
-            # Only an actual Zep 404 means "entity not found". Propagate 401,
-            # 403 and exhausted transport errors so callers cannot prepare a
-            # simulation with silently incomplete graph context.
+            # A missing node already came back as None above. Anything reaching
+            # here is a graph store failure, and must propagate so callers
+            # cannot prepare a simulation on silently incomplete context.
             logger.error(f"failed to fetch entity {entity_uuid}: {str(e)}")
             raise
     

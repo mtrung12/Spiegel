@@ -651,7 +651,7 @@ Using the content above, design the entity types and relationship types for a so
         result["entity_types"] = result["entity_types"][:MAX_ONTOLOGY_TYPES]
 
         # Resolve edge endpoints only after entity fallback/capping, so an edge
-        # cannot refer to a type that was removed to satisfy Zep's limits.
+        # cannot refer to a type that was removed to satisfy the type limit.
         valid_entity_names = {entity["name"] for entity in result["entity_types"]}
         for name in valid_entity_names:
             entity_name_map[name] = name
@@ -672,7 +672,7 @@ Using the content above, design the entity types and relationship types for a so
         for raw_edge in raw_edges:
             if isinstance(raw_edge, str):
                 # A bare edge name has no endpoints and cannot be installed in
-                # Zep safely. Ignore it instead of inventing a relationship.
+                # extracted safely. Ignore it instead of inventing a relationship.
                 logger.warning(f"Ignoring ontology edge without source_targets: {raw_edge}")
                 continue
             elif isinstance(raw_edge, dict):

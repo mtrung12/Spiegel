@@ -1,15 +1,12 @@
 from app.services.ontology_generator import OntologyGenerator
-from app.services.graph_builder import GraphBuilderService
 from app.utils.ontology import (
     MAX_ONTOLOGY_ATTRIBUTES,
     MAX_ONTOLOGY_SOURCE_TARGETS,
+    build_graphiti_ontology,
     normalize_ontology_attribute,
     normalize_ontology_attributes,
 )
-from zep_cloud.external_clients.ontology import (
-    edge_model_to_api_schema,
-    entity_model_to_api_schema,
-)
+from graphiti_core.utils.ontology_utils.entity_types_utils import validate_entity_types
 
 
 def test_normalize_string_attribute():
@@ -31,7 +28,7 @@ def test_reject_unusable_attribute_shapes():
         assert normalize_ontology_attribute(value) is None
 
 
-def test_attribute_list_is_non_empty_and_capped_for_zep():
+def test_attribute_list_is_non_empty_and_capped():
     assert normalize_ontology_attributes(None) == [{
         "name": "details",
         "type": "text",
@@ -75,19 +72,10 @@ def test_generator_adds_a_property_to_empty_custom_types():
     assert result["edge_types"][0]["attributes"][0]["name"] == "details"
 
 
-def test_graph_builder_safety_net_accepts_strings_and_skips_invalid_values():
-    captured = {}
+def test_reserved_attribute_names_are_renamed_not_dropped():
+    """Graphiti refuses a custom field that shadows one of EntityNode's own."""
 
-    class GraphApi:
-        def set_ontology(self, **kwargs):
-            captured.update(kwargs)
-
-    class Client:
-        graph = GraphApi()
-
-    builder = object.__new__(GraphBuilderService)
-    builder.client = Client()
-    builder.set_ontology("graph-id", {
+    entity_types, _, _ = build_graphiti_ontology({
         "entity_types": [{
             "name": "Speaker",
             "attributes": ["role", None, {"name": "summary"}],
@@ -95,28 +83,16 @@ def test_graph_builder_safety_net_accepts_strings_and_skips_invalid_values():
         "edge_types": [],
     })
 
-    speaker = captured["entities"]["Speaker"]
-    assert set(speaker.__annotations__) == {"role", "entity_summary"}
+    assert set(entity_types["Speaker"].model_fields) == {"role", "entity_summary"}
+    assert validate_entity_types(entity_types) is True
 
 
-def test_graph_builder_emits_a_pinned_zep_sdk_compatible_schema():
-    captured = {}
-
-    class GraphApi:
-        def set_ontology(self, **kwargs):
-            captured.update(kwargs)
-
-    class Client:
-        graph = GraphApi()
-
-    builder = object.__new__(GraphBuilderService)
-    builder.client = Client()
-    builder.set_ontology("graph-id", {
+def test_compiled_types_stay_within_the_attribute_cap_and_carry_descriptions():
+    entity_types, edge_types, edge_type_map = build_graphiti_ontology({
         "entity_types": [{
             "name": "Speaker",
-            "attributes": ["graph_id"] + [
-                f"field_{index}" for index in range(10)
-            ],
+            "description": "Someone who speaks publicly.",
+            "attributes": ["graph_id"] + [f"field_{index}" for index in range(10)],
         }],
         "edge_types": [{
             "name": "MENTIONS",
@@ -125,41 +101,22 @@ def test_graph_builder_emits_a_pinned_zep_sdk_compatible_schema():
         }],
     })
 
-    assert captured["graph_ids"] == ["graph-id"]
+    speaker = entity_types["Speaker"]
+    assert len(speaker.model_fields) == MAX_ONTOLOGY_ATTRIBUTES
+    # The reserved name is renamed but keeps its original description, which is
+    # what the extraction prompt actually reads.
+    assert speaker.model_fields["entity_graph_id"].description == "graph_id"
+    # The type description becomes the model docstring - also prompt input.
+    assert speaker.__doc__ == "Someone who speaks publicly."
 
-    speaker = captured["entities"]["Speaker"]
-    entity_schema = entity_model_to_api_schema(speaker, "Speaker")
-    assert len(entity_schema["properties"]) == MAX_ONTOLOGY_ATTRIBUTES
-    assert entity_schema["properties"][0] == {
-        "name": "entity_graph_id",
-        "type": "Text",
-        "description": "graph_id",
-    }
-
-    mentions, source_targets = captured["edges"]["MENTIONS"]
-    edge_schema = edge_model_to_api_schema(mentions, "MENTIONS")
-    assert edge_schema["properties"] == [{
-        "name": "details",
-        "type": "Text",
-        "description": "Additional details about this ontology type.",
-    }]
-    assert source_targets[0].source == "Speaker"
-    assert source_targets[0].target == "Speaker"
+    assert edge_types["MENTIONS"].model_fields["details"].description == (
+        "Additional details about this ontology type."
+    )
+    assert edge_type_map == {("Speaker", "Speaker"): ["MENTIONS"]}
 
 
-def test_graph_builder_passes_an_empty_entity_mapping_for_edge_only_ontology():
-    captured = {}
-
-    class GraphApi:
-        def set_ontology(self, **kwargs):
-            captured.update(kwargs)
-
-    class Client:
-        graph = GraphApi()
-
-    builder = object.__new__(GraphBuilderService)
-    builder.client = Client()
-    builder.set_ontology("graph-id", {
+def test_edge_only_ontology_compiles_without_entity_types():
+    entity_types, edge_types, edge_type_map = build_graphiti_ontology({
         "entity_types": [],
         "edge_types": [{
             "name": "RELATED_TO",
@@ -168,28 +125,19 @@ def test_graph_builder_passes_an_empty_entity_mapping_for_edge_only_ontology():
         }],
     })
 
-    assert captured["entities"] == {}
+    assert entity_types == {}
+    assert set(edge_types) == {"RELATED_TO"}
+    assert edge_type_map == {("Entity", "Entity"): ["RELATED_TO"]}
 
 
-def test_graph_builder_deduplicates_and_caps_edge_source_targets_for_zep():
-    captured = {}
-
-    class GraphApi:
-        def set_ontology(self, **kwargs):
-            captured.update(kwargs)
-
-    class Client:
-        graph = GraphApi()
-
+def test_edge_source_targets_are_deduplicated_and_capped():
     source_targets = [
         {"source": f"Source{index}", "target": f"Target{index}"}
         for index in range(MAX_ONTOLOGY_SOURCE_TARGETS + 2)
     ]
     source_targets.insert(1, dict(source_targets[0]))
 
-    builder = object.__new__(GraphBuilderService)
-    builder.client = Client()
-    builder.set_ontology("graph-id", {
+    _, _, edge_type_map = build_graphiti_ontology({
         "entity_types": [],
         "edge_types": [{
             "name": "RELATED_TO",
@@ -198,12 +146,26 @@ def test_graph_builder_deduplicates_and_caps_edge_source_targets_for_zep():
         }],
     })
 
-    _, normalized_targets = captured["edges"]["RELATED_TO"]
-    assert len(normalized_targets) == MAX_ONTOLOGY_SOURCE_TARGETS
-    assert [(item.source, item.target) for item in normalized_targets] == [
+    assert list(edge_type_map) == [
         (f"Source{index}", f"Target{index}")
         for index in range(MAX_ONTOLOGY_SOURCE_TARGETS)
     ]
+
+
+def test_an_edge_type_with_no_endpoints_is_dropped():
+    """Without a source/target pair the extractor is never offered the type."""
+
+    _, edge_types, edge_type_map = build_graphiti_ontology({
+        "entity_types": [{"name": "Speaker", "attributes": ["role"]}],
+        "edge_types": [{"name": "ORPHAN", "attributes": [], "source_targets": []}],
+    })
+
+    assert edge_types == {}
+    assert edge_type_map == {}
+
+
+def test_a_missing_ontology_compiles_to_untyped_extraction():
+    assert build_graphiti_ontology(None) == ({}, {}, {})
 
 
 def test_generator_ignores_invalid_entries_and_normalizes_edge_names():

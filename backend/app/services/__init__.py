@@ -5,7 +5,7 @@ Business services.
 from .ontology_generator import OntologyGenerator
 from .graph_builder import GraphBuilderService
 from .text_processor import TextProcessor
-from .zep_entity_reader import ZepEntityReader, EntityNode, FilteredEntities
+from .graph_entity_reader import GraphEntityReader, EntityNode, FilteredEntities
 from .oasis_profile_generator import OasisProfileGenerator, OasisAgentProfile
 from .simulation_manager import SimulationManager, SimulationState, SimulationStatus
 from .simulation_config_generator import (
@@ -23,9 +23,9 @@ from .simulation_runner import (
     AgentAction,
     RoundSummary
 )
-from .zep_graph_memory_updater import (
-    ZepGraphMemoryUpdater,
-    ZepGraphMemoryManager,
+from .graph_memory_updater import (
+    GraphMemoryUpdater,
+    GraphMemoryManager,
     AgentActivity
 )
 from .simulation_ipc import (
@@ -40,7 +40,7 @@ __all__ = [
     'OntologyGenerator', 
     'GraphBuilderService', 
     'TextProcessor',
-    'ZepEntityReader',
+    'GraphEntityReader',
     'EntityNode',
     'FilteredEntities',
     'OasisProfileGenerator',
@@ -59,8 +59,8 @@ __all__ = [
     'RunnerStatus',
     'AgentAction',
     'RoundSummary',
-    'ZepGraphMemoryUpdater',
-    'ZepGraphMemoryManager',
+    'GraphMemoryUpdater',
+    'GraphMemoryManager',
     'AgentActivity',
     'SimulationIPCClient',
     'IPCCommand',

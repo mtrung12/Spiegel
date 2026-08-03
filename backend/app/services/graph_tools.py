@@ -1,5 +1,5 @@
 """
-Zep retrieval tool service.
+Knowledge graph retrieval tool service.
 Wraps graph search, node reads and edge queries for the report agent.
 
 Core retrieval tools:
@@ -9,26 +9,23 @@ Core retrieval tools:
 3. QuickSearch - fast, lightweight retrieval
 """
 
-import time
 import json
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
-from zep_cloud import NotFoundError
 
-from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.llm_client import LLMClient
 from ..utils.locale import t
 from ..utils.pipeline_logger import llm_caller
-from ..utils.zep_paging import fetch_all_nodes, fetch_all_edges
-from ..utils.zep import (
-    call_zep_read_with_retry,
-    get_zep_client,
-    normalize_zep_search_limit,
-    normalize_zep_search_query,
+from ..utils.graphiti_graph import (
+    fetch_all_edges,
+    fetch_all_nodes,
+    fetch_node,
+    fetch_node_edges,
+    search_graph as graph_search,
 )
 
-logger = get_logger('spiegel.zep_tools')
+logger = get_logger('spiegel.graph_tools')
 
 
 @dataclass
@@ -407,9 +404,9 @@ class InterviewResult:
         return "\n".join(text_parts)
 
 
-class ZepToolsService:
+class GraphToolsService:
     """
-    Zep retrieval tool service.
+    Knowledge graph retrieval tool service.
 
     Core retrieval tools:
     1. insight_forge - deep insight retrieval (the most powerful; generates
@@ -429,37 +426,18 @@ class ZepToolsService:
     - get_entity_summary - relationship summary for an entity
     """
     
-    # Retry settings
-    MAX_RETRIES = 3
-    RETRY_DELAY = 2.0
-    
-    def __init__(self, api_key: Optional[str] = None, llm_client: Optional[LLMClient] = None):
-        self.api_key = api_key or Config.ZEP_API_KEY
-        if not self.api_key:
-            raise ValueError("ZEP_API_KEY is not configured")
-        
-        self.client = get_zep_client(self.api_key)
+    def __init__(self, llm_client: Optional[LLMClient] = None):
         # LLM client, used by InsightForge to generate sub-questions
         self._llm_client = llm_client
-        logger.info(t("console.zepToolsInitialized"))
-    
+        logger.info(t("console.graphToolsInitialized"))
+
     @property
     def llm(self) -> LLMClient:
         """Lazily initialise the LLM client."""
         if self._llm_client is None:
             self._llm_client = LLMClient()
         return self._llm_client
-    
-    def _call_with_retry(self, func, operation_name: str, max_retries: int = None):
-        """Retry one safe read using typed Zep/HTTPX error classification."""
 
-        return call_zep_read_with_retry(
-            func,
-            operation_name=operation_name,
-            max_attempts=max_retries or self.MAX_RETRIES,
-            initial_delay=self.RETRY_DELAY,
-        )
-    
     def search_graph(
         self, 
         graph_id: str, 
@@ -468,69 +446,58 @@ class ZepToolsService:
         scope: str = "edges"
     ) -> SearchResult:
         """
-        Semantic search over the graph.
+        Hybrid search over the graph.
 
-        Runs a hybrid (semantic + BM25) search. If the Zep Cloud search API is
-        unavailable, falls back to local keyword matching.
+        Fuses BM25, vector similarity and breadth-first graph traversal with
+        reciprocal rank fusion.
 
         Args:
             graph_id: Graph ID (standalone graph)
             query: Search query
             limit: Number of results
-            scope: Search scope, "edges" or "nodes"
+            scope: Search scope, "edges", "nodes" or "both"
 
         Returns:
             SearchResult: the search result
         """
         logger.info(t("console.graphSearch", graphId=graph_id, query=query[:50]))
-        
-        zep_query = normalize_zep_search_query(query)
-        zep_limit = normalize_zep_search_limit(limit)
 
         try:
-            search_results = self._call_with_retry(
-                func=lambda: self.client.graph.search(
-                    graph_id=graph_id,
-                    query=zep_query,
-                    limit=zep_limit,
-                    scope=scope,
-                    reranker="cross_encoder"
-                ),
-                operation_name=t("console.graphSearchOp", graphId=graph_id)
+            search_results = graph_search(
+                graph_id=graph_id,
+                query=query,
+                limit=limit,
+                scope=scope,
             )
-            
+
             facts = []
             edges = []
             nodes = []
-            
-            # Parse the edge search results
-            if hasattr(search_results, 'edges') and search_results.edges:
-                for edge in search_results.edges:
-                    if hasattr(edge, 'fact') and edge.fact:
-                        facts.append(edge.fact)
-                    edges.append({
-                        "uuid": getattr(edge, 'uuid_', None) or getattr(edge, 'uuid', ''),
-                        "name": getattr(edge, 'name', ''),
-                        "fact": getattr(edge, 'fact', ''),
-                        "source_node_uuid": getattr(edge, 'source_node_uuid', ''),
-                        "target_node_uuid": getattr(edge, 'target_node_uuid', ''),
-                    })
-            
-            # Parse the node search results
-            if hasattr(search_results, 'nodes') and search_results.nodes:
-                for node in search_results.nodes:
-                    nodes.append({
-                        "uuid": getattr(node, 'uuid_', None) or getattr(node, 'uuid', ''),
-                        "name": getattr(node, 'name', ''),
-                        "labels": getattr(node, 'labels', []),
-                        "summary": getattr(node, 'summary', ''),
-                    })
-                    # A node summary counts as a fact too
-                    if hasattr(node, 'summary') and node.summary:
-                        facts.append(f"[{node.name}]: {node.summary}")
-            
+
+            for edge in search_results.edges:
+                if edge.fact:
+                    facts.append(edge.fact)
+                edges.append({
+                    "uuid": edge.uuid,
+                    "name": edge.name or "",
+                    "fact": edge.fact or "",
+                    "source_node_uuid": edge.source_node_uuid,
+                    "target_node_uuid": edge.target_node_uuid,
+                })
+
+            for node in search_results.nodes:
+                nodes.append({
+                    "uuid": node.uuid,
+                    "name": node.name or "",
+                    "labels": node.labels or [],
+                    "summary": node.summary or "",
+                })
+                # A node summary counts as a fact too
+                if node.summary:
+                    facts.append(f"[{node.name}]: {node.summary}")
+
             logger.info(t("console.searchComplete", count=len(facts)))
-            
+
             return SearchResult(
                 facts=facts,
                 edges=edges,
@@ -538,11 +505,11 @@ class ZepToolsService:
                 query=query,
                 total_count=len(facts)
             )
-            
+
         except Exception as e:
-            # Authentication, invalid input, missing graphs, and exhausted
-            # transient failures must remain visible to the report workflow.
-            logger.error(t("console.zepSearchApiFallback", error=str(e)))
+            # Invalid input, a missing graph and store failures must all remain
+            # visible to the report workflow rather than reading as "no results".
+            logger.error(t("console.graphSearchFailed", error=str(e)))
             raise
     
     def get_all_nodes(self, graph_id: str) -> List[NodeInfo]:
@@ -557,18 +524,16 @@ class ZepToolsService:
         """
         logger.info(t("console.fetchingAllNodes", graphId=graph_id))
 
-        nodes = fetch_all_nodes(self.client, graph_id)
-
-        result = []
-        for node in nodes:
-            node_uuid = getattr(node, 'uuid_', None) or getattr(node, 'uuid', None) or ""
-            result.append(NodeInfo(
-                uuid=str(node_uuid) if node_uuid else "",
+        result = [
+            NodeInfo(
+                uuid=node.uuid,
                 name=node.name or "",
                 labels=node.labels or [],
                 summary=node.summary or "",
                 attributes=node.attributes or {}
-            ))
+            )
+            for node in fetch_all_nodes(graph_id)
+        ]
 
         logger.info(t("console.fetchedNodes", count=len(result)))
         return result
@@ -586,13 +551,10 @@ class ZepToolsService:
         """
         logger.info(t("console.fetchingAllEdges", graphId=graph_id))
 
-        edges = fetch_all_edges(self.client, graph_id)
-
         result = []
-        for edge in edges:
-            edge_uuid = getattr(edge, 'uuid_', None) or getattr(edge, 'uuid', None) or ""
+        for edge in fetch_all_edges(graph_id):
             edge_info = EdgeInfo(
-                uuid=str(edge_uuid) if edge_uuid else "",
+                uuid=edge.uuid,
                 name=edge.name or "",
                 fact=edge.fact or "",
                 source_node_uuid=edge.source_node_uuid or "",
@@ -601,10 +563,10 @@ class ZepToolsService:
 
             # Attach the timestamps
             if include_temporal:
-                edge_info.created_at = getattr(edge, 'created_at', None)
-                edge_info.valid_at = getattr(edge, 'valid_at', None)
-                edge_info.invalid_at = getattr(edge, 'invalid_at', None)
-                edge_info.expired_at = getattr(edge, 'expired_at', None)
+                edge_info.created_at = edge.created_at
+                edge_info.valid_at = edge.valid_at
+                edge_info.invalid_at = edge.invalid_at
+                edge_info.expired_at = edge.expired_at
 
             result.append(edge_info)
 
@@ -622,58 +584,57 @@ class ZepToolsService:
             The node information, or None
         """
         logger.info(t("console.fetchingNodeDetail", uuid=node_uuid[:8]))
-        
+
         try:
-            node = self._call_with_retry(
-                func=lambda: self.client.graph.node.get(uuid_=node_uuid),
-                operation_name=t("console.fetchNodeDetailOp", uuid=node_uuid[:8])
-            )
-            
+            node = fetch_node(node_uuid)
             if not node:
                 return None
-            
+
             return NodeInfo(
-                uuid=getattr(node, 'uuid_', None) or getattr(node, 'uuid', ''),
+                uuid=node.uuid,
                 name=node.name or "",
                 labels=node.labels or [],
                 summary=node.summary or "",
                 attributes=node.attributes or {}
             )
-        except NotFoundError:
-            return None
         except Exception as e:
             logger.error(t("console.fetchNodeDetailFailed", error=str(e)))
             raise
     
     def get_node_edges(self, graph_id: str, node_uuid: str) -> List[EdgeInfo]:
         """
-        Fetch every edge attached to a node.
-
-        Fetches every edge in the graph and filters down to the ones touching
-        the given node.
+        Fetch every edge attached to a node, in both directions.
 
         Args:
-            graph_id: Graph ID
+            graph_id: Unused, kept so existing callers need no change
             node_uuid: Node UUID
 
         Returns:
             The edges
         """
         logger.info(t("console.fetchingNodeEdges", uuid=node_uuid[:8]))
-        
+
         try:
-            # Fetch every edge, then filter
-            all_edges = self.get_all_edges(graph_id)
-            
-            result = []
-            for edge in all_edges:
-                # Keep the edge if the node is its source or its target
-                if edge.source_node_uuid == node_uuid or edge.target_node_uuid == node_uuid:
-                    result.append(edge)
-            
+            # One indexed query on the node, rather than the whole-graph scan
+            # Zep's source-only edge endpoint forced.
+            result = [
+                EdgeInfo(
+                    uuid=edge.uuid,
+                    name=edge.name or "",
+                    fact=edge.fact or "",
+                    source_node_uuid=edge.source_node_uuid or "",
+                    target_node_uuid=edge.target_node_uuid or "",
+                    created_at=edge.created_at,
+                    valid_at=edge.valid_at,
+                    invalid_at=edge.invalid_at,
+                    expired_at=edge.expired_at,
+                )
+                for edge in fetch_node_edges(node_uuid)
+            ]
+
             logger.info(t("console.foundNodeEdges", count=len(result)))
             return result
-            
+
         except Exception as e:
             logger.error(t("console.fetchNodeEdgesFailed", error=str(e)))
             raise
@@ -1024,7 +985,7 @@ Break the following question into {max_queries} sub-questions:
 Return the sub-questions as JSON."""
 
         try:
-            with llm_caller('ZepTools.sub_queries'):
+            with llm_caller('GraphTools.sub_queries'):
                 response = self.llm.chat_json(
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -1149,7 +1110,7 @@ Return the sub-questions as JSON."""
         """
         QuickSearch - fast, lightweight retrieval.
 
-        1. Calls Zep semantic search directly
+        1. Calls hybrid graph search directly
         2. Returns the most relevant results
         3. Suited to simple, direct lookups
 
@@ -1477,7 +1438,7 @@ Available agents ({len(agent_summaries)} total):
 Pick at most {max_agents} agents to interview and explain why."""
 
         try:
-            with llm_caller('ZepTools.select_agents'):
+            with llm_caller('GraphTools.select_agents'):
                 response = self.llm.chat_json(
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -1537,7 +1498,7 @@ Interviewee roles: {', '.join(agent_roles)}
 Write 3-5 interview questions."""
 
         try:
-            with llm_caller('ZepTools.interview_questions'):
+            with llm_caller('GraphTools.interview_questions'):
                 response = self.llm.chat_json(
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -1596,7 +1557,7 @@ Transcript:
 Write the interview summary."""
 
         try:
-            with llm_caller('ZepTools.interview_summary'):
+            with llm_caller('GraphTools.interview_summary'):
                 summary = self.llm.chat(
                     messages=[
                         {"role": "system", "content": system_prompt},

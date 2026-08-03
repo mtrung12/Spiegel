@@ -1,7 +1,7 @@
 """
 Vector index over what the simulated audience actually wrote.
 
-The retrieval tools in ``zep_tools`` search the knowledge graph: entities,
+The retrieval tools in ``graph_tools`` search the knowledge graph: entities,
 relationships and LLM-extracted facts. That is a *summary* layer. The raw posts
 and comments the agents authored never reach the chatbot verbatim, so a question
 like "what did people say about the price?" is answered from second-hand facts

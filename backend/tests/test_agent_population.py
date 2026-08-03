@@ -30,7 +30,7 @@ from app.services.simulation_config_generator import (
 
 
 class _Entity:
-    """Stand-in for a Zep EntityNode."""
+    """Stand-in for a graph EntityNode."""
 
     def __init__(self, name, entity_type, uuid=None):
         self.name = name
@@ -54,7 +54,6 @@ def _generator(distribution=None):
     generator = OasisProfileGenerator.__new__(OasisProfileGenerator)
     generator.corpus_distribution = distribution
     generator.graph_id = None
-    generator.zep_client = None
     return generator
 
 
