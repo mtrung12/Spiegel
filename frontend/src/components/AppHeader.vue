@@ -20,12 +20,32 @@
 
         <!-- Which campaign this is. Only step 1 ever said, so steps 2-5 were
              five identical-looking pages across every project. -->
-        <template v-if="projectName">
+        <!-- Editable in place: a project could only ever be named at creation,
+             so a mistyped name followed the campaign through all five steps. -->
+        <template v-if="displayName || editingName">
           <span class="header-divider" aria-hidden="true"></span>
-          <span class="project-name" :title="projectName">
+          <input
+            v-if="editingName"
+            ref="nameInput"
+            v-model="draftName"
+            class="project-name-input"
+            :aria-label="$t('a11y.renameProject')"
+            :disabled="savingName"
+            maxlength="120"
+            @keyup.enter="saveName"
+            @keyup.esc="cancelRename"
+            @blur="saveName"
+          />
+          <button
+            v-else
+            class="project-name"
+            :title="$t('a11y.renameProject')"
+            :disabled="!projectId"
+            @click="startRename"
+          >
             <span class="sr-only">{{ $t('a11y.currentProject') }}:</span>
-            {{ projectName }}
-          </span>
+            {{ displayName }}
+          </button>
         </template>
       </div>
 
@@ -86,12 +106,12 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import LanguageSwitcher from './LanguageSwitcher.vue'
 import { setProjectTitle } from '../utils/pageTitle'
-import { getProjectProgress } from '../api/graph'
+import { getProjectProgress, renameProject } from '../api/graph'
 
 const props = defineProps({
   currentStep: { type: Number, required: true },
@@ -107,7 +127,7 @@ const props = defineProps({
   projectName: { type: String, default: '' }
 })
 
-const emit = defineEmits(['update:modelValue', 'readonly'])
+const emit = defineEmits(['update:modelValue', 'readonly', 'renamed'])
 
 const router = useRouter()
 const { t, tm } = useI18n()
@@ -245,7 +265,52 @@ watch(readOnly, (value) => emit('readonly', value), { immediate: true })
 
 // The header is the one component every step view mounts, so it is where the
 // tab title learns which project it is looking at.
-watch(() => props.projectName, (name) => setProjectTitle(name), { immediate: true })
+// Renaming is answered here rather than by each of the five step views: the
+// header is the only component all of them mount, and the name is a label -
+// nothing else on the page reads it. `localName` holds the saved value so the
+// header does not wait on the parent to refetch the project.
+const localName = ref('')
+const editingName = ref(false)
+const savingName = ref(false)
+const draftName = ref('')
+const nameInput = ref(null)
+
+const displayName = computed(() => localName.value || props.projectName)
+
+watch(() => props.projectName, () => { localName.value = '' })
+
+const startRename = async () => {
+  draftName.value = displayName.value
+  editingName.value = true
+  await nextTick()
+  nameInput.value?.select()
+}
+
+const cancelRename = () => {
+  editingName.value = false
+}
+
+const saveName = async () => {
+  // `blur` also fires when Enter or Esc already closed the editor.
+  if (!editingName.value || savingName.value) return
+  const name = draftName.value.trim()
+  if (!name || name === displayName.value) return cancelRename()
+
+  savingName.value = true
+  try {
+    await renameProject(props.projectId, name)
+    localName.value = name
+    emit('renamed', name)
+    editingName.value = false
+  } catch {
+    // The interceptor already surfaced the error; keep the editor open with
+    // what was typed rather than silently dropping the rename.
+  } finally {
+    savingName.value = false
+  }
+}
+
+watch(displayName, (name) => setProjectTitle(name), { immediate: true })
 </script>
 
 <style scoped>
@@ -322,6 +387,32 @@ watch(() => props.projectName, (name) => setProjectTitle(name), { immediate: tru
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: var(--font-sans);
+  text-align: left;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.project-name:not(:disabled):hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.project-name-input {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 4px 8px;
+  min-width: 0;
+  max-width: 260px;
+  flex: 1;
 }
 
 .header-right {

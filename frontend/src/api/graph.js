@@ -126,6 +126,20 @@ export function getProjectProgress(projectId) {
 }
 
 /**
+ * Rename a project.
+ * @param {String} projectId - the project ID
+ * @param {String} name - the new name
+ * @returns {Promise}
+ */
+export function renameProject(projectId, name) {
+  return service({
+    url: `/api/graph/project/${projectId}`,
+    method: 'patch',
+    data: { name }
+  })
+}
+
+/**
  * Delete a project, its knowledge graph and its simulations.
  * @param {String} projectId - the project ID
  * @returns {Promise}

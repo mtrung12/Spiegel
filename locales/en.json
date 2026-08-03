@@ -551,6 +551,7 @@
   },
   "api": {
     "projectNotFound": "Project not found: {id}",
+    "projectNameRequired": "Please provide a project name",
     "projectDeleteFailed": "Project not found or deletion failed: {id}",
     "projectDeleted": "Project deleted: {id}",
     "projectReset": "Project reset: {id}",
@@ -979,7 +980,8 @@
     "workflowSteps": "Workflow steps",
     "stepNotReached": "Not reached yet",
     "stepCurrent": "You are here",
-    "currentProject": "Current project"
+    "currentProject": "Current project",
+    "renameProject": "Rename this project"
   },
   "notFound": {
     "code": "404",

@@ -427,6 +427,29 @@ def get_project_progress(project_id: str):
     })
 
 
+@graph_bp.route('/project/<project_id>', methods=['PATCH'])
+def rename_project(project_id: str):
+    """Rename a project. The name is a label only - nothing else reads it."""
+    project = ProjectManager.get_project(project_id)
+    if not project:
+        return jsonify({
+            "success": False,
+            "error": t('api.projectNotFound', id=project_id)
+        }), 404
+
+    name = (request.get_json(silent=True) or {}).get('name', '')
+    name = name.strip() if isinstance(name, str) else ''
+    if not name:
+        return jsonify({"success": False, "error": t('api.projectNameRequired')}), 400
+    # ponytail: cap the length so a pasted document cannot become the label.
+    name = name[:120]
+
+    project.name = name
+    ProjectManager.save_project(project)
+
+    return jsonify({"success": True, "data": project.to_dict()})
+
+
 @graph_bp.route('/project/<project_id>', methods=['DELETE'])
 def delete_project(project_id: str):
     with _project_build_lock(project_id):

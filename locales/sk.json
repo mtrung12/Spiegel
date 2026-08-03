@@ -551,6 +551,7 @@
   },
   "api": {
     "projectNotFound": "Projekt sa nenašiel: {id}",
+    "projectNameRequired": "Zadajte názov projektu",
     "projectDeleteFailed": "Projekt sa nenašiel alebo sa ho nepodarilo odstrániť: {id}",
     "projectDeleted": "Projekt odstránený: {id}",
     "projectReset": "Projekt obnovený: {id}",
@@ -983,7 +984,8 @@
     "workflowSteps": "Kroky pracovného postupu",
     "stepNotReached": "Sem sa projekt ešte nedostal",
     "stepCurrent": "Ste tu",
-    "currentProject": "Aktuálny projekt"
+    "currentProject": "Aktuálny projekt",
+    "renameProject": "Premenovať tento projekt"
   },
   "notFound": {
     "code": "404",
