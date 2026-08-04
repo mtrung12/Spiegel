@@ -22,7 +22,6 @@ from ..utils.logger import get_logger
 from ..utils.locale import get_locale, set_locale
 from ..utils.pipeline_logger import pipeline_log
 from .graph_memory_updater import (
-    GRAPH_INGESTION_WAIT_TIMEOUT_SECONDS,
     GraphMemoryManager,
     GraphIngestionIncomplete,
 )
@@ -36,6 +35,18 @@ _cleanup_registered = False
 
 # Platform detection
 IS_WINDOWS = sys.platform == 'win32'
+
+# How long a stop request blocks waiting for the monitor thread to finish the
+# graph-ingestion barrier before it answers "still stopping".
+#
+# The part that actually stops the run - killing the child process - has already
+# happened by the time this wait starts, so all that is left is the Zep drain.
+# That drain is bounded by GRAPH_INGESTION_WAIT_TIMEOUT_SECONDS (600s) and
+# routinely runs for minutes on a real run. Waiting it out inside the request
+# outlives the frontend's HTTP timeout, so the caller sees a network error for a
+# stop that worked, and the run keeps rendering as live. Answer promptly instead
+# and let status polling publish the terminal status when the drain lands.
+STOP_REQUEST_GRACE_SECONDS = 45.0
 
 
 def _elapsed_seconds(started_at: Optional[str], completed_at: Optional[str]) -> Optional[float]:
@@ -1444,13 +1455,10 @@ class SimulationRunner:
             and monitor is not threading.current_thread()
             and monitor.is_alive()
         ):
-            # The monitor may be inside a drain, which is bounded by the
-            # ingestion deadline; the slack covers the in-flight episode the
-            # deadline check cannot interrupt.
-            wait_timeout = max(
-                30.0,
-                GRAPH_INGESTION_WAIT_TIMEOUT_SECONDS + 65,
-            )
+            # Short grace only: long enough that a quick drain still answers
+            # STOPPED in one request, short enough that the caller is never left
+            # holding a connection for the full ingestion deadline.
+            wait_timeout = STOP_REQUEST_GRACE_SECONDS
             monitor.join(timeout=wait_timeout)
             if monitor.is_alive():
                 # The monitor still owns finalization and may be inside one

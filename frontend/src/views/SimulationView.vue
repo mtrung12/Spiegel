@@ -183,7 +183,12 @@ const checkAndStopRunningSimulation = async () => {
 const forceStopSimulation = async () => {
   try {
     const stopRes = await stopSimulation({ simulation_id: currentSimulationId.value })
-    if (stopRes.success) {
+    if (stopRes.pending) {
+      // Killed, but the graph write-back is still draining. /start's own
+      // barrier is what blocks a restart until that lands, so this only needs
+      // to say so rather than claim the stop finished.
+      addLog(t('log.simStopDraining'))
+    } else if (stopRes.success) {
       addLog(t('log.simForceStopSuccess'))
     } else {
       addLog(t('log.forceStopSimFailed', { error: stopRes.error || t('common.unknownError') }))

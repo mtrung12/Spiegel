@@ -249,6 +249,26 @@ defineExpose({ load })
   border: 1px solid var(--border);
   background: var(--surface);
   padding: 14px 16px;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+  /* The tiles fill in left to right on first paint; the delay is per column
+     below, capped so a wide grid still settles inside half a second. */
+  animation: kpi-in 380ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.kpi-card:hover {
+  border-color: var(--border-strong);
+  background: var(--white);
+  transform: translateY(-2px);
+}
+
+.kpi-grid > .kpi-card:nth-child(2) { animation-delay: 50ms; }
+.kpi-grid > .kpi-card:nth-child(3) { animation-delay: 100ms; }
+.kpi-grid > .kpi-card:nth-child(4) { animation-delay: 150ms; }
+.kpi-grid > .kpi-card:nth-child(n + 5) { animation-delay: 200ms; }
+
+@keyframes kpi-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
 }
 
 .kpi-value {
@@ -349,5 +369,16 @@ defineExpose({ load })
 .kpi-round-fill {
   width: 100%;
   background: var(--ink);
+  /* Bars grow out of the axis instead of being there already, which is what
+     makes the shape of the run readable at a glance. The height itself is set
+     inline from the data, so only the scale is animated. */
+  transform-origin: bottom;
+  animation: bar-grow 460ms cubic-bezier(0.2, 0, 0, 1) both;
+  transition: height 0.25s ease;
+}
+
+@keyframes bar-grow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
 }
 </style>

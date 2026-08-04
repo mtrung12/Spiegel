@@ -1,33 +1,37 @@
 <template>
-  <div 
+  <div
     class="history-database"
     :class="{ 'no-projects': projects.length === 0 && !loading }"
-    ref="historyContainer"
   >
-    <!-- Background decoration: technical grid, shown only when projects exist -->
-    <div v-if="projects.length > 0 || loading" class="tech-grid-bg">
-      <div class="grid-pattern"></div>
-      <div class="gradient-overlay"></div>
-    </div>
-
-    <!-- Heading -->
+    <!-- Heading. Left-aligned on the same measure as the page title above it;
+         the centred label between two fading rules was decoration that put this
+         section on a different axis from every other one. -->
     <div class="section-header">
-      <div class="section-line"></div>
       <span class="section-title">{{ $t('history.title') }}</span>
-      <div class="section-line"></div>
+      <span v-if="projects.length > 0" class="section-count">{{ projects.length }}</span>
     </div>
 
-    <!-- Card container, shown only when projects exist -->
-    <div v-if="projects.length > 0" class="cards-container" :class="{ expanded: isExpanded }" :style="containerStyle">
+    <!-- Card grid, shown only when projects exist -->
+    <div v-if="projects.length > 0" class="cards-grid">
+      <!-- The first rectangle is the way in to a new project. It sits in the
+           same deck as the existing ones so "start something new" reads as a
+           peer of "open something old", rather than a control somewhere else
+           on the page. -->
       <button
-        v-for="(project, index) in projects"
+        type="button"
+        class="project-card new-project-card"
+        @click="emit('create-new')"
+      >
+        <span class="new-card-plus" aria-hidden="true">+</span>
+        <span class="new-card-title">{{ $t('history.newProject') }}</span>
+        <span class="new-card-hint">{{ $t('history.newProjectHint') }}</span>
+      </button>
+
+      <button
+        v-for="project in projects"
         :key="project.project_id"
         type="button"
         class="project-card"
-        :class="{ expanded: isExpanded, hovering: hoveringCard === index }"
-        :style="getCardStyle(index)"
-        @mouseenter="hoveringCard = index"
-        @mouseleave="hoveringCard = null"
         @click="navigateToProject(project)"
       >
         <!-- Card header: what the project is called, and which stages it
@@ -35,34 +39,33 @@
              thing about a project the user never chose and cannot recognise. -->
         <div class="card-header">
           <span class="card-name">{{ getProjectTitle(project) }}</span>
-          <div class="card-status-icons">
+          <!-- Three segments, filled left to right, rather than the ◇ ◈ ◆
+               glyphs: how far a project got is a quantity, and a meter shows it
+               at a glance where three different diamonds did not. -->
+          <div class="card-stages">
             <span
-              class="status-icon"
-              :class="{ available: project.graph_id, unavailable: !project.graph_id }"
+              class="stage"
+              :class="{ done: !!project.graph_id }"
               :title="$t('history.graphBuild')"
-            >◇</span>
+            ></span>
             <span
-              class="status-icon"
-              :class="{ available: project.simulation_id, unavailable: !project.simulation_id }"
+              class="stage"
+              :class="{ done: !!project.simulation_id }"
               :title="$t('history.envSetup')"
-            >◈</span>
-            <span 
-              class="status-icon" 
-              :class="{ available: project.report_id, unavailable: !project.report_id }"
+            ></span>
+            <span
+              class="stage"
+              :class="{ done: !!project.report_id }"
               :title="$t('history.analysisReport')"
-            >◆</span>
+            ></span>
           </div>
         </div>
 
         <!-- File list -->
         <div class="card-files-wrapper">
-          <!-- Corner decoration, viewfinder style -->
-          <div class="corner-mark top-left-only"></div>
-          
-          <!-- Files -->
           <div class="files-list" v-if="project.files && project.files.length > 0">
-            <div 
-              v-for="(file, fileIndex) in project.files.slice(0, 3)" 
+            <div
+              v-for="(file, fileIndex) in project.files.slice(0, 3)"
               :key="fileIndex"
               class="file-item"
             >
@@ -76,7 +79,6 @@
           </div>
           <!-- Placeholder when there are no files -->
           <div class="files-empty" v-else>
-            <span class="empty-file-icon">◇</span>
             <span class="empty-file-text">{{ $t('history.noFiles') }}</span>
           </div>
         </div>
@@ -93,12 +95,9 @@
             <span class="card-time">{{ formatTime(project.created_at) }}</span>
           </div>
           <span class="card-progress" :class="getProgressClass(project)">
-            <span class="status-dot">●</span> {{ formatRounds(project) }}
+            <span class="status-dot" aria-hidden="true">●</span> {{ formatRounds(project) }}
           </span>
         </div>
-        
-        <!-- Footer rule, which grows on hover -->
-        <div class="card-bottom-line"></div>
       </button>
     </div>
 
@@ -196,7 +195,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, onActivated, watch, nextTick } from 'vue'
+import { ref, onMounted, onActivated, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { listProjects, deleteProject } from '../api/graph'
@@ -213,94 +212,15 @@ const emit = defineEmits(['create-new', 'loaded'])
 const projects = ref([])
 const loading = ref(true)
 const loadFailed = ref(false)
-const isExpanded = ref(false)
-const hoveringCard = ref(null)
-const historyContainer = ref(null)
 const selectedProject = ref(null)  // The project the dialog is showing
 const deleting = ref(false)
 const deleteError = ref('')
-let observer = null
-let isAnimating = false  // Animation lock, which stops the flicker
-let expandDebounceTimer = null  // Debounce timer
-let pendingState = null  // The target state still to apply
 
-// Card layout, tuned to a wider aspect
-const CARDS_PER_ROW = 4
-const CARD_WIDTH = 280  
-const CARD_HEIGHT = 280 
-const CARD_GAP = 24
-
-// Compute the container height
-const containerStyle = computed(() => {
-  if (!isExpanded.value) {
-    // Collapsed: fixed height
-    return { minHeight: '420px' }
-  }
-  
-  // Expanded: height follows the card count
-  const total = projects.value.length
-  if (total === 0) {
-    return { minHeight: '280px' }
-  }
-  
-  const rows = Math.ceil(total / CARDS_PER_ROW)
-  // rows * card height + (rows - 1) * gap + a little breathing room
-  const expandedHeight = rows * CARD_HEIGHT + (rows - 1) * CARD_GAP + 10
-  
-  return { minHeight: `${expandedHeight}px` }
-})
-
-// Card styling
-const getCardStyle = (index) => {
-  const total = projects.value.length
-  
-  if (isExpanded.value) {
-    // Expanded: grid layout
-    const transition = 'transform 700ms cubic-bezier(0.23, 1, 0.32, 1), opacity 700ms cubic-bezier(0.23, 1, 0.32, 1), box-shadow 0.3s ease, border-color 0.3s ease'
-
-    const col = index % CARDS_PER_ROW
-    const row = Math.floor(index / CARDS_PER_ROW)
-    
-    // Count the cards on this row, so each row stays centred
-    const currentRowStart = row * CARDS_PER_ROW
-    const currentRowCards = Math.min(CARDS_PER_ROW, total - currentRowStart)
-    
-    const rowWidth = currentRowCards * CARD_WIDTH + (currentRowCards - 1) * CARD_GAP
-    
-    const startX = -(rowWidth / 2) + (CARD_WIDTH / 2)
-    const colInRow = index % CARDS_PER_ROW
-    const x = startX + colInRow * (CARD_WIDTH + CARD_GAP)
-    
-    // Expanding downwards, so add space below the heading
-    const y = 20 + row * (CARD_HEIGHT + CARD_GAP)
-
-    return {
-      transform: `translate(${x}px, ${y}px) rotate(0deg) scale(1)`,
-      zIndex: 100 + index,
-      opacity: 1,
-      transition: transition
-    }
-  } else {
-    // Collapsed: fanned stack
-    const transition = 'transform 700ms cubic-bezier(0.23, 1, 0.32, 1), opacity 700ms cubic-bezier(0.23, 1, 0.32, 1), box-shadow 0.3s ease, border-color 0.3s ease'
-
-    const centerIndex = (total - 1) / 2
-    const offset = index - centerIndex
-    
-    const x = offset * 35
-    // Start close to the heading, but not touching it
-    const y = 25 + Math.abs(offset) * 8
-    const r = offset * 3
-    const s = 0.95 - Math.abs(offset) * 0.05
-    
-    return {
-      transform: `translate(${x}px, ${y}px) rotate(${r}deg) scale(${s})`,
-      zIndex: 10 + index,
-      opacity: 1,
-      transition: transition
-    }
-  }
-}
+// Card placement used to be computed here: absolute transforms that fanned the
+// deck out at rotated angles, plus an IntersectionObserver, a debounce timer
+// and an animation lock that flipped between the fan and a grid as the section
+// scrolled past. It is a plain CSS grid now - the layout is the browser's job,
+// the cards hold still, and the state machine that kept them in step is gone.
 
 // Style class for the round progress
 const getProgressClass = (simulation) => {
@@ -518,87 +438,6 @@ const loadHistory = async () => {
   }
 }
 
-// Set up the IntersectionObserver
-const initObserver = () => {
-  if (observer) {
-    observer.disconnect()
-  }
-  
-  observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        const shouldExpand = entry.isIntersecting
-        
-        // Record the latest target state, animating or not
-        pendingState = shouldExpand
-        
-        // Clear the previous debounce timer; a newer scroll wins
-        if (expandDebounceTimer) {
-          clearTimeout(expandDebounceTimer)
-          expandDebounceTimer = null
-        }
-        
-        // Mid-animation: just record the state and handle it afterwards
-        if (isAnimating) return
-        
-        // Target matches the current state: nothing to do
-        if (shouldExpand === isExpanded.value) {
-          pendingState = null
-          return
-        }
-        
-        // Debounce the switch, which stops rapid flicker.
-        // Expanding is quick (50ms); collapsing waits longer (200ms) for stability.
-        const delay = shouldExpand ? 50 : 200
-        
-        expandDebounceTimer = setTimeout(() => {
-          // Still animating?
-          if (isAnimating) return
-          
-          // Is the pending state still wanted, or did a later scroll override it?
-          if (pendingState === null || pendingState === isExpanded.value) return
-          
-          // Take the animation lock
-          isAnimating = true
-          isExpanded.value = pendingState
-          pendingState = null
-          
-          // Release the lock once the animation ends, then look for a pending change
-          setTimeout(() => {
-            isAnimating = false
-            
-            // Animation done: is there a newer target state?
-            if (pendingState !== null && pendingState !== isExpanded.value) {
-              // Wait a beat before applying it, to avoid whiplash
-              expandDebounceTimer = setTimeout(() => {
-                if (pendingState !== null && pendingState !== isExpanded.value) {
-                  isAnimating = true
-                  isExpanded.value = pendingState
-                  pendingState = null
-                  setTimeout(() => {
-                    isAnimating = false
-                  }, 750)
-                }
-              }, 100)
-            }
-          }, 750)
-        }, delay)
-      })
-    },
-    {
-      // Several thresholds make the detection smoother
-      threshold: [0.4, 0.6, 0.8],
-      // rootMargin pulls the viewport bottom up, so expanding takes more scrolling
-      rootMargin: '0px 0px -150px 0px'
-    }
-  )
-  
-  // Start observing
-  if (historyContainer.value) {
-    observer.observe(historyContainer.value)
-  }
-}
-
 // Watch the route and reload when the user comes back to the home page
 watch(() => route.path, (newPath) => {
   if (newPath === '/') {
@@ -606,128 +445,67 @@ watch(() => route.path, (newPath) => {
   }
 })
 
-onMounted(async () => {
-  // Load the data once the DOM has rendered
-  await nextTick()
-  await loadHistory()
-  
-  // Set the observer up after the DOM has rendered
-  setTimeout(() => {
-    initObserver()
-  }, 100)
-})
+onMounted(loadHistory)
 
 // Under keep-alive, reload the data when the component is activated
 onActivated(() => {
   loadHistory()
 })
-
-onUnmounted(() => {
-  // Tear the IntersectionObserver down
-  if (observer) {
-    observer.disconnect()
-    observer = null
-  }
-  // Clear the debounce timer
-  if (expandDebounceTimer) {
-    clearTimeout(expandDebounceTimer)
-    expandDebounceTimer = null
-  }
-})
 </script>
 
 <style scoped>
-/* Container */
+/* Container. Shares the page measure and gutter with the title above it, so
+   the first card lines up with the "h1" rather than sitting on its own axis. */
 .history-database {
   position: relative;
   width: 100%;
-  min-height: 280px;
-  margin-top: 40px;
-  padding: 35px 0 40px;
-  overflow: visible;
+  max-width: var(--page-max);
+  margin: var(--space-7) auto 0;
+  padding: 0 var(--page-pad);
 }
 
 /* Simplified layout when there are no projects */
 .history-database.no-projects {
   min-height: auto;
-  padding: 40px 0 20px;
-}
-
-/* Technical grid background */
-.tech-grid-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-/* A CSS background pattern draws the evenly spaced square grid */
-.grid-pattern {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-image: 
-    linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
-  background-size: 50px 50px;
-  /* Anchored top-left, so a height change only extends the bottom and leaves the existing grid in place */
-  background-position: top left;
-}
-
-.gradient-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.9) 0%, transparent 15%, transparent 85%, rgba(255, 255, 255, 0.9) 100%),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.8) 0%, transparent 20%, transparent 80%, rgba(255, 255, 255, 0.8) 100%);
-  pointer-events: none;
 }
 
 /* Heading */
 .section-header {
-  position: relative;
-  z-index: 100;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 24px;
-  margin-bottom: 24px;
-  font-family: 'JetBrains Mono', 'SF Mono', monospace;
-  padding: 0 40px;
-}
-
-.section-line {
-  flex: 1;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--border), transparent);
-  max-width: 300px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
 }
 
 .section-title {
-  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   font-weight: 500;
-  color: var(--muted-soft);
-  letter-spacing: 3px;
+  color: var(--muted);
+  letter-spacing: 1.5px;
   text-transform: uppercase;
 }
 
-/* Card container */
-.cards-container {
-  position: relative;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding: 0 40px;
-  transition: min-height 700ms cubic-bezier(0.23, 1, 0.32, 1);
-  /* min-height is computed in JS, from the card count */
+.section-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--muted-soft);
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 2px var(--space-2);
+  line-height: 1.5;
+}
+
+/* Card grid. The column count follows the width instead of being pinned to
+   four, so a narrow window reflows rather than clipping. */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-4);
+  align-items: stretch;
 }
 
 /* Project card */
@@ -736,26 +514,114 @@ onUnmounted(() => {
   font: inherit;
   text-align: left;
   appearance: none;
-  display: block;
-  position: absolute;
-  width: 280px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 236px;
   background: var(--white);
   border: 1px solid var(--border);
-  border-radius: 0;
-  padding: 14px;
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
   cursor: pointer;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  transition: box-shadow 0.3s ease, border-color 0.3s ease, transform 700ms cubic-bezier(0.23, 1, 0.32, 1), opacity 700ms cubic-bezier(0.23, 1, 0.32, 1);
+  box-shadow: var(--shadow-1);
+  transition: box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+  /* The deck deals itself in on load; the per-card delay is set below. */
+  animation: fx-rise 380ms var(--ease) both;
 }
 
 .project-card:hover {
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  border-color: rgba(0, 0, 0, 0.4);
-  z-index: 1000 !important;
+  box-shadow: var(--shadow-2);
+  border-color: var(--border-strong);
+  /* A card is a target you click, not a control you type into, so a small
+     lift is honest feedback rather than a moving hit area. */
+  transform: translateY(-2px);
 }
 
-.project-card.hovering {
-  z-index: 1000 !important;
+/* Accent rule that wipes across the top edge of the card under the cursor. */
+.project-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 300ms var(--ease);
+}
+
+.project-card:hover::before {
+  transform: scaleX(1);
+}
+
+/* Deal order. Capped at eight so a long history does not spend two seconds
+   filling in; everything past the eighth card arrives with it. */
+.cards-grid > .project-card:nth-child(1) { animation-delay: 0ms; }
+.cards-grid > .project-card:nth-child(2) { animation-delay: 45ms; }
+.cards-grid > .project-card:nth-child(3) { animation-delay: 90ms; }
+.cards-grid > .project-card:nth-child(4) { animation-delay: 135ms; }
+.cards-grid > .project-card:nth-child(5) { animation-delay: 180ms; }
+.cards-grid > .project-card:nth-child(6) { animation-delay: 225ms; }
+.cards-grid > .project-card:nth-child(7) { animation-delay: 270ms; }
+.cards-grid > .project-card:nth-child(n + 8) { animation-delay: 315ms; }
+
+/* New-project card: same footprint as a project card, but empty inside, so it
+   reads as the slot a project has not been put in yet. */
+.new-project-card {
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  text-align: center;
+  border-style: dashed;
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--muted);
+  box-shadow: none;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.new-project-card:hover {
+  border-style: dashed;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: none;
+}
+
+/* The empty slot answers the cursor with the plus turning a quarter of the way
+   into a cross - a small promise that the click opens something. */
+.new-project-card:hover .new-card-plus {
+  transform: rotate(90deg) scale(1.1);
+}
+
+.new-card-plus {
+  transition: transform 320ms var(--ease);
+  font-family: var(--font-mono);
+  font-size: 1.75rem;
+  line-height: 1;
+  font-weight: 300;
+}
+
+.new-card-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--ink);
+  transition: color var(--dur) var(--ease);
+}
+
+.new-project-card:hover .new-card-title {
+  color: var(--accent);
+}
+
+.new-card-hint {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--muted-soft);
+  max-width: 200px;
 }
 
 /* Card header */
@@ -763,129 +629,133 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--surface-2);
-  font-family: 'JetBrains Mono', 'SF Mono', monospace;
-  font-size: 0.75rem;
-  gap: 10px;
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-soft);
+  gap: var(--space-3);
 }
 
 .card-name {
-  font-family: 'Inter', -apple-system, sans-serif;
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: var(--black);
-  letter-spacing: 0;
-  /* The header is a fixed row shared with the status icons, so a long name
-     ellipsises rather than pushing them off the card. */
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  /* The header is a fixed row shared with the stage meter, so a long name
+     ellipsises rather than pushing it off the card. */
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: color 0.3s ease;
+  transition: color var(--dur) var(--ease);
 }
 
 .project-card:hover .card-name {
   color: var(--accent);
 }
 
-/* Feature status icons */
-.card-status-icons {
+/* Stage meter: three segments, filled for each stage the project reached */
+.card-stages {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
   flex-shrink: 0;
 }
 
-.status-icon {
-  font-size: 0.75rem;
-  transition: all 0.2s ease;
+.stage {
+  width: 14px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--border-strong);
   cursor: default;
+  transition: transform 260ms var(--ease), background var(--dur) var(--ease);
+  transform-origin: left;
 }
 
-.status-icon.available {
-  opacity: 1;
+.stage.done {
+  background: var(--accent);
 }
 
-/* One colour per feature */
-.status-icon:nth-child(1).available { color: var(--ink); } /* graph build - blue */
-.status-icon:nth-child(2).available { color: var(--warning); } /* environment setup - orange */
-.status-icon:nth-child(3).available { color: var(--success); } /* analysis report - green */
-
-.status-icon.unavailable {
-  color: var(--muted-soft);
-  opacity: 0.5;
+/* Hovering the card runs a light along the segments the project completed,
+   left to right, in the order it did them. */
+.project-card:hover .stage.done {
+  transform: scaleX(1.12);
 }
+
+.project-card:hover .stage.done:nth-child(2) { transition-delay: 60ms; }
+.project-card:hover .stage.done:nth-child(3) { transition-delay: 120ms; }
 
 /* Round progress */
 .card-progress {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  letter-spacing: 0.5px;
-  font-weight: 600;
-  font-size: 0.75rem;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
 }
 
 .status-dot {
-  font-size: 0.75rem;
+  font-size: 0.6rem;
+  line-height: 1;
 }
 
-/* Progress state colours */
-.card-progress.completed { color: var(--success); }    /* finished - green */
-.card-progress.in-progress { color: var(--warning); }  /* in progress - orange */
-.card-progress.not-started { color: var(--muted-soft); }  /* not started - grey */
-.card-status.pending { color: var(--muted-soft); }
+/* Only a project that is actually mid-run blinks. A finished or unstarted one
+   holds still, so motion in this grid always means the same thing. */
+.card-progress.in-progress .status-dot {
+  animation: dot-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes dot-pulse {
+  50% { opacity: 0.3; }
+}
+
+/* Progress state colours, as tinted chips rather than bare coloured text -
+   at 12px the colour alone was doing too much work. */
+.card-progress.completed { color: var(--success); background: var(--success-soft); }
+.card-progress.in-progress { color: var(--warning); background: var(--warning-soft); }
+.card-progress.not-started { color: var(--muted-soft); background: var(--surface-2); }
 
 /* File list */
+/* No max-height: the template already caps this at three files plus the
+   "+n more" line, and the old 106px ceiling cut that last line in half. */
 .card-files-wrapper {
   position: relative;
   width: 100%;
-  min-height: 48px;
-  max-height: 110px;
-  margin-bottom: 12px;
-  padding: 8px 10px;
-  background: linear-gradient(135deg, #f8f9fa 0%, #f1f3f4 100%);
-  border-radius: 4px;
-  border: 1px solid #e8eaed;
-  overflow: hidden;
+  min-height: 44px;
+  margin-bottom: var(--space-3);
+  padding: var(--space-2);
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-soft);
 }
 
 .files-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* More-files note */
 .files-more {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3px 6px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  color: var(--muted);
-  background: rgba(255, 255, 255, 0.5);
-  border-radius: 3px;
+  padding: 2px var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--muted-soft);
   letter-spacing: 0.3px;
 }
 
 .file-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
-  background: rgba(255, 255, 255, 0.7);
-  border-radius: 3px;
-  transition: all 0.2s ease;
-}
-
-.file-item:hover {
-  background: rgba(255, 255, 255, 1);
-  transform: translateX(2px);
-  border-color: var(--border);
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: var(--white);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
 }
 
 /* Minimal file tag styling */
@@ -894,10 +764,10 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   height: 16px;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   border-radius: 2px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   font-weight: 600;
   line-height: 1;
   text-transform: uppercase;
@@ -918,13 +788,11 @@ onUnmounted(() => {
 .file-tag.other { background: var(--surface-2); color: var(--muted); }
 
 .file-name {
-  font-family: 'Inter', sans-serif;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--ink-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: 0.1px;
 }
 
 /* Placeholder when there are no files */
@@ -932,196 +800,130 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  height: 48px;
+  height: 44px;
   color: var(--muted-soft);
 }
 
-.empty-file-icon {
-  font-size: 1rem;
-  opacity: 0.5;
-}
-
 .empty-file-text {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   letter-spacing: 0.5px;
 }
 
-/* File area on hover */
-.project-card:hover .card-files-wrapper {
-  border-color: var(--border-strong);
-  background: linear-gradient(135deg, var(--white) 0%, #f8f9fa 100%);
-}
-
-/* Corner decoration */
-.corner-mark.top-left-only {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  width: 8px;
-  height: 8px;
-  border-top: 1.5px solid rgba(0, 0, 0, 0.4);
-  border-left: 1.5px solid rgba(0, 0, 0, 0.4);
-  pointer-events: none;
-  z-index: 10;
-}
-
-/* Card title */
-/* Card description */
+/* Card description. Clamped rather than given a fixed height: the cards are
+   grid items now, so the row equalises them without a magic pixel value. */
 .card-desc {
-  display: block;
-  font-family: 'Inter', sans-serif;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--muted);
-  margin: 0 0 16px 0;
-  line-height: 1.5;
-  /* Three lines rather than two: the duplicate title above it is gone, and the
-     card keeps the height the grid spacing is computed against. */
-  height: 51px;
+  margin: 0 0 var(--space-3);
+  line-height: 1.55;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
 }
 
-/* Card footer */
+/* Card footer. Pushed to the bottom of the card so the date sits on one line
+   across the whole row, whatever the description above it did. */
 .card-footer {
-  position: relative;
+  margin-top: auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: 12px;
-  border-top: 1px solid var(--surface-2);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   color: var(--muted-soft);
-  font-weight: 500;
 }
 
 /* Date and time pair */
 .card-datetime {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
-/* Round progress in the footer */
-.card-footer .card-progress {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  letter-spacing: 0.5px;
-  font-weight: 600;
-  font-size: 0.75rem;
-}
-
-.card-footer .status-dot {
-  font-size: 0.75rem;
-}
-
-/* Progress state colours, footer */
-.card-footer .card-progress.completed { color: var(--success); }
-.card-footer .card-progress.in-progress { color: var(--warning); }
-.card-footer .card-progress.not-started { color: var(--muted-soft); }
-
-/* Footer rule */
-.card-bottom-line {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  height: 2px;
-  width: 0;
-  background-color: var(--black);
-  transition: width 0.5s cubic-bezier(0.23, 1, 0.32, 1);
-  z-index: 20;
-}
-
-.project-card:hover .card-bottom-line {
-  width: 100%;
-}
-
-/* Empty state */
-.empty-state, .loading-state {
+/* Empty and loading states */
+.empty-state,
+.loading-state {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
-  padding: 48px;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-5);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
   color: var(--muted-soft);
 }
 
 .empty-icon {
-  font-size: 28px;
+  font-size: 1.75rem;
   color: var(--muted-soft);
+  opacity: 0.6;
 }
 
 .empty-title {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--ink-2);
 }
 
 .empty-hint {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1.6;
   color: var(--muted-soft);
   text-align: center;
-  max-width: 420px;
+  max-width: 48ch;
 }
 
 .empty-action {
-  margin-top: 4px;
-  border: 1px solid var(--border);
+  margin-top: var(--space-1);
+  border: 1px solid var(--border-strong);
   background: var(--white);
-  border-radius: 6px;
-  padding: 9px 20px;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-5);
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: 500;
   color: var(--ink-2);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 
 .empty-action:hover {
-  background: var(--surface);
-  border-color: var(--border-strong);
-}
-
-.empty-icon {
-  font-size: 2rem;
-  opacity: 0.5;
+  background: var(--surface-2);
+  border-color: var(--ink);
 }
 
 .loading-spinner {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border: 2px solid var(--border);
   border-top-color: var(--muted);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
+.loading-text {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.5px;
+}
+
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-/* Responsive */
-@media (max-width: 1200px) {
-  .project-card {
-    width: 240px;
-  }
-}
-
-@media (max-width: 768px) {
-  .cards-container {
-    padding: 0 20px;
-  }
-  .project-card {
-    width: 200px;
+/* Responsive: one column below the point where two 260px cards plus the gutter
+   stop fitting. The grid handles the rest. */
+@media (max-width: 620px) {
+  .cards-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1135,54 +937,52 @@ onUnmounted(() => {
 .modal-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 20px 32px;
-  border-bottom: 1px solid var(--surface-2);
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border);
   background: var(--white);
 }
 
+/* Wraps rather than overflowing: the name, the progress chip, the agent count
+   and the timestamp all sat on one unbreakable row. */
 .modal-title-section {
   display: flex;
   align-items: center;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  min-width: 0;
 }
 
 .modal-name {
-  font-family: 'Inter', -apple-system, sans-serif;
-  font-size: 1rem;
+  font-size: var(--text-lg);
   font-weight: 600;
-  color: var(--black);
+  color: var(--ink);
+  letter-spacing: -0.01em;
   margin: 0;
   overflow-wrap: anywhere;
 }
 
 .modal-progress {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 4px 8px;
-  border-radius: 4px;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
   background: var(--surface);
 }
 
-.modal-progress.completed { color: var(--success); background: rgba(16, 185, 129, 0.1); }
-.modal-progress.in-progress { color: var(--warning); background: rgba(245, 158, 11, 0.1); }
+.modal-progress.completed { color: var(--success); background: var(--success-soft); }
+.modal-progress.in-progress { color: var(--warning); background: var(--warning-soft); }
 .modal-progress.not-started { color: var(--muted-soft); background: var(--surface-2); }
 
-.modal-agents {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--muted-soft);
-  letter-spacing: 0.3px;
-}
-
+.modal-agents,
 .modal-create-time {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   color: var(--muted-soft);
   letter-spacing: 0.3px;
 }
@@ -1190,30 +990,32 @@ onUnmounted(() => {
 .modal-close {
   width: 32px;
   height: 32px;
+  flex-shrink: 0;
   border: none;
   background: transparent;
-  font-size: 1.5rem;
+  font-size: 1.25rem;
+  line-height: 1;
   color: var(--muted-soft);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
-  border-radius: 6px;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+  border-radius: var(--radius-md);
 }
 
 .modal-close:hover {
   background: var(--surface-2);
-  color: var(--black);
+  color: var(--ink);
 }
 
 /* Dialog body */
 .modal-body {
-  padding: 24px 32px;
+  padding: var(--space-5) var(--space-6);
 }
 
 .modal-section {
-  margin-bottom: 24px;
+  margin-bottom: var(--space-5);
 }
 
 .modal-section:last-child {
@@ -1221,32 +1023,32 @@ onUnmounted(() => {
 }
 
 .modal-label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-bottom: 10px;
+  letter-spacing: 1.5px;
+  margin-bottom: var(--space-2);
   font-weight: 500;
 }
 
 .modal-requirement {
-  font-size: 0.95rem;
+  font-size: var(--text-base);
   color: var(--ink-2);
   line-height: 1.6;
-  padding: 16px;
+  padding: var(--space-4);
   background: var(--surface);
-  border: 1px solid var(--surface-2);
-  border-radius: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
 }
 
 .modal-files {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2);
   max-height: 200px;
   overflow-y: auto;
-  padding-right: 4px;
+  padding-right: var(--space-1);
 }
 
 /* Custom scrollbar */
@@ -1271,66 +1073,72 @@ onUnmounted(() => {
 .modal-file-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   background: var(--white);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  transition: all 0.2s ease;
+  border-radius: var(--radius-md);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
 
 .modal-file-item:hover {
   border-color: var(--border-strong);
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-1);
 }
 
 .modal-file-name {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--ink-3);
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .modal-empty {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--muted-soft);
-  padding: 16px;
+  padding: var(--space-4);
   background: var(--surface);
-  border: 1px dashed var(--border);
-  border-radius: 6px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
   text-align: center;
 }
 
-/* Replay divider */
+/* Primary way out of the dialog */
 .modal-continue {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  width: calc(100% - 64px);
-  margin: 16px 32px 0;
-  padding: 16px 20px;
-  border: none;
+  gap: var(--space-4);
+  width: calc(100% - var(--space-6) * 2);
+  margin: var(--space-4) var(--space-6) 0;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
   background: var(--accent);
   color: var(--white);
   cursor: pointer;
-  transition: background 0.2s ease;
+  box-shadow: var(--shadow-1);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
 }
 
 .modal-continue:hover {
   background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  box-shadow: var(--shadow-2);
 }
 
 .continue-text {
-  font-size: 1rem;
+  font-size: var(--text-md);
   font-weight: 500;
 }
 
 .continue-stage {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   letter-spacing: 1px;
   text-transform: uppercase;
   opacity: 0.85;
@@ -1339,7 +1147,7 @@ onUnmounted(() => {
 .modal-footer-actions {
   display: flex;
   justify-content: flex-end;
-  padding: 16px 32px 20px;
+  padding: var(--space-4) var(--space-6) var(--space-5);
   background: var(--white);
 }
 
@@ -1347,18 +1155,21 @@ onUnmounted(() => {
   flex-shrink: 0;
   background: none;
   border: 1px solid var(--border);
-  padding: 8px 14px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   letter-spacing: 0.5px;
   color: var(--muted-soft);
   cursor: pointer;
-  transition: color 0.2s ease, border-color 0.2s ease;
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
 }
 
 .delete-btn:hover:not(:disabled) {
   color: var(--danger);
   border-color: var(--danger);
+  background: rgba(220, 38, 38, 0.06);
 }
 
 .delete-btn:disabled {
@@ -1368,10 +1179,10 @@ onUnmounted(() => {
 
 .modal-delete-error {
   margin: 0;
-  padding: 0 32px 20px;
+  padding: 0 var(--space-6) var(--space-5);
   background: var(--white);
   color: var(--danger);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
 }
 
 </style>

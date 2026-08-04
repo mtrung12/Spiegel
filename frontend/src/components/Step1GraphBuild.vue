@@ -805,6 +805,27 @@ watch(() => props.systemLogs.length, () => {
 
 .badge.success { background: #E8F5E9; color: #2E7D32; }
 .badge.processing { background: #FF5722; color: var(--white); }
+
+/* A chip that says work is happening now looks like it: a light travels
+   through the fill while the phase runs. The text keeps full contrast, which
+   a pulsing opacity would have cost. */
+.badge.processing {
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.32) 42%,
+    rgba(255, 255, 255, 0.32) 58%,
+    transparent 80%
+  );
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  animation: badge-sweep 2.4s linear infinite;
+}
+
+@keyframes badge-sweep {
+  from { background-position: 200% 0; }
+  to { background-position: -120% 0; }
+}
 .badge.accent { background: #FF5722; color: var(--white); }
 .badge.pending { background: var(--surface-2); color: var(--muted-soft); }
 

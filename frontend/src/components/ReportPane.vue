@@ -38,13 +38,17 @@
             >
               <span class="section-number">{{ String(idx + 1).padStart(2, '0') }}</span>
               <span class="section-title">{{ section.title }}</span>
+              <!-- Small and quiet: collapsing is a thing the reader may do, not
+                   a thing the report is about. It only comes forward on hover,
+                   and stays put while collapsed because then it is the only
+                   sign the section is still there. -->
               <svg
                 v-if="isSectionCompleted(idx + 1)"
                 class="collapse-icon"
                 :class="{ 'is-collapsed': collapsedSections.has(idx) }"
                 viewBox="0 0 24 24"
-                width="20"
-                height="20"
+                width="14"
+                height="14"
                 fill="none"
                 stroke="currentColor"
                 stroke-width="2"
@@ -66,35 +70,34 @@
                    host view decides which one, keyed by section id. -->
               <slot :name="`visual-${idx + 1}`" />
 
-              <template v-if="split(idx).body">
-                <button
-                  type="button"
-                  class="evidence-toggle"
-                  :aria-expanded="expandedEvidence.has(idx)"
-                  @click="toggleEvidence(idx)"
+              <!-- The evidence opens beside the report rather than inside it.
+                   Expanding it inline pushed every later section down the page
+                   and buried the verdicts the reader came for - so the working
+                   under a finding now sits in its own panel, and the column of
+                   findings stays a column of findings. -->
+              <button
+                v-if="split(idx).body"
+                type="button"
+                class="evidence-btn"
+                :class="{ 'is-open': openEvidence === idx }"
+                :aria-expanded="openEvidence === idx"
+                @click="toggleEvidence(idx)"
+              >
+                <span>{{ openEvidence === idx ? $t('step4.hideEvidence') : $t('step4.showEvidence') }}</span>
+                <svg
+                  viewBox="0 0 24 24"
+                  width="13"
+                  height="13"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  aria-hidden="true"
                 >
-                  <svg
-                    class="evidence-icon"
-                    :class="{ 'is-open': expandedEvidence.has(idx) }"
-                    viewBox="0 0 24 24"
-                    width="14"
-                    height="14"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    aria-hidden="true"
-                  >
-                    <polyline points="9 18 15 12 9 6"></polyline>
-                  </svg>
-                  {{ expandedEvidence.has(idx) ? $t('step4.hideEvidence') : $t('step4.showEvidence') }}
-                </button>
-
-                <div
-                  v-show="expandedEvidence.has(idx)"
-                  class="generated-content"
-                  v-html="renderMarkdown(split(idx).body)"
-                ></div>
-              </template>
+                  <path d="M4 4h7"></path>
+                  <path d="M4 4v16h16V4h-7"></path>
+                  <path d="M14 4v6"></path>
+                </svg>
+              </button>
             </template>
 
             <div v-else-if="currentSectionIndex === idx + 1" class="loading-state">
@@ -109,6 +112,10 @@
           </div>
         </div>
       </div>
+
+      <!-- Whatever comes after the last section. The report is read top to
+           bottom, so what to do next belongs at the bottom of it. -->
+      <slot name="footer" />
     </div>
 
     <div v-else class="waiting-placeholder" role="status">
@@ -119,11 +126,50 @@
       </div>
       <span class="waiting-text">{{ $t('step4.waitingForReportAgent') }}</span>
     </div>
+
+    <!-- Teleported to the body: anchored inside this pane it would be trapped
+         in the column it is meant to stay out of, and clipped by its scroll
+         box. No backdrop - the report has to stay readable and clickable
+         beside it, which is the whole point of moving the evidence here. -->
+    <Teleport to="body">
+      <Transition name="evidence-slide">
+        <aside
+          v-if="openEvidence !== null"
+          class="evidence-drawer"
+          role="dialog"
+          aria-modal="false"
+          :aria-label="$t('step4.evidenceTitle')"
+        >
+          <header class="evidence-head">
+            <div class="evidence-head-text">
+              <span class="evidence-eyebrow">{{ $t('step4.evidenceTitle') }}</span>
+              <span class="evidence-section">
+                {{ String(openEvidence + 1).padStart(2, '0') }} ·
+                {{ outline?.sections?.[openEvidence]?.title }}
+              </span>
+            </div>
+            <button
+              type="button"
+              class="evidence-close"
+              :aria-label="$t('common.close')"
+              @click="closeEvidence"
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          </header>
+
+          <div
+            class="evidence-body generated-content"
+            v-html="renderMarkdown(split(openEvidence).body)"
+          ></div>
+        </aside>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { renderMarkdown, splitVerdict } from '../utils/markdown'
 
 const props = defineProps({
@@ -137,9 +183,10 @@ const props = defineProps({
 
 // Collapse state belongs to the pane; nothing outside it reads or sets it.
 const collapsedSections = ref(new Set())
-// Evidence starts closed in every section: the point of the verdict line is
-// that four of them fit on a screen. The reader opens what they care about.
-const expandedEvidence = ref(new Set())
+// Which section's evidence the side panel is showing, or null. One at a time:
+// the panel is a single surface, and reading the working behind two findings
+// at once is not something the report is laid out for.
+const openEvidence = ref(null)
 
 // Splitting on every render would re-parse each section on any reactive change,
 // so the results are cached and only recomputed when the content changes.
@@ -155,10 +202,12 @@ const split = (idx) => splits.value[idx + 1] || { verdict: '', body: '' }
 
 const isSectionCompleted = (sectionNumber) => !!props.generatedSections[sectionNumber]
 
+const closeEvidence = () => {
+  openEvidence.value = null
+}
+
 const toggleEvidence = (idx) => {
-  const next = new Set(expandedEvidence.value)
-  next.has(idx) ? next.delete(idx) : next.add(idx)
-  expandedEvidence.value = next
+  openEvidence.value = openEvidence.value === idx ? null : idx
 }
 
 // Only a finished section can collapse - collapsing a placeholder hides the
@@ -169,6 +218,26 @@ const toggleSectionCollapse = (idx) => {
   next.has(idx) ? next.delete(idx) : next.add(idx)
   collapsedSections.value = next
 }
+
+// Collapsing a section whose evidence is open would leave the panel showing
+// working for something no longer on screen.
+watch(collapsedSections, (sections) => {
+  if (openEvidence.value !== null && sections.has(openEvidence.value)) closeEvidence()
+})
+
+// Switching reports (step 4 -> step 5, or another run) must not leave the
+// previous report's evidence on screen.
+watch(() => props.reportId, closeEvidence)
+
+// Esc closes it, as it would any panel laid over the page. Bound on the
+// document because the drawer is teleported out of this component's tree and
+// the reader's focus is usually still in the report beside it.
+const onKeydown = (event) => {
+  if (event.key === 'Escape' && openEvidence.value !== null) closeEvidence()
+}
+
+onMounted(() => document.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 </script>
 
 <style scoped>
@@ -178,6 +247,10 @@ const toggleSectionCollapse = (idx) => {
   background: var(--white);
   border-right: 1px solid var(--border);
   overflow-y: auto;
+  /* The section rows bleed 12px past the text column on both sides for their
+     hover background. Without this that bleed, and any wide table inside a
+     section, hand the whole report a horizontal scrollbar. */
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   padding: 30px 50px 60px 50px;
@@ -288,6 +361,7 @@ const toggleSectionCollapse = (idx) => {
   background: none;
   color: inherit;
   width: 100%;
+  min-width: 0;
   display: flex;
   align-items: baseline;
   gap: 12px;
@@ -295,13 +369,13 @@ const toggleSectionCollapse = (idx) => {
 }
 
 .section-header-row {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
   transition: background-color 0.2s ease;
   padding: 8px 12px;
   margin: -8px -12px;
   border-radius: 8px;
+  /* The row is one button wide; it used to be a flex container too, which
+     stacked two layouts on the same line for no gain. */
+  min-width: 0;
 }
 
 .section-header-row.clickable {
@@ -315,9 +389,20 @@ const toggleSectionCollapse = (idx) => {
 .collapse-icon {
   margin-left: auto;
   color: var(--muted-soft);
-  transition: transform 0.3s ease;
+  transition: transform 0.3s ease, opacity 0.2s ease;
   flex-shrink: 0;
   align-self: center;
+  /* Out of the way until wanted. An arrow next to every heading reads as part
+     of the report's typography, which it is not. */
+  opacity: 0;
+}
+
+.section-header-row:hover .collapse-icon,
+.section-header-btn:focus-visible .collapse-icon,
+/* While collapsed it is the only thing saying the section is still there, so
+   it stays visible regardless. */
+.collapse-icon.is-collapsed {
+  opacity: 1;
 }
 
 .collapse-icon.is-collapsed {
@@ -339,6 +424,10 @@ const toggleSectionCollapse = (idx) => {
   color: var(--black);
   margin: 0;
   transition: color 0.3s ease;
+  /* A flex item will not shrink below its content by default, so a long title
+     used to push the chevron past the edge of the pane. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* States */
@@ -362,6 +451,10 @@ const toggleSectionCollapse = (idx) => {
 .section-body {
   padding-left: 28px;
   overflow: hidden;
+  /* A column so the evidence control can sit itself against the right edge
+     without the slotted figure panels losing their full width. */
+  display: flex;
+  flex-direction: column;
 }
 
 /* The one-sentence finding. Sized to be read before anything else in the
@@ -374,33 +467,139 @@ const toggleSectionCollapse = (idx) => {
   margin: 0 0 16px;
 }
 
-.evidence-toggle {
+/* Sits against the right edge of the text column, out of the reading line:
+   the verdict and the figures are the section, this is a way to go behind
+   them. Its icon is the panel it opens. */
+.evidence-btn {
+  align-self: flex-end;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin: 4px 0 0;
-  padding: 4px 0;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 5px 10px;
   background: none;
-  border: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
   cursor: pointer;
   font-family: 'Inter', system-ui, sans-serif;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.evidence-btn:hover {
+  color: var(--ink);
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+
+/* While its panel is open the control is the panel's handle, so it reads as
+   pressed rather than as an invitation. */
+.evidence-btn.is-open {
+  color: var(--white);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+/* ---------- The evidence panel ---------- */
+.evidence-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(460px, 100vw);
+  z-index: 300;
+  background: var(--white);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+}
+
+.evidence-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.evidence-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.evidence-eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+}
+
+.evidence-section {
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--black);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.evidence-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  padding: 2px 6px;
+  color: var(--muted);
+  flex-shrink: 0;
   transition: color 0.15s ease;
 }
 
-.evidence-toggle:hover {
-  color: var(--ink-2);
+.evidence-close:hover {
+  color: var(--ink);
 }
 
-.evidence-icon {
-  transition: transform 0.2s ease;
+.evidence-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px;
 }
 
-.evidence-icon.is-open {
-  transform: rotate(90deg);
+.evidence-slide-enter-active,
+.evidence-slide-leave-active {
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.evidence-slide-enter-from,
+.evidence-slide-leave-to {
+  transform: translateX(16px);
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evidence-slide-enter-active,
+  .evidence-slide-leave-active {
+    transition: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .evidence-drawer {
+    width: 100vw;
+  }
 }
 
 /* Generated Content */

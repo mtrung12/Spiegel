@@ -54,38 +54,41 @@ watch(() => props.open, async (open) => {
 
 <style scoped>
 .confirm {
-  padding: 24px;
+  padding: var(--space-5);
 }
 
 .confirm-title {
-  font-size: 17px;
-  font-weight: 700;
-  margin-bottom: 10px;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: var(--space-2);
 }
 
 .confirm-message {
-  font-size: 14px;
+  font-size: var(--text-base);
   line-height: 1.6;
   color: var(--muted);
-  margin-bottom: 24px;
+  margin-bottom: var(--space-5);
   overflow-wrap: anywhere;
 }
 
 .confirm-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .confirm-btn {
-  padding: 10px 18px;
+  padding: var(--space-2) var(--space-4);
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 500;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   background: var(--white);
   color: var(--ink);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 
 .confirm-btn.ghost:hover {

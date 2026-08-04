@@ -57,6 +57,25 @@
 
         <!-- 04 Signals and limits has no visual, by design: it is the section
              meant to be read rather than scanned. -->
+
+        <!-- Where the report ends is where the reader decides what to do next.
+             This used to live in the progress rail beside it, which is the one
+             column a reader closes once the report is written. -->
+        <template #footer>
+          <div v-if="isComplete" class="report-next">
+            <div class="report-next-text">
+              <span class="report-next-title">{{ $t('step4.nextStepTitle') }}</span>
+              <span class="report-next-desc">{{ $t('step4.nextStepDesc') }}</span>
+            </div>
+            <button class="next-step-btn" @click="goToInteraction">
+              <span>{{ $t('step4.goToInteraction') }}</span>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+                <polyline points="12 5 19 12 12 19"></polyline>
+              </svg>
+            </button>
+          </div>
+        </template>
       </ReportPane>
 
       <!-- RIGHT PANEL: Workflow Timeline.
@@ -77,15 +96,8 @@
           </svg>
         </button>
 
-        <!-- Forward navigation must not fold away with the progress detail:
-             collapsed or not, a finished report has to offer the next step. -->
-        <button v-if="isComplete && !showProgress" class="next-step-btn rail-next" @click="goToInteraction">
-          <span>{{ $t('step4.goToInteraction') }}</span>
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-            <polyline points="12 5 19 12 12 19"></polyline>
-          </svg>
-        </button>
+        <!-- Forward navigation moved to the foot of the report itself, so it no
+             longer has to be duplicated here for the collapsed rail. -->
 
         <template v-if="showProgress">
         <div class="panel-header" :class="`panel-header--${activeStep.status}`" v-if="!isComplete">
@@ -136,15 +148,6 @@
               </div>
             </div>
           </div>
-
-          <!-- Next-step button, shown once generation finishes -->
-          <button v-if="isComplete" class="next-step-btn" @click="goToInteraction">
-            <span>{{ $t('step4.goToInteraction') }}</span>
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-              <polyline points="12 5 19 12 12 19"></polyline>
-            </svg>
-          </button>
 
           <div class="workflow-divider"></div>
         </div>
@@ -2304,11 +2307,6 @@ watch(() => props.reportId, (newId) => {
   overflow: hidden;
 }
 
-.right-panel.is-collapsed .rail-next {
-  margin: 12px;
-  width: calc(100% - 24px);
-}
-
 .right-panel {
   flex: 1;
   background: var(--white);
@@ -3045,13 +3043,47 @@ watch(() => props.reportId, (newId) => {
   font-size: 14px;
 }
 
+/* The close of the report: what was measured is above, what to ask next is
+   here. Reads as part of the document rather than as a rail control. */
+.report-next {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-top: 40px;
+  padding-top: 28px;
+  border-top: 1px solid var(--border);
+}
+
+.report-next-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.report-next-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.report-next-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 44ch;
+}
+
+/* Sized to its label: it sits beside the closing copy rather than stretching
+   across a rail, which is where it used to live. */
 .next-step-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: calc(100% - 40px);
-  margin: 4px 20px 0 20px;
+  flex-shrink: 0;
   padding: 14px 20px;
   font-size: 14px;
   font-weight: 600;

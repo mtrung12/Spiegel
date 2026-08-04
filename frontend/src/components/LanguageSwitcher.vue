@@ -65,7 +65,7 @@ onUnmounted(() => {
 .language-switcher {
   position: relative;
   display: inline-block;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 /* Light theme (default - for white header backgrounds) */
@@ -73,36 +73,40 @@ onUnmounted(() => {
   background: transparent;
   color: var(--ink-2);
   border: 1px solid var(--border-strong);
-  padding: 4px 12px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.8rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
-  transition: border-color 0.2s, opacity 0.2s;
+  gap: var(--space-2);
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
 
 .switcher-trigger:hover {
-  border-color: var(--muted-soft);
+  border-color: var(--ink);
+  background: var(--surface-2);
 }
 
 .caret {
-  font-size: 0.75rem;
+  font-size: 0.6rem;
+  color: var(--muted-soft);
 }
 
 .switcher-dropdown {
   position: absolute;
   top: 100%;
   right: 0;
-  margin-top: 4px;
+  margin-top: var(--space-1);
   background: var(--white);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   list-style: none;
-  padding: 4px 0;
+  padding: var(--space-1);
   min-width: 100%;
   z-index: 1000;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-2);
 }
 
 .switcher-option {
@@ -110,22 +114,24 @@ onUnmounted(() => {
   font: inherit;
   text-align: left;
   appearance: none;
-  color: inherit;
   width: 100%;
-  padding: 6px 12px;
-  font-size: 0.8rem;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
   color: var(--ink-2);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s;
+  transition: background var(--dur-fast) var(--ease);
 }
 
 .switcher-option:hover {
-  background: var(--surface-3);
+  background: var(--surface-2);
 }
 
+/* The accent token, not a --orange variable that was never defined and so
+   always fell through to a red that is not in the palette. */
 .switcher-option.active {
-  color: var(--orange, #FF4500);
+  color: var(--accent);
 }
 
 

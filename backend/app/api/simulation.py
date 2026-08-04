@@ -1748,10 +1748,19 @@ def stop_simulation():
         })
 
     except SimulationStopPending as e:
+        # The run itself is already stopped - only the graph-ingestion barrier
+        # is still draining. That is an accepted stop, not a failed one, so it
+        # answers success with pending set: reporting it as a failure made the
+        # UI show an error and keep rendering the run as live.
+        pending_state = SimulationRunner.get_run_state(simulation_id)
         return jsonify({
-            "success": False,
+            "success": True,
             "pending": True,
-            "error": str(e),
+            "message": str(e),
+            "data": pending_state.to_dict() if pending_state else {
+                "simulation_id": simulation_id,
+                "runner_status": RunnerStatus.STOPPING.value,
+            },
         }), 202
 
     except ValueError as e:
@@ -1759,7 +1768,7 @@ def stop_simulation():
             "success": False,
             "error": str(e)
         }), 400
-        
+
     except Exception as e:
         logger.error(f"failed to stop simulation: {str(e)}")
         simulation_id = (request.get_json(silent=True) or {}).get('simulation_id')

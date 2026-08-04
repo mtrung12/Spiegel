@@ -141,10 +141,10 @@
         <button
           v-if="phase === 1 && !readOnly"
           class="action-btn"
-          :disabled="isStopping"
+          :disabled="stopInProgress"
           @click="handleStopSimulation"
         >
-          {{ isStopping ? $t('step3.stopping') : $t('step3.stopRun') }}
+          {{ stopInProgress ? $t('step3.stopping') : $t('step3.stopRun') }}
         </button>
 
         <button
@@ -189,7 +189,14 @@
       </div>
       
       <!-- Timeline Feed -->
-      <div class="timeline-feed">
+      <!-- `live` runs a light down the spine while either platform is still
+           posting, so a quiet stretch still looks like a running simulation
+           rather than a stalled one. Purely visual - the counts above are what
+           actually report progress. -->
+      <div
+        class="timeline-feed"
+        :class="{ live: runStatus.twitter_running || runStatus.reddit_running }"
+      >
         <div class="timeline-axis"></div>
         
         <TransitionGroup name="timeline-item">
@@ -460,6 +467,14 @@ const redditElapsedTime = computed(() => {
   return formatElapsedTime(runStatus.value.reddit_current_round || 0)
 })
 
+// True while the run is being torn down: either this tab's stop request is in
+// flight, or the backend is still working through the graph write-back. Reading
+// the runner status too means a reload during that drain still shows the run as
+// stopping rather than offering a Stop button that has nothing left to stop.
+const stopInProgress = computed(() => {
+  return isStopping.value || runStatus.value.runner_status === 'stopping'
+})
+
 // Methods
 const addLog = (msg) => {
   emit('add-log', msg)
@@ -564,18 +579,23 @@ const handleStopSimulation = async () => {
   
   try {
     const res = await stopSimulation({ simulation_id: props.simulationId })
-    
-    if (res.success) {
-      addLog(t('log.simStoppedSuccess'))
-      phase.value = 2
-      stopPolling()
-      emit('update-status', 'completed')
-    } else {
-      addLog(t('log.stopFailed', { error: res.error || t('common.unknownError') }))
+
+    if (res.pending) {
+      // The run is already killed; only the graph write-back is still draining,
+      // which can take minutes. Stay on the run view with the button held in
+      // its stopping state and let polling publish the terminal status - the
+      // old code reported this as a failure and let the run look live again.
+      addLog(t('log.simStopDraining'))
+      if (res.data) runStatus.value = res.data
+      return
     }
+
+    addLog(t('log.simStoppedSuccess'))
+    phase.value = 2
+    stopPolling()
+    emit('update-status', 'completed')
   } catch (err) {
     addLog(t('log.stopException', { error: err.message }))
-  } finally {
     isStopping.value = false
   }
 }
@@ -637,11 +657,13 @@ const fetchRunStatus = async () => {
       // terminal state after the graph ingestion barrier has completed.
       if (isFailed) {
         addLog(t('log.simFailed') + (data.error ? `: ${data.error}` : ''))
+        isStopping.value = false
         phase.value = 2
         stopPolling()
         emit('update-status', 'error')
       } else if (isCompleted) {
         addLog(t('log.simCompleted'))
+        isStopping.value = false
         phase.value = 2
         stopPolling()
         emit('update-status', 'completed')
@@ -879,11 +901,20 @@ const attachOrStart = async () => {
       return
     }
   } catch (err) {
-    // No status to read: fall through and start a run.
+    // No status to read: nothing to attach to, handled below.
     console.warn('failed to read the run status on mount:', err)
   }
 
-  doStartSimulation()
+  // No run owns this simulation and nothing here asked for one. Opening step 3
+  // to look at it - the header stepper, a bookmark, a reload - used to launch a
+  // run on arrival, which fired before step 2's setup had been confirmed and so
+  // ran on the defaults instead of the round count chosen there. Launching is
+  // step 2's button; send the user to it.
+  addLog(t('log.noRunToAttach'))
+  router.replace({
+    name: 'Simulation',
+    params: { simulationId: props.simulationId }
+  })
 }
 
 onMounted(() => {
@@ -1254,6 +1285,37 @@ onUnmounted(() => {
   width: 1px;
   background: var(--border-soft); /* Cleaner line */
   transform: translateX(-50%);
+  overflow: hidden;
+}
+
+/* A short accent segment falling down the axis, on the axis's own 1px, so
+   nothing in the feed moves or reflows while it runs. */
+.timeline-feed.live .timeline-axis::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* Fixed length rather than a percentage: the feed grows all run, and a
+     proportional segment would stretch into a stripe by the end of it. */
+  height: 120px;
+  background: linear-gradient(to bottom, transparent, var(--accent), transparent);
+  animation: axis-fall 3.2s linear infinite;
+}
+
+@keyframes axis-fall {
+  from { top: -120px; }
+  to { top: 100%; }
+}
+
+/* The platform that is currently posting keeps a soft breathing edge, so the
+   two cards are told apart at a glance. */
+.platform-status.active {
+  animation: card-breathe 2.6s ease-in-out infinite;
+}
+
+@keyframes card-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); }
+  50% { box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.10); }
 }
 
 .timeline-item {

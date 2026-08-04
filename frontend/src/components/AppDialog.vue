@@ -47,6 +47,8 @@ onBeforeUnmount(() => {
 <style scoped>
 .app-dialog {
   border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
   background: var(--white);
   color: var(--ink);
   padding: 0;
@@ -59,12 +61,39 @@ onBeforeUnmount(() => {
 .app-dialog.sm { width: min(92vw, 420px); }
 .app-dialog.lg { width: min(94vw, 860px); }
 
-.app-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.45);
+/* The dialog used to appear fully formed, which reads as a screenshot swap.
+   It now scales up the last few percent while the backdrop fades in behind it,
+   so the eye follows one object arriving instead of the whole page changing.
+   Entry only: `close()` is synchronous, and holding the element around for an
+   exit animation would mean re-implementing the dismiss the browser gives us. */
+.app-dialog[open] {
+  animation: dialog-in 200ms var(--ease) both;
 }
 
+.app-dialog::backdrop {
+  background: rgba(17, 17, 17, 0.4);
+  backdrop-filter: blur(2px);
+}
+
+.app-dialog[open]::backdrop {
+  animation: backdrop-in 220ms var(--ease) both;
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* The rounded corner has to be clipped here too, or the scrolling content
+   paints square over it. */
 .dialog-inner {
   max-height: 88vh;
   overflow-y: auto;
+  border-radius: inherit;
 }
 </style>

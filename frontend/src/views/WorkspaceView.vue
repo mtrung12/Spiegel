@@ -13,9 +13,33 @@
 
         <span class="header-divider" aria-hidden="true"></span>
 
-        <button type="button" class="brand" @click="router.push('/')">
-          <span class="sr-only">{{ $t('a11y.backToProjectList') }}</span>
-          <span aria-hidden="true">SPIEGEL</span>
+        <!-- Says where it goes. The wordmark that used to sit here named the
+             product instead, so the exit out of the project read as a logo;
+             it is now the mark at the right of the row. -->
+        <button
+          type="button"
+          class="home-btn"
+          :aria-label="$t('nav.home')"
+          :title="$t('nav.home')"
+          @click="router.push('/')"
+        >
+          <!-- Matches AppHeader's, and the 24-box/2px-stroke set the rest of
+               the app draws with. -->
+          <svg
+            class="home-icon"
+            viewBox="0 0 24 24"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="M3 10.5 12 3l9 7.5"></path>
+            <path d="M5 9.8V21h14V9.8"></path>
+            <path d="M10 21v-6h4v6"></path>
+          </svg>
+          <span class="home-label">{{ $t('nav.home') }}</span>
         </button>
       </div>
 
@@ -34,6 +58,9 @@
           <span class="dot"></span>
           {{ loading ? $t('workspace.loading') : $t('workspace.ready') }}
         </span>
+        <div class="header-divider brand-divider"></div>
+        <!-- Plain text, not a button: the app's mark, not a control. -->
+        <span class="brand-mark">SPIEGEL</span>
       </div>
     </header>
 
@@ -448,21 +475,66 @@ onMounted(async () => {
   line-height: 1;
 }
 
-.brand {
-  background: none;
-  border: none;
-  padding: 4px;
-  color: inherit;
+/* Same shape as the back control beside it, so the two read as one pair of
+   exits rather than a control and a logo. */
+.home-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--white);
+  padding: 6px 12px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.home-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--ink);
+}
+
+.home-icon {
+  flex-shrink: 0;
+  /* Square ends, matching the rest of this chrome. */
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.brand-mark {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 800;
-  font-size: 18px;
+  font-size: 16px;
   letter-spacing: 1px;
-  cursor: pointer;
+  /* Quieter than the wordmark button it replaces: it is a mark, and the
+     controls around it are what the user is meant to reach for. */
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 @media (max-width: 600px) {
-  .back-label {
+  /* The mark is the one thing here that does nothing, so it goes first when
+     the row runs out of room - and its divider with it. */
+  .brand-mark,
+  .brand-divider {
     display: none;
+  }
+
+  .back-label,
+  .home-label {
+    display: none;
+  }
+
+  .back-btn,
+  .home-btn {
+    padding: 6px 10px;
   }
 }
 
@@ -522,6 +594,7 @@ onMounted(async () => {
 }
 
 .dot {
+  position: relative;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -530,6 +603,22 @@ onMounted(async () => {
 
 .status-indicator.ready .dot { background: #4CAF50; }
 .status-indicator.processing .dot { background: #FF9800; animation: pulse 1s infinite; }
+
+/* Same ring as the step pages' header, so "working" looks identical wherever
+   the user is in the app. */
+.status-indicator.processing .dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #FF9800;
+  animation: status-ring 1.8s var(--ease) infinite;
+}
+
+@keyframes status-ring {
+  0% { transform: scale(1); opacity: 0.5; }
+  70%, 100% { transform: scale(2.8); opacity: 0; }
+}
 
 @keyframes pulse { 50% { opacity: 0.5; } }
 
@@ -672,6 +761,40 @@ onMounted(async () => {
 .report-dot.completed { background: #4CAF50; }
 .report-dot.generating { background: #FF9800; }
 .report-dot.failed { background: #F44336; }
+
+/* Only a report still being written blinks; a finished or failed one is a
+   fact, and a fact should not flicker in the sidebar. */
+.report-dot.generating {
+  animation: dot-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes dot-pulse {
+  50% { opacity: 0.3; }
+}
+
+/* The selected report slides its rule in from the left of the row rather than
+   appearing, which shows the list which way the selection moved. */
+.report-row {
+  position: relative;
+}
+
+.report-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform 220ms var(--ease);
+}
+
+.report-row.active::before {
+  transform: scaleY(1);
+}
 
 .report-title {
   font-size: 12px;

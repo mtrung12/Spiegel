@@ -403,6 +403,19 @@ ThemeList.emits = ['toggle']
   justify-content: center;
   transition: width 0.2s ease;
   min-width: 0;
+  /* The split unrolls from the left on first paint, so the proportions are
+     read as a sequence rather than taken in as a finished block. Widths still
+     come from the data; only the reveal is animated. */
+  transform-origin: left;
+  animation: seg-unroll 420ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.sd-bar-seg:nth-child(2) { animation-delay: 70ms; }
+.sd-bar-seg:nth-child(3) { animation-delay: 140ms; }
+
+@keyframes seg-unroll {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
 }
 
 .sd-bar-seg.is-positive { background: var(--ink); }

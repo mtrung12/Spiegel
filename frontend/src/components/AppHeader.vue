@@ -13,9 +13,35 @@
 
         <span class="header-divider" aria-hidden="true"></span>
 
-        <button class="brand" @click="router.push('/')">
-          <span class="sr-only">{{ $t('a11y.backToProjectList') }}</span>
-          <span aria-hidden="true">SPIEGEL</span>
+        <!-- The way out to the project list. It used to be the wordmark, which
+             names the product rather than saying where it goes - so the one
+             control that leaves the project looked like decoration. The
+             wordmark itself moved to the right of the header, where it marks
+             the app without pretending to be navigation. -->
+        <button
+          class="home-btn"
+          :aria-label="$t('nav.home')"
+          :title="$t('nav.home')"
+          @click="router.push('/')"
+        >
+          <!-- Same 24-box, 2px-stroke, no-fill set the rest of the app draws
+               with (GraphPanel, FeedBoard, ReportPane), so it sits in the row
+               as one of them rather than as a font glyph. -->
+          <svg
+            class="home-icon"
+            viewBox="0 0 24 24"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="M3 10.5 12 3l9 7.5"></path>
+            <path d="M5 9.8V21h14V9.8"></path>
+            <path d="M10 21v-6h4v6"></path>
+          </svg>
+          <span class="home-label">{{ $t('nav.home') }}</span>
         </button>
 
         <!-- Which campaign this is. Only step 1 ever said, so steps 2-5 were
@@ -72,12 +98,25 @@
           <span class="sr-only">{{ $t('a11y.statusLabel') }}:</span>
           {{ statusText }}
         </span>
+
+        <span class="header-divider brand-divider" aria-hidden="true"></span>
+
+        <!-- Plain text, not a button: this is the app's mark. Everything that
+             navigates in this header now says where it goes. -->
+        <span class="brand-mark">SPIEGEL</span>
       </div>
     </header>
 
-    <!-- The workflow is five steps long; without a stepper the only way back was
-         the brand link, which drops all the way out to the project list. -->
-    <nav class="step-bar" :aria-label="$t('a11y.workflowSteps')">
+    <!-- The workflow is five steps long; without a stepper the only way back
+         was the exit above, which drops all the way out to the project list. -->
+    <!-- `working` only paints the travelling rule along the bottom edge while
+         the run is live; it carries no meaning the status text does not
+         already say out loud. -->
+    <nav
+      class="step-bar"
+      :class="{ working: status === 'processing' }"
+      :aria-label="$t('a11y.workflowSteps')"
+    >
       <ol class="step-list">
         <!-- A step that cannot be opened stays focusable and keeps its tooltip:
              `disabled` drops it out of the tab order and suppresses the title,
@@ -185,8 +224,17 @@ const paramNames = {
 }
 
 // Fallback for the moment before the fetch lands, and if it fails: the ids
-// this view was handed. Never more permissive than the server's answer.
+// this view was handed.
+//
+// Only ever for a step already reached. A view knows the ids its route gave it
+// but nothing about how far the project got, and consecutive steps share an id:
+// step 2 holds step 3's simulation id, step 4 holds step 5's report id. Vouching
+// for the later step off that alone opened a step the project had not reached -
+// from step 2 the stepper offered step 3, which starts the run before the setup
+// on step 2 has been confirmed. Steps forward of this one wait for the server,
+// which is the only side that knows whether they were reached.
 const localRouteId = (step) => {
+  if (step > props.currentStep) return null
   switch (step) {
     case 1: return props.projectId
     case 2:
@@ -370,6 +418,21 @@ watch(displayName, (name) => setProjectTitle(name), { immediate: true })
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1;
+  display: inline-block;
+  transition: transform var(--dur) var(--ease);
+}
+
+/* The glyph leans the way the button goes; the button itself stays put. */
+.back-btn:hover .back-arrow {
+  transform: translateX(-3px);
+}
+
+.home-btn:hover .home-icon {
+  transform: translateY(-1px);
+}
+
+.home-icon {
+  transition: transform var(--dur) var(--ease);
 }
 
 .header-divider {
@@ -377,6 +440,38 @@ watch(displayName, (name) => setProjectTitle(name), { immediate: true })
   height: 18px;
   background: var(--border);
   flex-shrink: 0;
+}
+
+/* Same shape as the back control beside it, so the two read as one pair of
+   exits rather than a control and a logo. */
+.home-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--white);
+  padding: 6px 12px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.home-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--ink);
+}
+
+.home-icon {
+  flex-shrink: 0;
+  /* Square ends, like the stepper rules and card corner marks - the rounded
+     default reads soft against the rest of this chrome. */
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 
 .project-name {
@@ -423,16 +518,16 @@ watch(displayName, (name) => setProjectTitle(name), { immediate: true })
   flex-shrink: 0;
 }
 
-.brand {
+.brand-mark {
   font-family: var(--font-mono);
   font-weight: 800;
-  font-size: 18px;
+  font-size: 16px;
   letter-spacing: 1px;
-  background: none;
-  border: none;
-  padding: 4px;
-  color: var(--ink);
+  /* Quieter than the old wordmark button: it is a mark, and the controls
+     around it are what the user is meant to reach for. */
+  color: var(--muted);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .view-switcher {
@@ -471,6 +566,7 @@ watch(displayName, (name) => setProjectTitle(name), { immediate: true })
 }
 
 .dot {
+  position: relative;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -483,13 +579,59 @@ watch(displayName, (name) => setProjectTitle(name), { immediate: true })
 .status-indicator.ready .dot { background: var(--success); }
 .status-indicator.error .dot { background: var(--danger); }
 
+/* A ring leaving the dot while work is in flight. The dot alone dimming and
+   brightening is easy to miss in the corner of a busy header; the ring is
+   visible peripherally, which is where this indicator actually lives. */
+.status-indicator.processing .dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: status-ring 1.8s var(--ease) infinite;
+}
+
 @keyframes pulse { 50% { opacity: 0.5; } }
+
+@keyframes status-ring {
+  0% { transform: scale(1); opacity: 0.5; }
+  70%, 100% { transform: scale(2.8); opacity: 0; }
+}
 
 /* ---------- Row 2: the stepper ---------- */
 .step-bar {
+  position: relative;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   overflow-x: auto;
+}
+
+/* A band of accent travelling along the rule under the stepper while the run
+   is working. It sits on the border that is already there, so nothing shifts
+   when it starts or stops. */
+.step-bar.working::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent) 40%,
+    var(--accent) 60%,
+    transparent 100%
+  );
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  animation: rail-sweep 2.4s linear infinite;
+}
+
+@keyframes rail-sweep {
+  from { background-position: -50% 0; }
+  to { background-position: 150% 0; }
 }
 
 .step-list {
@@ -508,6 +650,7 @@ watch(displayName, (name) => setProjectTitle(name), { immediate: true })
 }
 
 .step-btn {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -519,6 +662,28 @@ watch(displayName, (name) => setProjectTitle(name), { immediate: true })
   color: var(--muted-soft);
   white-space: nowrap;
   border-bottom: 2px solid transparent;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+/* The marker under a step is drawn here rather than by the border, so it can
+   wipe in when the step becomes current and preview itself on hover. The
+   border stays as the reserved 2px of space. */
+.step-btn::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 260ms var(--ease);
+}
+
+.step-btn.reachable:not([aria-disabled="true"]):hover::after {
+  transform: scaleX(1);
+  opacity: 0.4;
 }
 
 .step-btn[aria-disabled="true"] {
@@ -543,7 +708,10 @@ watch(displayName, (name) => setProjectTitle(name), { immediate: true })
 .step-btn.current {
   color: var(--ink);
   font-weight: 700;
-  border-bottom-color: var(--accent);
+}
+
+.step-btn.current::after {
+  transform: scaleX(1);
 }
 
 .step-num {
@@ -604,18 +772,23 @@ watch(displayName, (name) => setProjectTitle(name), { immediate: true })
 }
 
 @media (max-width: 600px) {
-  .brand {
-    font-size: 14px;
+  /* The mark is the one thing here that does nothing, so it goes first when
+     the row runs out of room - and its divider with it. */
+  .brand-mark,
+  .brand-divider {
+    display: none;
   }
 
-  /* The arrow alone still reads as back, and the accessible name survives on
-     the aria-label. The project name is the first thing to go. */
+  /* The arrow and the house alone still read as back and home, and the
+     accessible names survive on the title. The project name goes too. */
   .back-label,
+  .home-label,
   .project-name {
     display: none;
   }
 
-  .back-btn {
+  .back-btn,
+  .home-btn {
     padding: 6px 10px;
   }
 }

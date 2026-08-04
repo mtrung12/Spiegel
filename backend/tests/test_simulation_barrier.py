@@ -87,10 +87,17 @@ def test_manual_stop_timeout_leaves_monitor_owned_state_stopping(monkeypatch):
 
     class Monitor:
         def join(self, timeout):
-            assert timeout >= 30
+            # Long enough for a quick drain to answer STOPPED in one request,
+            # but bounded well inside the frontend's HTTP timeout. Waiting out
+            # the full ingestion deadline here made every stop of a real run
+            # look like a network failure.
+            assert 30 <= timeout <= 60
+            joined.append(timeout)
 
         def is_alive(self):
             return True
+
+    joined = []
 
     monkeypatch.setattr(
         SimulationRunner,
@@ -110,6 +117,7 @@ def test_manual_stop_timeout_leaves_monitor_owned_state_stopping(monkeypatch):
         with pytest.raises(TimeoutError, match="still stopping"):
             SimulationRunner.stop_simulation("sim-timeout")
         assert state.runner_status == RunnerStatus.STOPPING
+        assert joined == [runner_module.STOP_REQUEST_GRACE_SECONDS]
     finally:
         SimulationRunner._monitor_threads.pop("sim-timeout", None)
         SimulationRunner._manual_stop_requests.discard("sim-timeout")
@@ -182,8 +190,14 @@ def test_stop_api_keeps_pending_finalization_out_of_failed_state(monkeypatch):
     ):
         response, status = simulation_api.stop_simulation()
 
+    body = response.get_json()
     assert status == 202
-    assert response.get_json()["pending"] is True
+    assert body["pending"] is True
+    # An accepted stop, not a failed one. The run is already killed and only the
+    # graph write-back is still draining, so answering success:false made the UI
+    # treat a working stop as an error and keep rendering the run as live.
+    assert body["success"] is True
+    assert body["data"]["runner_status"] == RunnerStatus.STOPPING.value
     assert simulation.status == SimulationStatus.STOPPING
     assert saved == []
 
