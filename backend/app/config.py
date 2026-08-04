@@ -121,6 +121,18 @@ class Config:
     )
     SIMULATION_LLM_MODEL_NAME = os.environ.get('SIMULATION_LLM_MODEL_NAME') or LLM_MODEL_NAME
 
+    # Nano LLM - the cheapest tier, for calls that emit a handful of short
+    # strings rather than prose. Only the general_company variant call uses it
+    # today: three fields per firm, where a stronger model buys nothing.
+    # Inherits LLM_* when unset, on the same key rule as above.
+    NANO_LLM_BASE_URL = os.environ.get('NANO_LLM_BASE_URL') or LLM_BASE_URL
+    NANO_LLM_API_KEY = resolve_llm_api_key(
+        os.environ.get('NANO_LLM_API_KEY')
+        or (LLM_API_KEY if NANO_LLM_BASE_URL == LLM_BASE_URL else None),
+        NANO_LLM_BASE_URL,
+    )
+    NANO_LLM_MODEL_NAME = os.environ.get('NANO_LLM_MODEL_NAME') or LLM_MODEL_NAME
+
     # Vision LLM - reads the pages of an uploaded PDF that carry no text layer.
     # A creative deck exported from Figma or Keynote is one image per slide, so
     # without this the brief extracts to nothing. Inherits LLM_* when unset, on

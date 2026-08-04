@@ -285,6 +285,19 @@ class OasisProfileGenerator:
         # are written from the entity's own attributes alone.
         self.graph_id = graph_id
 
+        # Nano tier, for the company-variant call only - three short strings
+        # per firm, where the persona model buys nothing. Same endpoint as the
+        # main client in the default config, so the client is reused rather
+        # than opened twice.
+        self.nano_model_name = Config.NANO_LLM_MODEL_NAME
+        if Config.NANO_LLM_BASE_URL == self.base_url:
+            self.nano_client = self.client
+        else:
+            self.nano_client = OpenAI(
+                api_key=Config.NANO_LLM_API_KEY,
+                base_url=Config.NANO_LLM_BASE_URL,
+            )
+
 
     def generate_profile_from_entity(
         self,
@@ -1086,8 +1099,8 @@ No prose, no markdown, no keys, no trailing commentary. Exactly {count} rows.
                 {"role": "user", "content": prompt},
             ]
             response = create_chat_completion(
-                self.client,
-                model=self.model_name,
+                self.nano_client,
+                model=self.nano_model_name,
                 messages=messages,
                 response_format={"type": "json_object"},
                 temperature=0.9,          # variety is the entire point
@@ -1097,7 +1110,7 @@ No prose, no markdown, no keys, no trailing commentary. Exactly {count} rows.
             content = extract_chat_completion_text(response)
             pipeline_log.llm_call(
                 'OasisProfileGenerator', 'llm.company_variants',
-                model=self.model_name,
+                model=self.nano_model_name,
                 messages=messages,
                 params={'temperature': 0.9, 'response_format': 'json_object'},
                 response_text=content,

@@ -62,6 +62,22 @@ CLONEABLE_ENTITY_TYPES = {
     "shopper", "student", "alumni", "prospect",
 }
 
+# The ontology's own generic org type names. Unlike a campaign-invented name,
+# these really do mean "one organisation with one account" - almost always the
+# advertiser or a media outlet - so they stay singletons when unclassified.
+FALLBACK_COMPANY_ENTITY_TYPES = {
+    "organization", "organisation", "company", "brand", "entity",
+    "mediaoutlet", "socialmediaplatform", "university",
+    "governmentagency", "ngo",
+}
+
+# What an unclassified, campaign-invented type name becomes. See entity_kind().
+_UNCLASSIFIED_KIND = "general_individual"
+
+# entity_kind() runs once per entity, so the warning is deduped to one line per
+# type name rather than 500 identical ones.
+_warned_unclassified: set = set()
+
 # Entity types that represent a natural person (and so get an age, a gender
 # and a real MBTI). Single source of truth - OasisProfileGenerator should
 # import this rather than keep its own copy.
@@ -106,9 +122,26 @@ def entity_kind(entity_type: str, kinds: Optional[Dict[str, str]] = None) -> str
         return "general_individual"
     if key in INDIVIDUAL_ENTITY_TYPES:
         return "specific_individual"
-    # Unclassified: a singleton org account is the safe direction. Cloning
-    # something that turns out to be one brand is the expensive mistake.
-    return "specific_company"
+    # Unclassified. "Organization" is the ontology's own fallback org type, so
+    # it really is the advertiser or a media outlet - one account, never cloned.
+    if key in FALLBACK_COMPANY_ENTITY_TYPES:
+        return "specific_company"
+    # Everything else here is a campaign-invented name ("GenZstudent",
+    # "Evskeptic") that no list contains and no classifier reached. Treating it
+    # as a named brand collapses the whole cast to the entity count, because a
+    # specific kind is never cloned: 23 entities produced 23 agents against a
+    # cap of 200. A class of people is what these names almost always are, and
+    # it is also the recoverable mistake - an over-cloned segment still
+    # simulates, an under-populated cast does not.
+    if key not in _warned_unclassified:
+        _warned_unclassified.add(key)
+        logger.warning(
+            "entity type %r reached no classifier (ontology kind absent and "
+            "population hints empty); treating it as %s. A named brand here "
+            "would be over-cloned - check the ontology carries a 'kind'.",
+            entity_type, _UNCLASSIFIED_KIND,
+        )
+    return _UNCLASSIFIED_KIND
 
 
 @dataclass
@@ -530,9 +563,12 @@ def _demo() -> None:
               _E("Tesla", "Organization"),
               _E("TeslaMotors", "Organization")])
     branded = plan_population(tesla, seed=1)
-    # Without hints the brand must still never be the cast: Organization is not
-    # cloneable, so nothing is, and the cast is just the entities.
-    assert len(branded) == 5, len(branded)
+    # Without hints the invented segment names are still cloned up to the cap -
+    # defaulting them to a named brand collapsed the cast to the entity count.
+    # "Organization" is the ontology's own generic org type, so it stays a
+    # singleton: one account for Tesla, one for TeslaMotors.
+    assert len(branded) == MAX_AGENTS, len(branded)
+    assert len([s for s in branded if s.entity_type == "Organization"]) == 2
     kinds = {"GenZstudent": "general_individual", "Evskeptic": "general_individual",
              "Organization": "specific_company"}
     shaped = plan_population(tesla, kinds=kinds, seed=1)
@@ -654,10 +690,14 @@ def _demo() -> None:
     assert markets == ["Vietnam", "7"], markets
     assert kinds == {"Person": "general_individual",
                      "Legacy": "specific_company"}, kinds
-    # An unclassified type falls back to the fixed lists, not to "cloneable".
-    assert entity_kind("Wide", kinds) == "specific_company"
+    # An unclassified type falls back to the fixed lists first.
     assert entity_kind("Student", kinds) == "general_individual"
     assert entity_kind("Journalist", kinds) == "specific_individual"
+    # The ontology's own generic org names stay singletons; anything else the
+    # campaign invented is a class of people, so the cast still fills.
+    assert entity_kind("Organization", kinds) == "specific_company"
+    assert entity_kind("MediaOutlet", kinds) == "specific_company"
+    assert entity_kind("Wide", kinds) == "general_individual"
 
     print("agent_population self-check passed")
 

@@ -116,6 +116,25 @@ def test_the_size_preview_matches_what_planning_produces(entities, cap):
     )
 
 
+def test_campaign_invented_type_names_still_fill_the_cast():
+    # The symptom: 200 agents asked for, 23 built. Every type name an ontology
+    # invents ("GenZstudent") matches no fixed list, so when neither the
+    # ontology kind nor the hints call classified it, entity_kind used to
+    # default to specific_company - which is never cloned - and the cast
+    # collapsed to the entity count.
+    entities = ([_Entity(f"seg{i}", "GenZstudent") for i in range(10)]
+                + [_Entity(f"sk{i}", "Evskeptic") for i in range(8)]
+                + [_Entity(f"org{i}", "Organization") for i in range(5)])
+
+    slots = plan_population(entities, max_agents=200, kinds={}, seed=1)
+
+    assert len(slots) == 200
+    assert planned_population_size(entities, 200, {}) == 200
+    # The ontology's own generic org type is the one that stays a singleton:
+    # it really is the advertiser or a media outlet, one account each.
+    assert len([s for s in slots if s.entity_type == "Organization"]) == 5
+
+
 # -- the four kinds ---------------------------------------------------------
 
 _KINDS = {
@@ -352,8 +371,9 @@ def test_a_short_variant_response_is_cycled_to_cover_every_slot():
         choices = [_Choice()]
         usage = None
 
-    generator.client = None
-    generator.model_name = "test-model"
+    # The variant call runs on the nano tier, not the persona model.
+    generator.nano_client = None
+    generator.nano_model_name = "test-model"
     import app.services.oasis_profile_generator as mod
     original = mod.create_chat_completion
     mod.create_chat_completion = lambda *a, **k: _Response()

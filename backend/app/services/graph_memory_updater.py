@@ -509,16 +509,6 @@ class GraphMemoryUpdater:
                 except Empty:
                     pass
 
-                # Spread the "is this episode done processing" check across
-                # the run instead of deferring the whole backlog to stop().
-                # A run that ends with only the last ~20s of episodes still
-                # pending needs far less of the drain timeout than one that
-                # never checked at all.
-                now = time.time()
-                if now - self._last_pending_check >= self.PENDING_POLL_INTERVAL_SECONDS:
-                    self._last_pending_check = now
-                    self._trim_pending_episodes()
-
             except Exception as e:
                 logger.error(f"worker loop error: {e}")
                 time.sleep(1)
@@ -700,8 +690,6 @@ class GraphMemoryUpdater:
         """Return the statistics."""
         with self._buffer_lock:
             buffer_sizes = {p: len(b) for p, b in self._platform_buffers.items()}
-        with self._pending_lock:
-            pending_episode_count = len(self._pending_episode_uuids)
 
         return {
             "graph_id": self.graph_id,
