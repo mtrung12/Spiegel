@@ -9,6 +9,7 @@
       :simulationId="currentSimulationId"
       :reportId="null"
       :projectName="projectData?.name || ''"
+      @renamed="applyRename"
       @readonly="readOnly = $event"
     />
 
@@ -51,7 +52,7 @@ import Step2EnvSetup from '../components/Step2EnvSetup.vue'
 import { getProject, getGraphData } from '../api/graph'
 import { getSimulation, stopSimulation, getEnvStatus, closeSimulationEnv } from '../api/simulation'
 import AppHeader from '../components/AppHeader.vue'
-import { useSplitLayout, useSystemLog } from '../composables/useWorkbench'
+import { useProjectRename, useSplitLayout, useSystemLog } from '../composables/useWorkbench'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -69,6 +70,8 @@ const { systemLogs, addLog } = useSystemLog(100)
 // Data State
 const currentSimulationId = ref(route.params.simulationId)
 const projectData = ref(null)
+// Keeps this view's copy in step with a rename made in the header.
+const applyRename = useProjectRename(projectData)
 const graphData = ref(null)
 const graphLoading = ref(false)
 const currentStatus = ref('processing') // processing | completed | error

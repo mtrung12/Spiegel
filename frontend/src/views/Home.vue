@@ -25,8 +25,9 @@
       </button>
     </section>
 
-    <!-- Existing projects -->
-    <HistoryDatabase @create-new="openConsole" @loaded="projectCount = $event" />
+    <!-- Existing projects. The list comes back here as well as staying in the
+         component, because the default project name is derived from it. -->
+    <HistoryDatabase @create-new="openConsole" @loaded="existingProjects = $event" />
 
     <!-- Console: create a new test. Hidden until the user asks for a new one,
          so the landing page is just the project list. -->
@@ -34,6 +35,26 @@
       <span class="section-label">{{ $t('home.consoleEyebrow') }}</span>
 
       <div class="console-box">
+        <!-- Named here rather than left to a rename later: every step page and
+             the project list show this, and "Unnamed Project" told the user
+             nothing about which campaign they were looking at. Optional - the
+             placeholder is what gets used when it is left blank. -->
+        <div class="field">
+          <div class="field-head">
+            <label class="field-label" for="project-name">{{ $t('home.projectNameLabel') }}</label>
+            <span class="field-meta">{{ $t('home.projectNameHint') }}</span>
+          </div>
+          <input
+            id="project-name"
+            v-model="projectName"
+            type="text"
+            class="name-input"
+            maxlength="120"
+            :placeholder="defaultProjectName"
+            :disabled="loading"
+          />
+        </div>
+
         <div class="field">
           <div class="field-head">
             <span class="field-label">{{ $t('home.realitySeed') }}</span>
@@ -126,13 +147,29 @@ const workflowSteps = [1, 2, 3, 4, 5].map(n => ({
 // File list
 const files = ref([])
 
+// What to call this project. Blank means "use the placeholder".
+const projectName = ref('')
+
 // State
 const loading = ref(false)
 const error = ref('')
 const isDragOver = ref(false)
 const showConsole = ref(false)
-// -1 until the history list reports back, so the CTA does not flash before then
-const projectCount = ref(-1)
+// null until the history list reports back, so the CTA does not flash before then
+const existingProjects = ref(null)
+
+const projectCount = computed(() => (existingProjects.value ? existingProjects.value.length : -1))
+
+// Default name: the next number in the Project_N series already on record.
+// Only names of exactly that shape count, so a project someone titled
+// "Q3 launch 2026" does not push the counter to 2027.
+const defaultProjectName = computed(() => {
+  const highest = (existingProjects.value || []).reduce((max, project) => {
+    const match = /^Project_(\d+)$/i.exec((project.name || '').trim())
+    return match ? Math.max(max, parseInt(match[1], 10)) : max
+  }, 0)
+  return `Project_${highest + 1}`
+})
 
 // Refs
 const fileInput = ref(null)
@@ -200,9 +237,13 @@ const openConsole = async () => {
 const startSimulation = () => {
   if (!canSubmit.value || loading.value) return
 
+  // An empty box means the user accepted what the placeholder showed them, so
+  // that is the name the project gets - not a blank one.
+  const name = projectName.value.trim() || defaultProjectName.value
+
   // Stash the data waiting to be uploaded
   import('../store/pendingUpload.js').then(({ setPendingUpload }) => {
-    setPendingUpload(files.value)
+    setPendingUpload(files.value, name)
 
     // Navigate straight to the Process page, flagged as a new project
     router.push({
@@ -384,6 +425,33 @@ const startSimulation = () => {
   font-family: var(--font-mono);
   font-size: 0.85rem;
   color: var(--muted);
+}
+
+.name-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 14px 16px;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  color: var(--ink);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.name-input::placeholder {
+  color: var(--muted-soft);
+}
+
+.name-input:focus {
+  outline: none;
+  border-color: var(--ink);
+  background: var(--white);
+}
+
+.name-input:disabled {
+  color: var(--muted-soft);
+  cursor: not-allowed;
 }
 
 .upload-zone {

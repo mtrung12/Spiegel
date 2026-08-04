@@ -59,6 +59,7 @@
               <span class="tooltip-action">{{ $t('step3.actions.post') }}</span>
               <span class="tooltip-action">{{ $t('step3.actions.comment') }}</span>
               <span class="tooltip-action">{{ $t('step3.actions.like') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.likeComment') }}</span>
               <span class="tooltip-action">{{ $t('step3.actions.repost') }}</span>
               <span class="tooltip-action">{{ $t('step3.actions.quote') }}</span>
               <span class="tooltip-action">{{ $t('step3.actions.follow') }}</span>
@@ -102,6 +103,8 @@
               <span class="tooltip-action">{{ $t('step3.actions.comment') }}</span>
               <span class="tooltip-action">{{ $t('step3.actions.like') }}</span>
               <span class="tooltip-action">{{ $t('step3.actions.dislike') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.likeComment') }}</span>
+              <span class="tooltip-action">{{ $t('step3.actions.dislikeComment') }}</span>
               <span class="tooltip-action">{{ $t('step3.actions.search') }}</span>
               <span class="tooltip-action">{{ $t('step3.actions.trend') }}</span>
               <span class="tooltip-action">{{ $t('step3.actions.follow') }}</span>
@@ -262,6 +265,23 @@
                   </div>
                 </template>
 
+                <!-- LIKE_COMMENT / DISLIKE_COMMENT: a reaction to someone
+                     else's reply, not to the post itself -->
+                <template v-if="action.action_type === 'LIKE_COMMENT' || action.action_type === 'DISLIKE_COMMENT'">
+                  <div class="like-info">
+                    <svg v-if="action.action_type === 'LIKE_COMMENT'" class="icon-small filled" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+                    <svg v-else class="icon-small" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    <span class="like-label">
+                      {{ action.action_type === 'LIKE_COMMENT'
+                        ? $t('step3.likedComment', { name: action.action_args?.comment_author_name || 'User' })
+                        : $t('step3.dislikedComment', { name: action.action_args?.comment_author_name || 'User' }) }}
+                    </span>
+                  </div>
+                  <div v-if="action.action_args?.comment_content" class="liked-content">
+                    "{{ truncateContent(action.action_args.comment_content, 120) }}"
+                  </div>
+                </template>
+
                 <!-- CREATE_COMMENT -->
                 <template v-if="action.action_type === 'CREATE_COMMENT'">
                   <div v-if="action.action_args?.content" class="content-text">
@@ -311,7 +331,7 @@
                 </template>
 
                 <!-- Fallback: an unknown type, or content none of the above matched -->
-                <div v-if="!['CREATE_POST', 'QUOTE_POST', 'REPOST', 'LIKE_POST', 'CREATE_COMMENT', 'SEARCH_POSTS', 'FOLLOW', 'UPVOTE_POST', 'DOWNVOTE_POST', 'DO_NOTHING'].includes(action.action_type) && action.action_args?.content" class="content-text">
+                <div v-if="!['CREATE_POST', 'QUOTE_POST', 'REPOST', 'LIKE_POST', 'CREATE_COMMENT', 'LIKE_COMMENT', 'DISLIKE_COMMENT', 'SEARCH_POSTS', 'FOLLOW', 'UPVOTE_POST', 'DOWNVOTE_POST', 'DO_NOTHING'].includes(action.action_type) && action.action_args?.content" class="content-text">
                   {{ action.action_args.content }}
                 </div>
               </div>
@@ -697,7 +717,10 @@ const getActionTypeLabel = (type) => {
     'REPOST': 'REPOST',
     'LIKE_POST': 'LIKE',
     'CREATE_COMMENT': 'COMMENT',
-    'LIKE_COMMENT': 'LIKE',
+    // Distinct from LIKE, which is a reaction to a post
+    'LIKE_COMMENT': 'REPLY LIKE',
+    'DISLIKE_COMMENT': 'REPLY DISLIKE',
+    'DISLIKE_POST': 'DISLIKE',
     'DO_NOTHING': 'IDLE',
     'FOLLOW': 'FOLLOW',
     'SEARCH_POSTS': 'SEARCH',
@@ -714,7 +737,9 @@ const getActionTypeClass = (type) => {
     'REPOST': 'badge-action',
     'LIKE_POST': 'badge-action',
     'CREATE_COMMENT': 'badge-comment',
-    'LIKE_COMMENT': 'badge-action',
+    'LIKE_COMMENT': 'badge-comment',
+    'DISLIKE_COMMENT': 'badge-comment',
+    'DISLIKE_POST': 'badge-action',
     'QUOTE_POST': 'badge-post',
     'FOLLOW': 'badge-meta',
     'SEARCH_POSTS': 'badge-meta',

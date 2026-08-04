@@ -9,6 +9,7 @@
       :simulationId="simulationId"
       :reportId="currentReportId"
       :projectName="projectData?.name || ''"
+      @renamed="applyRename"
     >
       <template #actions>
         <button class="workspace-btn" :disabled="!projectData?.project_id" @click="goToWorkspace">
@@ -55,7 +56,7 @@ import { getProject, getGraphData } from '../api/graph'
 import { getSimulation } from '../api/simulation'
 import { getReport } from '../api/report'
 import AppHeader from '../components/AppHeader.vue'
-import { useSplitLayout, useSystemLog } from '../composables/useWorkbench'
+import { useProjectRename, useSplitLayout, useSystemLog } from '../composables/useWorkbench'
 
 const route = useRoute()
 const router = useRouter()
@@ -73,6 +74,8 @@ const { viewMode, toggleMaximize } = useSplitLayout('workbench')
 const currentReportId = ref(route.params.reportId)
 const simulationId = ref(null)
 const projectData = ref(null)
+// Keeps this view's copy in step with a rename made in the header.
+const applyRename = useProjectRename(projectData)
 const graphData = ref(null)
 const graphLoading = ref(false)
 const { systemLogs, addLog } = useSystemLog(200)

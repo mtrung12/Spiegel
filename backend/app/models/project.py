@@ -201,6 +201,29 @@ class ProjectManager:
             json.dump(project.to_dict(), f, ensure_ascii=False, indent=2)
     
     @classmethod
+    def update_project(cls, project_id: str, **fields: Any) -> Optional[Project]:
+        """
+        Re-read a project, apply only the named fields, and save it.
+
+        A background task holds its Project object for the length of a graph
+        build - minutes - and saving that object writes back every field as it
+        stood when the task started. A rename made in that window was silently
+        reverted on the task's next save. Callers that outlive their request go
+        through here so they only ever write what they own.
+
+        Returns the saved project, or None if it no longer exists.
+        """
+        project = cls.get_project(project_id)
+        if project is None:
+            return None
+
+        for key, value in fields.items():
+            setattr(project, key, value)
+
+        cls.save_project(project)
+        return project
+
+    @classmethod
     def get_project(cls, project_id: str) -> Optional[Project]:
         """
         Load a project.

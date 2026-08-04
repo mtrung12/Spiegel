@@ -9,6 +9,7 @@
       :simulationId="currentSimulationId"
       :reportId="existingReportId"
       :projectName="projectData?.name || ''"
+      @renamed="applyRename"
       @readonly="readOnly = $event"
     ></AppHeader>
 
@@ -55,7 +56,7 @@ import { getProject, getGraphData } from '../api/graph'
 import { getSimulation, getSimulationConfig } from '../api/simulation'
 import { getReportBySimulation } from '../api/report'
 import AppHeader from '../components/AppHeader.vue'
-import { useSplitLayout, useSystemLog } from '../composables/useWorkbench'
+import { useProjectRename, useSplitLayout, useSystemLog } from '../composables/useWorkbench'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -78,6 +79,8 @@ const maxRounds = ref(route.query.maxRounds ? parseInt(route.query.maxRounds) : 
 const startNewRun = ref(route.query.start === '1')
 const minutesPerRound = ref(30) // 30 simulated minutes per round by default
 const projectData = ref(null)
+// Keeps this view's copy in step with a rename made in the header.
+const applyRename = useProjectRename(projectData)
 const graphData = ref(null)
 const graphLoading = ref(false)
 const { systemLogs, addLog } = useSystemLog(200)

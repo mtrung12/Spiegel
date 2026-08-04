@@ -1221,9 +1221,15 @@ def _build_graph_impl():
                         if isinstance(v, (int, float, str))
                     })
 
-                project.corpus_distribution = corpus['distribution']
-                project.corpus_summary = corpus['summary']
-                ProjectManager.save_project(project)
+                # Written field by field rather than by saving the captured
+                # project: this thread runs for minutes, and the whole object
+                # is stale the moment anything else edits the project - a
+                # rename from the header used to be undone right here.
+                ProjectManager.update_project(
+                    project_id,
+                    corpus_distribution=corpus['distribution'],
+                    corpus_summary=corpus['summary'],
+                )
 
                 if corpus['episode_text']:
                     # Appended as text so the harvested priors travel through
@@ -1275,8 +1281,7 @@ def _build_graph_impl():
                 )
 
                 def remember_graph(graph_id):
-                    project.graph_id = graph_id
-                    ProjectManager.save_project(project)
+                    ProjectManager.update_project(project_id, graph_id=graph_id)
 
                 with pipeline_log.step(
                     'GraphBuilderService', 'create_graph', target=graph_name,
@@ -1341,14 +1346,16 @@ def _build_graph_impl():
                 # lifecycle lock used by reset/delete/build claims. This
                 # prevents a deletion from interleaving between the two saves.
                 with _project_build_lock(project_id):
-                    project.status = ProjectStatus.GRAPH_COMPLETED
-                    project.error = None
-                    # Everything in the graph after this instant came from a
-                    # simulation writing its agents' activity back, not from
-                    # the documents. The audience must be read from the
-                    # documents only - see ZepEntityReader.
-                    project.graph_built_at = datetime.now(timezone.utc).isoformat()
-                    ProjectManager.save_project(project)
+                    ProjectManager.update_project(
+                        project_id,
+                        status=ProjectStatus.GRAPH_COMPLETED,
+                        error=None,
+                        # Everything in the graph after this instant came from a
+                        # simulation writing its agents' activity back, not from
+                        # the documents. The audience must be read from the
+                        # documents only - see ZepEntityReader.
+                        graph_built_at=datetime.now(timezone.utc).isoformat(),
+                    )
                     task_manager.update_task(
                         task_id,
                         status=TaskStatus.COMPLETED,
@@ -1371,9 +1378,11 @@ def _build_graph_impl():
                 build_logger.info(f"[{task_id}] graph build stopped by the user")
 
                 with _project_build_lock(project_id):
-                    project.status = ProjectStatus.FAILED
-                    project.error = t('api.buildCancelled')
-                    ProjectManager.save_project(project)
+                    ProjectManager.update_project(
+                        project_id,
+                        status=ProjectStatus.FAILED,
+                        error=t('api.buildCancelled'),
+                    )
 
                     task_manager.cancel_task(task_id, t('api.buildCancelled'))
 
@@ -1383,9 +1392,11 @@ def _build_graph_impl():
                 build_logger.debug(traceback.format_exc())
                 
                 with _project_build_lock(project_id):
-                    project.status = ProjectStatus.FAILED
-                    project.error = str(e)
-                    ProjectManager.save_project(project)
+                    ProjectManager.update_project(
+                        project_id,
+                        status=ProjectStatus.FAILED,
+                        error=str(e),
+                    )
 
                     task_manager.update_task(
                         task_id,

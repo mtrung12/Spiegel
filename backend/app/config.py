@@ -227,9 +227,13 @@ class Config:
     OASIS_DEFAULT_MAX_ROUNDS = int(os.environ.get('OASIS_DEFAULT_MAX_ROUNDS', '10'))
     OASIS_SIMULATION_DATA_DIR = os.path.join(os.path.dirname(__file__), '../uploads/simulations')
     
-    # Actions available on each OASIS platform
+    # Actions available on each OASIS platform. Kept in step with
+    # scripts/run_parallel_simulation.py, which is what actually hands the list
+    # to OASIS. DISLIKE_COMMENT is absent from the X list on purpose: X has no
+    # downvote.
     OASIS_TWITTER_ACTIONS = [
-        'CREATE_POST', 'LIKE_POST', 'REPOST', 'FOLLOW', 'DO_NOTHING', 'QUOTE_POST'
+        'CREATE_POST', 'LIKE_POST', 'REPOST', 'FOLLOW', 'DO_NOTHING', 'QUOTE_POST',
+        'CREATE_COMMENT', 'LIKE_COMMENT',
     ]
     OASIS_REDDIT_ACTIONS = [
         'LIKE_POST', 'DISLIKE_POST', 'CREATE_POST', 'CREATE_COMMENT',
@@ -237,6 +241,18 @@ class Config:
         'TREND', 'REFRESH', 'DO_NOTHING', 'FOLLOW', 'MUTE'
     ]
     
+    # Comments an agent is shown under each post it refreshes. OASIS's own
+    # behaviour is to attach every comment, which both bloats the prompt and
+    # gives a reply nobody reacted to the same reach as the one the crowd
+    # pushed up. The draw is weighted by OASIS_COMMENT_WEIGHT_BASE + net
+    # reaction, so popular comments spread further. 0 restores "show all".
+    OASIS_COMMENTS_PER_POST = int(os.environ.get('OASIS_COMMENTS_PER_POST', '3'))
+    # Weight floor, so a comment with no votes yet is still reachable. At 1.0 a
+    # comment on +4 is five times as likely to be seen as an unrated one.
+    OASIS_COMMENT_WEIGHT_BASE = float(
+        os.environ.get('OASIS_COMMENT_WEIGHT_BASE', '1.0')
+    )
+
     # Corpus settings (public-discussion harvesting). Behaviour comes from
     # config/corpus.yml; the CORPUS_* environment variables still win, which is
     # how a deployment overrides a file it cannot edit.

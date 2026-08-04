@@ -9,6 +9,7 @@
       :simulationId="null"
       :reportId="null"
       :projectName="projectData?.name || ''"
+      @renamed="applyRename"
       @readonly="readOnly = $event"
     />
 
@@ -96,7 +97,7 @@ import { getPendingUpload, clearPendingUpload } from '../store/pendingUpload'
 import AppHeader from '../components/AppHeader.vue'
 import AppBanner from '../components/AppBanner.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
-import { useSplitLayout, useSystemLog } from '../composables/useWorkbench'
+import { useProjectRename, useSplitLayout, useSystemLog } from '../composables/useWorkbench'
 
 const route = useRoute()
 const router = useRouter()
@@ -115,6 +116,8 @@ const error = ref('')
 const graphError = ref('')
 const retrying = ref(false)
 const projectData = ref(null)
+// Keeps this view's copy in step with a rename made in the header.
+const applyRename = useProjectRename(projectData)
 const graphData = ref(null)
 const currentPhase = ref(-1) // -1: Upload, 0: Ontology, 1: Build, 2: Complete
 const ontologyProgress = ref(null)
@@ -176,6 +179,9 @@ const handleNewProject = async () => {
     
     const formData = new FormData()
     pending.files.forEach(f => formData.append('files', f))
+    // Chosen on the home page. Left off, the backend falls back to "Unnamed
+    // Project", which is what every project used to be called.
+    if (pending.name) formData.append('project_name', pending.name)
 
     // Returns as soon as the files are stored; the ontology is still being
     // derived behind `task_id`. The URL is rewritten to the real project id

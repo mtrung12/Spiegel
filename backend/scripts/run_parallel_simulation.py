@@ -161,6 +161,9 @@ def init_logging_for_simulation(simulation_dir: str):
 from action_logger import SimulationLogManager, PlatformActionLogger
 from agent_activity import normalize_active_hours
 from token_meter import METER as TOKEN_METER, instrument_model
+# Trims each post's comment list down to the few an agent actually reads,
+# weighted by how the crowd reacted. See scripts/comment_feed.py.
+import comment_feed
 
 try:
     from camel.models import ModelFactory
@@ -1719,7 +1722,22 @@ async def main():
         if args.max_rounds < config_total_rounds:
             log_manager.info(f"  - Rounds actually run: {args.max_rounds} (truncated)")
     log_manager.info(f"  - Agent count: {len(config.get('agent_configs', []))}")
-    
+
+    # Comment visibility. Installed before any environment is built, so both
+    # platform simulations share the patched feed.
+    feed_config = comment_feed.read_feed_config(config)
+    comment_feed.install(
+        comments_per_post=feed_config['comments_per_post'],
+        base_weight=feed_config['comment_weight_base'],
+    )
+    if feed_config['comments_per_post'] > 0:
+        log_manager.info(
+            f"  - Comments visible per post: {feed_config['comments_per_post']} "
+            f"(reaction-weighted draw, base {feed_config['comment_weight_base']})"
+        )
+    else:
+        log_manager.info("  - Comments visible per post: all")
+
     log_manager.info("Log layout:")
     log_manager.info(f"  - Main log: simulation.log")
     log_manager.info(f"  - Twitter actions: twitter/actions.jsonl")

@@ -37,6 +37,20 @@ export function useSplitLayout(initialMode = 'split') {
 }
 
 /**
+ * Keep a view's own copy of the project in step with a rename done in the
+ * header. Every step view loads the project for itself, so without this the
+ * name it holds stays stale until the next fetch - and any refetch in the
+ * meantime pushes the old name back into the header through `projectName`.
+ *
+ * Returns the `@renamed` handler for AppHeader.
+ */
+export function useProjectRename(projectData) {
+  return (name) => {
+    if (projectData.value) projectData.value = { ...projectData.value, name }
+  }
+}
+
+/**
  * The scrolling system log every step view feeds. Capped so a long-running
  * simulation cannot grow the array without bound.
  */

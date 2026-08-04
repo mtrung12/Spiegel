@@ -255,6 +255,23 @@ class PlatformConfig:
 
 
 @dataclass
+class FeedConfig:
+    """What an agent is shown when it refreshes its feed.
+
+    Not LLM-generated - these are platform mechanics, not campaign judgement.
+    They ride in the config file so a run stays reproducible from it alone.
+    """
+    # Comments attached to each post the agent sees. 0 shows every comment.
+    comments_per_post: int = field(
+        default_factory=lambda: Config.OASIS_COMMENTS_PER_POST
+    )
+    # Weight floor in the reaction-weighted draw; see scripts/comment_feed.py.
+    comment_weight_base: float = field(
+        default_factory=lambda: Config.OASIS_COMMENT_WEIGHT_BASE
+    )
+
+
+@dataclass
 class SimulationParameters:
     """The complete set of simulation parameters."""
     # Basics
@@ -271,7 +288,10 @@ class SimulationParameters:
     
     # Event configuration
     event_config: EventConfig = field(default_factory=EventConfig)
-    
+
+    # Feed configuration (comment visibility)
+    feed_config: FeedConfig = field(default_factory=FeedConfig)
+
     # Platform configuration
     twitter_config: Optional[PlatformConfig] = None
     reddit_config: Optional[PlatformConfig] = None
@@ -295,6 +315,7 @@ class SimulationParameters:
             "time_config": time_dict,
             "agent_configs": [asdict(a) for a in self.agent_configs],
             "event_config": asdict(self.event_config),
+            "feed_config": asdict(self.feed_config),
             "twitter_config": asdict(self.twitter_config) if self.twitter_config else None,
             "reddit_config": asdict(self.reddit_config) if self.reddit_config else None,
             "llm_model": self.llm_model,

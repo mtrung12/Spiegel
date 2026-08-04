@@ -30,9 +30,11 @@
         @mouseleave="hoveringCard = null"
         @click="navigateToProject(project)"
       >
-        <!-- Card header: project id and which stages the project reached -->
+        <!-- Card header: what the project is called, and which stages it
+             reached. This used to be a truncated project id, which is the one
+             thing about a project the user never chose and cannot recognise. -->
         <div class="card-header">
-          <span class="card-id">{{ formatProjectId(project.project_id) }}</span>
+          <span class="card-name">{{ getProjectTitle(project) }}</span>
           <div class="card-status-icons">
             <span
               class="status-icon"
@@ -79,11 +81,10 @@
           </div>
         </div>
 
-        <!-- Card title: the project name, falling back to its requirement -->
-        <span class="card-title">{{ getProjectTitle(project) }}</span>
-
+        <!-- The name lives in the header now, so what used to be a second copy
+             of it here is gone; the requirement below is what it summarised. -->
         <!-- Card description: the full simulation requirement -->
-        <span class="card-desc">{{ truncateText(project.simulation_requirement, 55) }}</span>
+        <span class="card-desc">{{ truncateText(project.simulation_requirement, 90) }}</span>
 
         <!-- Card footer -->
         <div class="card-footer">
@@ -131,7 +132,7 @@
             <!-- Dialog header -->
             <div class="modal-header">
               <div class="modal-title-section">
-                <h2 class="modal-id">{{ formatProjectId(selectedProject.project_id) }}</h2>
+                <h2 class="modal-name">{{ getProjectTitle(selectedProject, 60) }}</h2>
                 <span class="modal-progress" :class="getProgressClass(selectedProject)">
                   <span class="status-dot" aria-hidden="true">●</span> {{ formatRounds(selectedProject) }}
                 </span>
@@ -354,20 +355,15 @@ const truncateText = (text, maxLength) => {
   return text.length > maxLength ? text.slice(0, maxLength) + '...' : text
 }
 
-// Card title: the project name, or its requirement when the name is a placeholder
-const getProjectTitle = (project) => {
+// What to call this project on screen. Projects created before the name field
+// existed carry the "Unnamed Project" placeholder, which says less than the
+// first words of their brief, so those fall back to the requirement.
+const getProjectTitle = (project, maxLength = 24) => {
   const name = (project.name || '').trim()
-  if (name && name !== 'Unnamed Project') return truncateText(name, 24)
+  if (name && name !== 'Unnamed Project') return truncateText(name, maxLength)
   const requirement = project.simulation_requirement || ''
   if (!requirement) return t('history.untitledSimulation')
-  return truncateText(requirement, 20)
-}
-
-// Format project_id for display, first six characters
-const formatProjectId = (projectId) => {
-  if (!projectId) return 'PROJ_UNKNOWN'
-  const prefix = projectId.replace('proj_', '').slice(0, 6)
-  return `PROJ_${prefix.toUpperCase()}`
+  return truncateText(requirement, maxLength - 4)
 }
 
 // Format the round display as current/total
@@ -516,7 +512,9 @@ const loadHistory = async () => {
     loadFailed.value = true
   } finally {
     loading.value = false
-    emit('loaded', projects.value.length)
+    // The list itself, not just its length: the home page derives the default
+    // name for the next project from the names already taken.
+    emit('loaded', projects.value)
   }
 }
 
@@ -770,12 +768,26 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--surface-2);
   font-family: 'JetBrains Mono', 'SF Mono', monospace;
   font-size: 0.75rem;
+  gap: 10px;
 }
 
-.card-id {
-  color: var(--muted);
-  letter-spacing: 0.5px;
-  font-weight: 500;
+.card-name {
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--black);
+  letter-spacing: 0;
+  /* The header is a fixed row shared with the status icons, so a long name
+     ellipsises rather than pushing them off the card. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.3s ease;
+}
+
+.project-card:hover .card-name {
+  color: var(--accent);
 }
 
 /* Feature status icons */
@@ -783,6 +795,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .status-icon {
@@ -955,24 +968,6 @@ onUnmounted(() => {
 }
 
 /* Card title */
-.card-title {
-  display: block;
-  font-family: 'Inter', -apple-system, sans-serif;
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--black);
-  margin: 0 0 6px 0;
-  line-height: 1.4;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: color 0.3s ease;
-}
-
-.project-card:hover .card-title {
-  color: var(--accent);
-}
-
 /* Card description */
 .card-desc {
   display: block;
@@ -981,10 +976,12 @@ onUnmounted(() => {
   color: var(--muted);
   margin: 0 0 16px 0;
   line-height: 1.5;
-  height: 34px;
+  /* Three lines rather than two: the duplicate title above it is gone, and the
+     card keeps the height the grid spacing is computed against. */
+  height: 51px;
   overflow: hidden;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
 }
 
@@ -1150,12 +1147,13 @@ onUnmounted(() => {
   gap: 16px;
 }
 
-.modal-id {
-  font-family: 'JetBrains Mono', monospace;
+.modal-name {
+  font-family: 'Inter', -apple-system, sans-serif;
   font-size: 1rem;
   font-weight: 600;
   color: var(--black);
-  letter-spacing: 0.5px;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .modal-progress {
